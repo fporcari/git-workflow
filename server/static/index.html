@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Review desk</title>
+<style>
+:root{--bg:#f4f2ed;--panel:#fbfaf7;--ink:#1e1d1a;--muted:#77736b;--line:#d9d5cc;--soft:#ebe8e0;--rust:#b95832;--red:#a53d32;--amber:#a57421;--green:#347044;--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink)}
+body{font:13px/1.4 system-ui,sans-serif}
+.shell{min-height:100vh;display:flex;flex-direction:column}
+.topbar{height:48px;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 18px;background:var(--panel);justify-content:space-between}
+.brand,.topStats{display:flex;align-items:center;gap:12px}
+.brandMark{font:700 10px/24px var(--mono);width:26px;height:26px;border-radius:7px;text-align:center;background:var(--ink);color:var(--panel);letter-spacing:-.05em}
+.brand strong{font-size:13px}
+.repo{font:11px var(--mono);color:var(--muted);border-left:1px solid var(--line);padding-left:12px}
+.topStats{font-size:11px;color:var(--muted)}.topStats b{font:600 12px var(--mono);color:var(--ink)}
+.sync{display:flex;align-items:center;gap:6px;cursor:pointer;border:0;background:none;color:var(--muted);font:11px inherit}
+.sync i{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px color-mix(in srgb,var(--green) 12%,transparent)}
+.summary{display:grid;grid-template-columns:minmax(300px,1fr) repeat(4,minmax(110px,160px));border-bottom:1px solid var(--line);background:var(--panel)}
+.summaryLead{padding:16px 18px;display:flex;flex-direction:column;gap:2px}
+.summaryLead strong{font-size:17px;letter-spacing:-.02em}.summaryLead small{color:var(--muted)}
+.eyebrow,h2{font:600 10px var(--mono);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
+.metric{padding:14px 16px;border-left:1px solid var(--line);display:flex;flex-direction:column;justify-content:center}
+.metric b{font:600 22px/1 var(--mono)}.metric span{font-size:10.5px;color:var(--muted);margin-top:4px}
+.metric.hot b{color:var(--red)}.metric.amber b{color:var(--amber)}.metric.green b{color:var(--green)}
+.queue{background:var(--panel);border-bottom:1px solid var(--line)}
+.queueTools{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-bottom:1px solid var(--line)}
+.tabs{height:100%;display:flex;gap:2px}
+.tabs button{height:100%;border:0;border-bottom:2px solid transparent;background:none;color:var(--muted);font:500 11.5px inherit;padding:0 10px;cursor:pointer}
+.tabs button.active{color:var(--ink);border-color:var(--rust)}
+.tabs b{font:500 10px var(--mono);padding:1px 5px;border-radius:8px;background:var(--soft);margin-left:4px}
+.search{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);padding:4px 8px;color:var(--muted)}
+.search input{width:210px;border:0;outline:0;background:transparent;font:11px inherit;color:var(--ink)}
+.tableWrap{overflow:auto;max-height:44vh;position:relative}
+table{width:100%;min-width:1150px;border-collapse:collapse}
+th,td{text-align:left;border-bottom:1px solid var(--line);padding:7px 10px;white-space:nowrap}
+th{position:sticky;top:0;z-index:2;background:var(--panel);font:600 9.5px var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.07em}
+tbody tr{cursor:pointer;outline:none}
+tbody tr:hover td,tbody tr:focus td{background:#f7f5f0}
+tbody tr.selected td{background:#eeeae1}
+tbody tr.selected td:first-child{box-shadow:inset 3px 0 var(--rust)}
+.markCol{width:34px}.mark{text-align:center;font:700 12px var(--mono)}
+tr.attention .mark{color:var(--red)}tr.decision .mark{color:var(--amber)}tr.ready .mark{color:var(--green)}tr.waiting .mark{color:var(--muted)}
+.prTitle{display:flex;align-items:center;gap:8px;max-width:330px}
+.prTitle b{font:600 11px var(--mono);color:var(--muted)}
+.prTitle span{overflow:hidden;text-overflow:ellipsis;font-weight:560}
+.prTitle small{margin-left:auto;color:var(--muted);font:10px var(--mono)}
+.avatar{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#d9dfe0;color:#425657;font:600 8px var(--mono);margin-right:6px}
+.status{display:inline-block;border:1px solid var(--line);border-radius:10px;padding:1px 7px;font-size:10px;color:var(--muted)}
+.status.attention{color:var(--red);border-color:color-mix(in srgb,var(--red) 35%,var(--line));background:color-mix(in srgb,var(--red) 6%,transparent)}
+.status.decision{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 35%,var(--line))}
+.status.ready{color:var(--green);border-color:color-mix(in srgb,var(--green) 35%,var(--line))}
+.check{font-size:8px}.check.CLEAN{color:var(--green)}.check.DIRTY,.check.UNSTABLE{color:var(--red)}.check.BLOCKED{color:var(--amber)}
+.num{text-align:right}.mono{font:10.5px var(--mono)}
+.next{max-width:230px;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+.tag{font:600 9px var(--mono);border:1px solid var(--line);border-radius:8px;padding:1px 6px;color:var(--muted)}
+.tag.DEFECT{color:var(--red);border-color:color-mix(in srgb,var(--red) 35%,var(--line))}
+.tag.REQUEST{color:var(--amber)}.tag.QUESTION{color:#3d5a80}.tag.DOCS{color:var(--green)}
+.empty{padding:28px;display:flex;flex-direction:column;align-items:center;color:var(--muted);gap:3px}.empty b{color:var(--ink)}
+.detail{padding:14px 18px 28px;flex:1;min-height:240px}
+.detailHead{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px}
+.detailHead>div:first-child{display:grid;grid-template-columns:26px 1fr;column-gap:8px}
+.largeMark{grid-row:1/3;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--line);font:700 11px var(--mono)}
+.largeMark.attention{color:var(--red);border-color:var(--red)}.largeMark.decision{color:var(--amber);border-color:var(--amber)}.largeMark.ready{color:var(--green);border-color:var(--green)}
+.detailKicker{font:10px var(--mono);color:var(--muted)}
+h1{font-size:18px;line-height:1.2;margin:2px 0 0;letter-spacing:-.02em}
+.detailActions a{border:1px solid var(--line);border-radius:6px;background:var(--panel);padding:6px 10px;color:var(--ink);font:11px inherit;text-decoration:none}
+.detailGrid{display:grid;grid-template-columns:1.3fr .9fr .9fr;border:1px solid var(--line);border-radius:8px;background:var(--panel);overflow:hidden;min-height:150px}
+.detailGrid>*{padding:13px 15px;min-width:0}.detailGrid>*+*{border-left:1px solid var(--line)}
+h2{margin:0 0 7px}.detailGrid p{margin:0 0 12px}
+.detailGrid dl{margin:0;border-top:1px solid var(--line)}
+.detailGrid dl div{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line);font-size:11px}
+.detailGrid dt{color:var(--muted)}.detailGrid dd{margin:0;font-weight:560;text-align:right}
+.nextCard{background:color-mix(in srgb,var(--amber) 4%,var(--panel))}
+.nextCard p{font-weight:600;font-size:14px}.nextCard small{color:var(--muted)}
+.signal{display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding:6px 0;font-size:11px}
+.signal span{color:var(--muted)}
+.err{margin:10px 18px;padding:8px 12px;border:1px solid var(--red);border-radius:6px;color:var(--red);background:color-mix(in srgb,var(--red) 5%,var(--panel));display:none}
+@media(max-width:900px){.summary{grid-template-columns:1fr repeat(2,130px)}.metric:nth-last-child(-n+2){display:none}.detailGrid{grid-template-columns:1fr}.detailGrid>*+*{border-left:0;border-top:1px solid var(--line)}}
+</style>
+</head>
+<body>
+<main class="shell">
+  <header class="topbar">
+    <div class="brand"><span class="brandMark">GW</span><strong>review desk</strong><span class="repo" id="repoLabel">…</span></div>
+    <div class="topStats"><span><b id="cPrs">0</b> open PRs</span><span><b id="cIssues">0</b> open issues</span><button class="sync" id="refresh"><i></i><span id="syncLabel">updated —</span></button></div>
+  </header>
+
+  <section class="summary">
+    <div class="summaryLead"><span class="eyebrow">review queue</span><strong id="leadTitle">loading…</strong><small id="leadSub">reading the provider</small></div>
+    <div class="metric hot"><b id="mAttention">0</b><span>your move</span></div>
+    <div class="metric amber"><b id="mDecision">0</b><span>your calls</span></div>
+    <div class="metric"><b id="mWaiting">0</b><span>waiting on others</span></div>
+    <div class="metric green"><b id="mReady">0</b><span>mergeable now</span></div>
+  </section>
+
+  <div class="err" id="errBox"></div>
+
+  <section class="queue">
+    <div class="queueTools">
+      <div class="tabs" id="tabs"></div>
+      <label class="search"><span>⌕</span><input id="q" placeholder="Filter number, title, author…"></label>
+    </div>
+    <div class="tableWrap"><table>
+      <thead id="thead"></thead><tbody id="tbody"></tbody>
+    </table><div class="empty" id="empty" style="display:none"><b>Nothing in this view</b><span>Try another filter or tab.</span></div></div>
+  </section>
+
+  <section class="detail" id="detail" style="display:none">
+    <div class="detailHead">
+      <div><span class="largeMark" id="dMark">·</span><span class="detailKicker" id="dKicker"></span><h1 id="dTitle"></h1></div>
+      <div class="detailActions"><a id="dLink" target="_blank" rel="noreferrer">Open in the browser ↗</a></div>
+    </div>
+    <div class="detailGrid" id="dGrid"></div>
+  </section>
+</main>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const MARK={ready:"✓",attention:"!",waiting:"○",decision:"◆"};
+const STATE_LABEL={ready:"mergeable",attention:"your move",waiting:"waiting",decision:"your call"};
+let meta={},prs=[],issues=[],view="queue",query="",selected=null;
+
+const VIEWS=()=>[
+  {id:"queue",label:"Queue",count:prs.filter(r=>r.state==="attention"||r.state==="decision"||r.state==="ready").length},
+  {id:"ready",label:"Mergeable",count:prs.filter(r=>r.state==="ready").length},
+  {id:"waiting",label:"Waiting",count:prs.filter(r=>r.state==="waiting").length},
+  {id:"all",label:"All PRs",count:prs.length},
+  {id:"issues",label:"Issues",count:issues.length},
+];
+
+function ageDays(d){return Math.max(0,Math.round((Date.now()-new Date(d))/864e5));}
+
+function renderTabs(){
+  $("tabs").innerHTML=VIEWS().map(v=>`<button class="${view===v.id?"active":""}" data-v="${v.id}">${v.label} <b>${v.count}</b></button>`).join("");
+  $("tabs").querySelectorAll("button").forEach(b=>b.onclick=()=>{view=b.dataset.v;selected=null;render();});
+}
+
+function visiblePrs(){
+  const q=query.toLowerCase();
+  return prs.filter(r=>{
+    const ok=view==="all"||(view==="queue"&&r.state!=="waiting")||(view==="ready"&&r.state==="ready")||(view==="waiting"&&r.state==="waiting");
+    return ok&&(!q||[r.n,r.title,r.author,r.todo].join(" ").toLowerCase().includes(q));
+  });
+}
+function visibleIssues(){
+  const q=query.toLowerCase();
+  return issues.filter(r=>!q||[r.n,r.title,r.author,(r.labels||[]).join(" ")].join(" ").toLowerCase().includes(q));
+}
+
+function renderTable(){
+  const tb=$("tbody"),th=$("thead");
+  if(view==="issues"){
+    th.innerHTML=`<tr><th class="markCol"></th><th>issue</th><th>type</th><th>author</th><th>labels</th><th>assignees</th><th class="num">comments</th><th class="num">age</th></tr>`;
+    const rows=visibleIssues();
+    tb.innerHTML=rows.map(r=>`<tr data-n="${r.n}" data-kind="issue" class="${r.assignees.length?"waiting":"attention"} ${selected===`i${r.n}`?"selected":""}">
+      <td class="mark"><span>${r.assignees.length?"○":"!"}</span></td>
+      <td class="prTitle"><b>#${r.n}</b><span>${esc(r.title)}</span></td>
+      <td><span class="tag ${r.type}">${r.type}</span></td>
+      <td><span class="avatar">${esc((r.author||"??").slice(0,2).toUpperCase())}</span>${esc(r.author)}</td>
+      <td class="next">${(r.labels||[]).map(l=>`<span class="tag">${esc(l)}</span>`).join(" ")||"—"}</td>
+      <td>${r.assignees.join(", ")||"—"}</td>
+      <td class="num">${r.comments||"—"}</td>
+      <td class="num mono">${ageDays(r.created)}d</td></tr>`).join("");
+    $("empty").style.display=rows.length?"none":"flex";
+  }else{
+    th.innerHTML=`<tr><th class="markCol"></th><th>pull request</th><th>author</th><th>review</th><th>merge state</th><th class="num">unresolved</th><th>base</th><th>next move</th><th>autorun</th></tr>`;
+    const rows=visiblePrs();
+    tb.innerHTML=rows.map(r=>`<tr data-n="${r.n}" data-kind="pr" class="${r.state} ${selected===`p${r.n}`?"selected":""}" tabindex="0">
+      <td class="mark"><span title="${STATE_LABEL[r.state]}">${MARK[r.state]}</span></td>
+      <td class="prTitle"><b>#${r.n}</b><span>${esc(r.title)}</span><small>${ageDays(r.created)}d</small></td>
+      <td><span class="avatar">${esc((r.author||"??").slice(0,2).toUpperCase())}</span>${esc(r.author)}</td>
+      <td><span class="status ${r.state}">${esc(r.decision||(r.draft?"draft":"no review"))}</span></td>
+      <td><span class="check ${r.merge}">●</span> ${esc(r.merge)}</td>
+      <td class="num">${r.unresolved||"—"}</td>
+      <td class="mono">${esc(r.base)}</td>
+      <td class="next">${esc(r.todo)}</td>
+      <td class="mono">${esc(r.autorun)}</td></tr>`).join("");
+    $("empty").style.display=rows.length?"none":"flex";
+  }
+  tb.querySelectorAll("tr").forEach(tr=>tr.onclick=()=>{selected=(tr.dataset.kind==="pr"?"p":"i")+tr.dataset.n;render();});
+}
+
+function renderDetail(){
+  const box=$("detail");
+  if(!selected){box.style.display="none";return;}
+  const kind=selected[0],n=+selected.slice(1);
+  const r=(kind==="p"?prs:issues).find(x=>x.n===n);
+  if(!r){box.style.display="none";return;}
+  box.style.display="";
+  $("dLink").href=r.url;
+  if(kind==="p"){
+    $("dMark").textContent=MARK[r.state];$("dMark").className="largeMark "+r.state;
+    $("dKicker").textContent=`PR #${r.n} · ${r.author} · opened ${r.created} · base ${r.base}`;
+    $("dTitle").textContent=r.title;
+    const reviews=(r.reviews||[]).map(v=>`<div class="signal"><b>${esc(v.who)}</b><span>${esc(v.state)} · ${esc(v.on)}</span></div>`).join("")||`<div class="signal"><span>no reviews yet</span></div>`;
+    const closes=(r.closes||[]).map(c=>`<div class="signal"><b>issue #${c.issue}</b><span>${c.assignees.join(", ")||"unassigned"}</span></div>`).join("");
+    $("dGrid").innerHTML=`
+      <article><h2>State of play</h2>
+        <dl><div><dt>Review decision</dt><dd>${esc(r.decision||"—")}</dd></div>
+        <div><dt>Standing requests</dt><dd>${r.req.join(", ")||"none"}</dd></div>
+        <div><dt>Merge state</dt><dd>${esc(r.merge)}</dd></div>
+        <div><dt>Threads</dt><dd>${r.unresolved}/${r.threads} unresolved</dd></div>
+        <div><dt>Last to speak</dt><dd>${r.last?esc(`${r.last.who} · ${r.last.ch} · ${r.last.t.slice(0,10)}`):"—"}</dd></div></dl></article>
+      <article class="nextCard"><h2>Next move</h2><p>${esc(r.todo)}</p><small>autorun: ${esc(r.autorun)} — read from the provider fields; the diff-level analysis belongs to /pr-run.</small></article>
+      <aside><h2>Reviews</h2>${reviews}${closes?`<h2 style="margin-top:10px">Closes</h2>${closes}`:""}</aside>`;
+  }else{
+    $("dMark").textContent=r.assignees.length?"○":"!";$("dMark").className="largeMark "+(r.assignees.length?"waiting":"attention");
+    $("dKicker").textContent=`issue #${r.n} · ${r.author} · opened ${r.created}`;
+    $("dTitle").textContent=r.title;
+    $("dGrid").innerHTML=`
+      <article><h2>Classification</h2>
+        <dl><div><dt>Type</dt><dd>${esc(r.type)}</dd></div>
+        <div><dt>Labels</dt><dd>${r.labels.join(", ")||"none"}</dd></div>
+        <div><dt>Assignees</dt><dd>${r.assignees.join(", ")||"unassigned"}</dd></div>
+        <div><dt>Comments</dt><dd>${r.comments}</dd></div></dl></article>
+      <article class="nextCard"><h2>Next move</h2><p>${r.assignees.length?`assigned to ${esc(r.assignees.join(", "))}`:"unassigned — a candidate for /issue-triage"}</p><small>type read from labels and title; root-cause analysis belongs to /issue-triage.</small></article>
+      <aside><h2>Age</h2><div class="signal"><b>${ageDays(r.created)} days</b><span>since ${esc(r.created)}</span></div></aside>`;
+  }
+}
+
+function renderSummary(){
+  const c={ready:0,attention:0,waiting:0,decision:0};
+  prs.forEach(r=>c[r.state]++);
+  $("mAttention").textContent=c.attention;$("mDecision").textContent=c.decision;
+  $("mWaiting").textContent=c.waiting;$("mReady").textContent=c.ready;
+  const mine=c.attention+c.decision+c.ready;
+  $("leadTitle").textContent=mine?`${mine} pull requests need a move from you`:"nothing needs a move from you";
+  $("leadSub").textContent=`${prs.length} open PRs you are involved in · ${issues.length} open issues · provider ${meta.provider||"—"}`;
+  $("cPrs").textContent=prs.length;$("cIssues").textContent=issues.length;
+}
+
+function render(){renderTabs();renderTable();renderDetail();renderSummary();}
+
+async function load(refresh){
+  $("syncLabel").textContent="updating…";$("errBox").style.display="none";
+  const suffix=refresh?"?refresh=1":"";
+  try{
+    const [m,q,i]=await Promise.all([
+      fetch("/api/meta").then(r=>r.json()),
+      fetch("/api/queue"+suffix).then(r=>r.json()),
+      fetch("/api/issues"+suffix).then(r=>r.json()),
+    ]);
+    if(q.error||i.error)throw new Error(q.error||i.error);
+    meta=m;prs=q.rows;issues=i.rows;
+    $("repoLabel").textContent=`${m.repo} · ${m.me}`;
+    $("syncLabel").textContent=`updated ${q.generated}`;
+    render();
+  }catch(e){
+    $("errBox").textContent="Provider error: "+e.message;$("errBox").style.display="block";
+    $("syncLabel").textContent="update failed";
+  }
+}
+
+$("q").oninput=e=>{query=e.target.value;render();};
+$("refresh").onclick=()=>load(true);
+load(false);
+</script>
+</body>
+</html>

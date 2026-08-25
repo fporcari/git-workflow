@@ -1,0 +1,14 @@
+{
+  "name": "fporcari",
+  "owner": {
+    "name": "Francesco Porcari",
+    "email": "fporcari@softwell.it"
+  },
+  "plugins": [
+    {
+      "name": "git-workflow",
+      "source": "./",
+      "description": "PR and issue workflow toolkit: triage skills plus a local review-desk dashboard with pluggable git hosting providers (GitHub, Forgejo)."
+    }
+  ]
+}
