@@ -38,6 +38,18 @@ def load(repo):
         return {}
 
 
+def reset(repo):
+    """Archive the previous session's state so the desk starts empty:
+    stale analyses and feed lines read as fresh data otherwise. The old
+    file survives as .prev next to it."""
+    path = state_path(repo)
+    if path.exists():
+        path.replace(path.with_suffix(".json.prev"))
+    inbox = STATE_DIR / ("%s__inbox.jsonl" % repo.replace("/", "__"))
+    if inbox.exists():
+        inbox.write_text("")
+
+
 def save(repo, state):
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     state_path(repo).write_text(json.dumps(state, indent=1))

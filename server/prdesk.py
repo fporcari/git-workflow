@@ -190,11 +190,16 @@ def main():
                         help="attached-chat mode: buttons enqueue events for the "
                              "Claude session that launched the desk, instead of "
                              "spawning headless runs")
+    parser.add_argument("--keep-state", action="store_true",
+                        help="keep the previous session's analyses/feed instead "
+                             "of starting empty")
     args = parser.parse_args()
 
     provider = get_provider(args.provider)
     repo = args.repo or detect_repo()
     me = args.me or provider.whoami()
+    if not args.keep_state:
+        deskstate.reset(repo)
 
     Handler.desk = Desk(provider, repo, me, str(Path.cwd()), chat=args.chat)
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
