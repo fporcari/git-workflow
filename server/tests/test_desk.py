@@ -72,6 +72,20 @@ class RowContract(unittest.TestCase):
         self.assertEqual(queue["total"], len(queue["rows"]))
         self.assertFalse(queue["truncated"])
 
+    def test_issues_report_their_own_total(self):
+        got = fresh_desk().issues()
+        self.assertEqual(got["total"], len(got["rows"]))
+        self.assertFalse(got["truncated"])
+
+    def test_a_truncated_issue_list_is_reported(self):
+        """228 open issues served as 100 used to read as "100 aperte"."""
+        desk = fresh_desk()
+        desk.provider.data["issues_total"] = 228
+        desk.provider.data["issues_truncated"] = True
+        got = desk.issues()
+        self.assertTrue(got["truncated"])
+        self.assertEqual(got["total"], 228)
+
 
 class MergeStatePhase(unittest.TestCase):
     """Phase two must land, and the table must be honest while it has not."""

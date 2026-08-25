@@ -209,6 +209,7 @@ const AUTORUN_TIP="Cosa può fare pr-run da solo: A1 merge (tua PR approvata e C
 
 let meta={},DESK="pr",prs=[],issues=[],chase={},grid=null,situa=null,session=null;
 let loaded=false,view="todo",query="",stateFilter=null,watcherAlive=false;
+let issuesTruncated=null;
 let selected=null,tab="quadro",sort={key:"created",dir:-1},acting={},truncated=null,pendingMerge=false;
 let deskEtag=null,fetching=false,lastGenerated=null,timings={};
 const triageRunning={pr:false,issue:false};
@@ -253,6 +254,7 @@ function applyDesk(d){
   prs=d.queue.rows;issues=d.issues.rows;chase=d.queue.chase||{};
   session=d.queue.session;lastGenerated=d.generated;
   truncated=d.queue.truncated?d.queue.total:null;
+  issuesTruncated=d.issues.truncated?d.issues.total:null;
   pendingMerge=!!d.queue.mergestate_pending;
   applyState(d.state);
   loaded=true;
@@ -668,6 +670,7 @@ function renderSummary(){
   }
   const notes=[];
   if(truncated)notes.push(`<b>Coda troncata:</b> il provider dichiara ${truncated} PR e la pagina ne porta ${prs.length}. Le mancanti non sono in tabella.`);
+  if(issuesTruncated)notes.push(`<b>Issue troncate:</b> il repo ne ha ${issuesTruncated} aperte e il desk ne porta ${issues.length}. Le più vecchie non sono in tabella.`);
   if(pendingMerge)notes.push("Lo stato di merge è la lettura più costosa del provider: arriva un attimo dopo, la tabella si riempie da sola.");
   banner("noteBox",notes.join(" · "),notes.length);
   renderSync();

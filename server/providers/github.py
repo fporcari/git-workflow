@@ -107,9 +107,22 @@ class GitHubProvider(Provider):
     def merge_command(self, repo, n):
         return "gh pr merge %s --repo %s --squash --delete-branch" % (n, repo)
 
+    ISSUE_PAGES = 4          # 400 issues; beyond that the desk says so
+
     def issues(self, repo):
         owner, name = repo.split("/", 1)
-        nodes = _graphql("issues.graphql", o=owner, r=name)["repository"]["issues"]["nodes"]
+        nodes, cursor, total, more = [], None, 0, False
+        for _ in range(self.ISSUE_PAGES):
+            args = {"o": owner, "r": name}
+            if cursor:
+                args["after"] = cursor
+            page = _graphql("issues.graphql", **args)["repository"]["issues"]
+            nodes += [n for n in page["nodes"] if n]
+            total = page["totalCount"]
+            more = page["pageInfo"]["hasNextPage"]
+            cursor = page["pageInfo"]["endCursor"]
+            if not more:
+                break
         rows = []
         for issue in nodes:
             rows.append({
@@ -123,4 +136,4 @@ class GitHubProvider(Provider):
                 "url": issue["url"],
             })
         rows.sort(key=lambda r: r["created"], reverse=True)
-        return rows
+        return {"rows": rows, "total": total, "truncated": more}

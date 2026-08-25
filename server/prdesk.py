@@ -141,12 +141,14 @@ class Desk:
                 "situa": state.get("situa")}
 
     def issues(self, refresh=False):
-        rows = [dict(row) for row in self._raw_issues(refresh)]
+        raw = self._raw_issues(refresh)
+        rows = [dict(row) for row in raw["rows"]]
         for row in rows:
             row["type"] = issue_type(row["labels"], row["title"])
             row["action"] = issue_handoff(row, self.repo)
         deskstate.annotate_issues(rows, deskstate.load(self.repo))
-        return {"rows": rows}
+        return {"rows": rows, "total": raw.get("total", len(rows)),
+                "truncated": raw.get("truncated", False)}
 
     def live_state(self):
         st = deskstate.load(self.repo)

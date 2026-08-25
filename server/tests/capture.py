@@ -34,9 +34,14 @@ def main():
         if row.get("merge") is None:
             row["merge"] = states.get(str(row["n"]))
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps({"repo": repo, "me": me, "rows": rows,
-                               "issues": issues}, indent=1))
-    print("%s  %d PR, %d issue, %.1fs" % (out, len(rows), len(issues), time.time() - t0))
+    out.write_text(json.dumps(
+        {"repo": repo, "me": me, "rows": rows,
+         "queue_total": queue["total"], "queue_truncated": queue["truncated"],
+         "issues": issues["rows"], "issues_total": issues["total"],
+         "issues_truncated": issues["truncated"]}, indent=1))
+    print("%s  %d/%d PR, %d/%d issue, %.1fs"
+          % (out, len(rows), queue["total"], len(issues["rows"]),
+             issues["total"], time.time() - t0))
 
 
 if __name__ == "__main__":

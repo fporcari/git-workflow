@@ -38,7 +38,11 @@ class Provider:
         return {}
 
     def issues(self, repo):
-        """Open issues, newest first, as normalized rows."""
+        """Open issues, newest first.
+
+        Returns {"rows": [...], "total": int, "truncated": bool} — same
+        promise as queue(): a page cap is reported, never hidden.
+        """
         raise NotImplementedError
 
     def merge_command(self, repo, n):

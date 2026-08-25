@@ -38,7 +38,8 @@ class FixtureProvider(Provider):
     def queue(self, repo, me):
         self._sleep()
         rows = [dict(row, merge=None) for row in self.data["rows"]]
-        return {"rows": rows, "total": len(rows), "truncated": False}
+        return {"rows": rows, "total": self.data.get("queue_total", len(rows)),
+                "truncated": bool(self.data.get("queue_truncated"))}
 
     def mergestates(self, repo, me):
         self._sleep()
@@ -47,7 +48,9 @@ class FixtureProvider(Provider):
 
     def issues(self, repo):
         self._sleep()
-        return [dict(row) for row in self.data["issues"]]
+        rows = [dict(row) for row in self.data["issues"]]
+        return {"rows": rows, "total": self.data.get("issues_total", len(rows)),
+                "truncated": bool(self.data.get("issues_truncated"))}
 
     def merge_command(self, repo, n):
         return "gh pr merge %s --repo %s --squash --delete-branch" % (n, repo)

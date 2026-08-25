@@ -120,4 +120,4 @@ class ForgejoProvider(Provider):
                 "url": issue.get("html_url") or "%s/%s/issues/%s" % (self.base, repo, issue["number"]),
             })
         rows.sort(key=lambda r: r["created"], reverse=True)
-        return rows
+        return {"rows": rows, "total": len(rows), "truncated": len(issues) >= 100}

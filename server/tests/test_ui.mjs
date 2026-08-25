@@ -231,6 +231,11 @@ page.render();
 ok("a truncated queue is reported, never hidden",
    document.getElementById("noteBox").innerHTML.includes("999"));
 
+page.applyDesk({ ...snapshot, issues: { ...snapshot.issues, truncated: true, total: 228 } });
+page.render();
+ok("a truncated issue list is reported too",
+   document.getElementById("noteBox").innerHTML.includes("228"));
+
 /* ---- 8. the issue desk uses the same panel ---- */
 page.applyDesk({ ...snapshot, meta: { ...snapshot.meta, desk: "issue" } });
 page.render();
