@@ -69,7 +69,9 @@ driving the split was meant to end.
 
 **Invoked on its own, there is no grid and no veto.** Take the queue as it stands
 and say, in one line before acting, which PRs Lane A is about to touch. Same
-information as the `autorun` column, arriving a moment later.
+information as the `autorun` column, arriving a moment later. Never refuse to
+start for want of a triage: this skill reads the queue itself on every pass by
+design, and a desk hands it the rows already read.
 
 **When in doubt about a lane, the answer is Lane B.** Getting a PR wrong
 unattended costs more than one question.
@@ -283,6 +285,13 @@ to the next PR without re-asking. Anything else is a conversation about that PR:
 answer it, adjust the proposal, ask again. Never present the next PR before the
 current one is settled — the whole point of the format is that he holds one
 decision in his head at a time.
+
+**`basta` / `stop` / `per ora ok` ends the lane, and that is a normal ending.**
+Go straight to Closing with what stands: what Lane A did, what was settled in
+Lane B, and — the part that makes stopping halfway clean — **the PRs never
+reached, in queue order**, so picking this up later starts where it left off.
+An unanswered proposal counts as the same thing: do not keep pushing the queue
+at him.
 
 `propose` must be a single concrete action, not a menu: *approve with a note
 about X*, *request changes on the CI failure*, *answer cgabriel that the

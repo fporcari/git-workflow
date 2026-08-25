@@ -404,8 +404,8 @@ function renderTabs(){
   const runOut=flows[runFlow]&&flows[runFlow].status==="queued";
   run.textContent=(runOut?"→ in chat · ":"▶ ")+runFlow;
   run.title=onIssue
-    ?"issue-run lavora il batch in chat: un'analisi a contesto pulito per issue, la scelta, poi branch e PR."
-    :"pr-run svuota la coda in chat: merge delle tue PR approvate, risposte banali, riallineo dei branch, il resto una PR alla volta.";
+    ?"issue-run lavora le issue in chat una alla volta: prende la più urgente, la analizza a contesto pulito, te la propone in quattro righe, e su un tuo ok fixa in un worktree e apre la PR. Poi la prossima, finché non dici basta."
+    :"pr-run svuota la coda in chat: prima le mosse che non chiedono permesso (merge delle tue PR approvate, risposte banali, riallineo dei branch), poi il resto una PR alla volta, finché non dici basta.";
   run.disabled=!watcherAlive||runOut;
   run.classList.toggle("locked",!!runOut);
   document.querySelectorAll(".metric").forEach(m=>m.classList.toggle("on",stateFilter===m.dataset.filter));

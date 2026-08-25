@@ -1,5 +1,5 @@
 ---
-description: Show the issue shortlist — the 10 most recent open issues not yet analyzed, ranked by impact, classified by type, with existing branches and PRs cross-checked — read-only, exported to the review desk. Working them (analysis agents, selection, branches, PRs) is /issue-run, which this command offers at the end. Explicit invocation ONLY. Re-run to advance to the next batch.
+description: Show the issue shortlist — the 10 most recent open issues not yet analyzed, ranked by impact, classified by type, with existing branches and PRs cross-checked — read-only, exported to the review desk. Working them (one analysis and one proposal at a time, then branches and PRs) is /issue-run, which this command offers at the end. Explicit invocation ONLY. Re-run to advance to the next batch.
 argument-hint: optional — "batch=N" to change the 10, "mine" to restrict to issues assigned to me
 allowed-tools: Bash, Read, Grep, Glob, AskUserQuestion, ToolSearch, mcp__ccd_session_mgmt__set_session_title
 ---
