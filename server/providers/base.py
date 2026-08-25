@@ -29,3 +29,8 @@ class Provider:
     def issues(self, repo):
         """Open issues, newest first, as normalized rows."""
         raise NotImplementedError
+
+    def merge_command(self, repo, n):
+        """The exact CLI command that merges the PR — handed to the user,
+        never executed by the desk."""
+        raise NotImplementedError

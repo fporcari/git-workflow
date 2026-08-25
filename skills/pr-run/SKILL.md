@@ -494,3 +494,11 @@ remaining needed him, which is itself the answer to "do I have anything to do".
 Never close with a PR silently unaccounted for. Every PR that entered the run
 appears in exactly one of the three lists, including the ones you deliberately
 left alone and why.
+
+## Publish to the review desk
+
+Update `~/.local/state/git-workflow/<owner>__<repo>.json` (schema in the
+pr-triage skill, section 10) so the dashboard reflects the run: drop the
+entries of PRs Lane A settled, refresh `analysis`/`next` for what moved, and
+put the full text of any review you drafted but did not send in that PR's
+`draft` key — the desk shows it under BOZZA REVIEW with a copy button.

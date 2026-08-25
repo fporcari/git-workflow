@@ -329,6 +329,21 @@ the report, not a silent correction.
 
 Then check the batch is closed. Every one of the 10 must carry a PR or a comment, otherwise the next run picks it up again — and with the selection box that is now true **by design** for one class: an issue I analyzed but did not pick gets no PR, and the Step 4 comment rules do not cover it either (there is nothing to ask its author — the analysis is done, the work simply was not chosen). Leave those unmarked deliberately, list them in the two blocks above, and say in the summary that the next run will legitimately see them again. That is the mechanism by which an unpicked issue comes back, not a leak. Any *other* issue examined and left unmarked still has to be named with its reason.
 
+## Step 5.5 — Publish to the review desk
+
+Export the batch's findings to `~/.local/state/git-workflow/<owner>__<repo>.json`
+(schema in the pr-triage skill, section 10), merging into the `issues` key —
+one entry per analyzed issue:
+
+```json
+{"issues": {"<n>": {"type": "DEFECT", "finding": "<the one-line Step 2 finding>",
+                     "size": "EASY", "phase": "SINGLE-PHASE"}}}
+```
+
+Preserve the file's existing `prs`/`chase` keys. The review-desk dashboard shows
+these under each issue, so an analyzed-but-not-picked issue carries its analysis
+visibly instead of looking untouched.
+
 ## Step 6 — Knowledge
 
 If a non-obvious GenroPy lesson emerged (framework mechanism, test-infra trick, an API that already covered a request), propose `kb_add_skill` to Sourcerer.

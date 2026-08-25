@@ -256,3 +256,24 @@ Two cases end the run instead, and both must be said out loud:
 
 Nothing after the handover: a summary that re-narrates the blocks wastes the scan
 they were built for.
+
+## 10 · Publish to the review desk
+
+Before the handover, export the grid so the `review-desk` dashboard shows this
+run's findings instead of its raw field fallbacks. Write
+`~/.local/state/git-workflow/<owner>__<repo>.json` (create the directory):
+
+```json
+{
+  "generated": "<ISO timestamp>",
+  "session": "PR triage · <repo> · <YYYY-MM-DD>",
+  "prs": {"<n>": {"analysis": "<the one-line 'what it is' + the verdict's reason>",
+                   "next": "<what is to be done>"}},
+  "chase": {"<login>": "<the exact fenced block of §6, verbatim>"}
+}
+```
+
+Only rows with something beyond the fields go in `prs`; `chase` carries only the
+blocks that passed the §6 gate — the desk labels them as verified and offers a
+copy button per person. Overwrite the whole file: stale analysis is worse than
+none.

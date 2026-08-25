@@ -84,6 +84,9 @@ class GitHubProvider(Provider):
             "url": "https://github.com/%s/pull/%s" % (repo, node["number"]),
         }
 
+    def merge_command(self, repo, n):
+        return "gh pr merge %s --repo %s --squash --delete-branch" % (n, repo)
+
     def issues(self, repo):
         raw = _gh("issue", "list", "--repo", repo, "--state", "open", "--limit", "100",
                   "--json", "number,title,labels,url,author,assignees,createdAt,comments")

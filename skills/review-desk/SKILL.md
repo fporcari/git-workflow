@@ -42,3 +42,18 @@ A3 realign) versus what it brings to the user one PR at a time.
 
 Data is cached for two minutes; the sync button in the top bar forces a fresh
 read.
+
+## Where the skills plug in
+
+The desk prepares actions, it never executes them:
+
+- every PR row carries a prepared **handoff** — the exact merge command for an
+  A1, a targeted `/pr-run` prompt for anything else that is the user's move, a
+  paste-ready chase line for the waiting rows — one click to copy;
+- the **Chase** tab groups the people to chase; raw field grouping by default,
+  replaced by the verified §6 blocks when pr-triage has exported them;
+- the skills write their diff-level work to
+  `~/.local/state/git-workflow/<owner>__<repo>.json` (schema in pr-triage §10):
+  per-PR analysis and review drafts, per-issue findings. The desk merges the
+  file into its rows live — run `/pr-triage`, `/pr-run` or `/issue-triage` and
+  refresh to see their output in the detail panel.

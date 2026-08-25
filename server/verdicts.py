@@ -95,3 +95,46 @@ def decorate(rows, me):
         row["state"] = state
         row["autorun"] = autorun
     return rows
+
+
+def handoff(row, repo, merge_command):
+    """The prepared action for one row: the exact command for an A1, a
+    ready-to-paste /pr-run prompt for everything else that is the user's
+    move. The desk never executes; it hands over."""
+    n, todo = row["n"], row["todo"]
+    if row["autorun"] == "A1":
+        return {"kind": "command", "label": "Copia comando merge",
+                "text": merge_command}
+    if row["state"] == "waiting":
+        who = row["req"][0] if row["req"] else row["author"]
+        return {"kind": "chase", "label": "Copia sollecito",
+                "text": "@%s — PR #%s (%s) aperta dal %s, tocca a te."
+                        % (who, n, row["title"], row["created"])}
+    context = ("titolo: %s · autore: %s · review: %s · merge: %s · thread aperti: %s/%s"
+               % (row["title"], row["author"], row["decision"] or "nessuna",
+                  row["merge"], row["unresolved"], row["threads"]))
+    return {"kind": "prompt", "label": "Copia prompt per Claude",
+            "text": "/pr-run — solo la PR #%s di %s: %s. Contesto dal desk: %s."
+                    % (n, repo, todo, context)}
+
+
+def issue_handoff(row, repo):
+    if row["assignees"]:
+        return None
+    return {"kind": "prompt", "label": "Copia prompt per Claude",
+            "text": "/issue-triage — nella selezione prendi la #%s di %s (%s, %s): "
+                    "analizzala e proponimi la mossa."
+                    % (row["n"], repo, row["type"], row["title"])}
+
+
+def fallback_chase(rows):
+    """Group the waiting rows per person — the raw, field-only version of
+    pr-triage's block 4. The verified blocks come from the skill's export."""
+    per = {}
+    for row in rows:
+        todo = row.get("todo", "")
+        if row.get("state") == "waiting" and todo.startswith("waiting on "):
+            who = todo.split("waiting on ", 1)[1].split(" ")[0]
+            per.setdefault(who, []).append("#%s" % row["n"])
+    return {who: "@%s — %s PR ferme: %s" % (who, len(ns), " ".join(ns))
+            for who, ns in sorted(per.items(), key=lambda kv: -len(kv[1]))}

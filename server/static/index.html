@@ -77,6 +77,18 @@ h2{margin:0 0 7px}.detailGrid p{margin:0 0 12px}
 .signal{display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding:6px 0;font-size:11px}
 .signal span{color:var(--muted)}
 .err{margin:10px 18px;padding:8px 12px;border:1px solid var(--red);border-radius:6px;color:var(--red);background:color-mix(in srgb,var(--red) 5%,var(--panel));display:none}
+.btn{border:1px solid var(--line);border-radius:6px;background:var(--panel);padding:6px 10px;color:var(--ink);font:11px inherit;cursor:pointer;white-space:nowrap}
+@media(max-width:980px){[data-cmd]{display:none}}
+.btn.primary{background:var(--ink);border-color:var(--ink);color:var(--panel)}
+.btn.copied{border-color:var(--green);color:var(--green)}
+.actionText{font:10.5px var(--mono);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px;white-space:pre-wrap;word-break:break-word;margin:8px 0;color:var(--muted)}
+.draft{border-left:3px solid var(--rust);padding:9px 11px;background:var(--bg);border-radius:0 6px 6px 0;margin-bottom:8px}
+.draft span{font:600 9px var(--mono);color:var(--rust)}.draft p{margin:4px 0 0;white-space:pre-wrap}
+.chaseWrap{padding:16px 18px;display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(340px,1fr))}
+.chaseCard{border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:12px 14px}
+.chaseCard pre{font:11px var(--mono);white-space:pre-wrap;word-break:break-word;margin:6px 0 10px;color:var(--ink)}
+.chaseNote{grid-column:1/-1;font-size:11px;color:var(--muted)}
+.skillStamp{font:10px var(--mono);color:var(--muted)}
 @media(max-width:900px){.summary{grid-template-columns:1fr repeat(2,130px)}.metric:nth-last-child(-n+2){display:none}.detailGrid{grid-template-columns:1fr}.detailGrid>*+*{border-left:0;border-top:1px solid var(--line)}}
 </style>
 </head>
@@ -100,11 +112,17 @@ h2{margin:0 0 7px}.detailGrid p{margin:0 0 12px}
   <section class="queue">
     <div class="queueTools">
       <div class="tabs" id="tabs"></div>
-      <label class="search"><span>⌕</span><input id="q" placeholder="Filter number, title, author…"></label>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button class="btn" data-cmd="/pr-triage" title="Copia il comando da incollare in Claude Code">▸ /pr-triage</button>
+        <button class="btn" data-cmd="/pr-run" title="Copia il comando da incollare in Claude Code">▸ /pr-run</button>
+        <button class="btn" data-cmd="/issue-triage" title="Copia il comando da incollare in Claude Code">▸ /issue-triage</button>
+        <label class="search"><span>⌕</span><input id="q" placeholder="Filter number, title, author…"></label>
+      </div>
     </div>
-    <div class="tableWrap"><table>
+    <div class="tableWrap" id="tableWrap"><table>
       <thead id="thead"></thead><tbody id="tbody"></tbody>
     </table><div class="empty" id="empty" style="display:none"><b>Nothing in this view</b><span>Try another filter or tab.</span></div></div>
+    <div class="chaseWrap" id="chaseWrap" style="display:none"></div>
   </section>
 
   <section class="detail" id="detail" style="display:none">
@@ -121,15 +139,24 @@ const $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const MARK={ready:"✓",attention:"!",waiting:"○",decision:"◆"};
 const STATE_LABEL={ready:"mergeable",attention:"your move",waiting:"waiting",decision:"your call"};
-let meta={},prs=[],issues=[],view="queue",query="",selected=null;
+let meta={},prs=[],issues=[],chase={},chaseVerified=false,session=null,view="queue",query="",selected=null;
 
 const VIEWS=()=>[
   {id:"queue",label:"Queue",count:prs.filter(r=>r.state==="attention"||r.state==="decision"||r.state==="ready").length},
   {id:"ready",label:"Mergeable",count:prs.filter(r=>r.state==="ready").length},
   {id:"waiting",label:"Waiting",count:prs.filter(r=>r.state==="waiting").length},
+  {id:"chase",label:"Chase",count:Object.keys(chase).length},
   {id:"all",label:"All PRs",count:prs.length},
   {id:"issues",label:"Issues",count:issues.length},
 ];
+
+async function copyText(btn,text){
+  try{await navigator.clipboard.writeText(text);}catch(e){
+    const ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand("copy");ta.remove();
+  }
+  const old=btn.textContent;btn.textContent="copied ✓";btn.classList.add("copied");
+  setTimeout(()=>{btn.textContent=old;btn.classList.remove("copied");},1400);
+}
 
 function ageDays(d){return Math.max(0,Math.round((Date.now()-new Date(d))/864e5));}
 
@@ -150,8 +177,24 @@ function visibleIssues(){
   return issues.filter(r=>!q||[r.n,r.title,r.author,(r.labels||[]).join(" ")].join(" ").toLowerCase().includes(q));
 }
 
+function renderChase(){
+  const wrap=$("chaseWrap"),onChase=view==="chase";
+  $("tableWrap").style.display=onChase?"none":"";
+  wrap.style.display=onChase?"grid":"none";
+  if(!onChase)return;
+  const names=Object.keys(chase);
+  wrap.innerHTML=(names.length?`<div class="chaseNote">${chaseVerified
+    ?`Blocchi verificati da /pr-triage${session?` — ${esc(session)}`:""}. Pronti da incollare.`
+    :"Blocchi grezzi, raggruppati dai soli campi del provider. Per i blocchi verificati (gate sui turni, ritardatari vs mai iniziate) lancia <b>/pr-triage</b> in Claude Code."}</div>`:"")
+    +names.map(w=>`<div class="chaseCard"><h2>@${esc(w)}</h2><pre>${esc(chase[w])}</pre><button class="btn" data-copy="${esc(chase[w])}">Copia messaggio</button></div>`).join("")
+    ||`<div class="chaseNote">Nessuno da sollecitare.</div>`;
+  wrap.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>copyText(b,b.dataset.copy));
+}
+
 function renderTable(){
   const tb=$("tbody"),th=$("thead");
+  renderChase();
+  if(view==="chase"){$("empty").style.display="none";tb.innerHTML="";th.innerHTML="";return;}
   if(view==="issues"){
     th.innerHTML=`<tr><th class="markCol"></th><th>issue</th><th>type</th><th>author</th><th>labels</th><th>assignees</th><th class="num">comments</th><th class="num">age</th></tr>`;
     const rows=visibleIssues();
@@ -204,8 +247,20 @@ function renderDetail(){
         <div><dt>Merge state</dt><dd>${esc(r.merge)}</dd></div>
         <div><dt>Threads</dt><dd>${r.unresolved}/${r.threads} unresolved</dd></div>
         <div><dt>Last to speak</dt><dd>${r.last?esc(`${r.last.who} · ${r.last.ch} · ${r.last.t.slice(0,10)}`):"—"}</dd></div></dl></article>
-      <article class="nextCard"><h2>Next move</h2><p>${esc(r.todo)}</p><small>autorun: ${esc(r.autorun)} — read from the provider fields; the diff-level analysis belongs to /pr-run.</small></article>
-      <aside><h2>Reviews</h2>${reviews}${closes?`<h2 style="margin-top:10px">Closes</h2>${closes}`:""}</aside>`;
+      <article class="nextCard"><h2>Next move</h2><p>${esc(r.todo)}</p>
+        ${r.action?`<div class="actionText">${esc(r.action.text)}</div>
+        <button class="btn primary" id="dAction">${esc(r.action.label)}</button>`:""}
+        <div style="margin-top:8px"><small>autorun: ${esc(r.autorun)} — dai campi del provider; l'analisi sul diff la fa /pr-run.</small></div></article>
+      <aside><h2>Reviews</h2>${reviews}${closes?`<h2 style="margin-top:10px">Closes</h2>${closes}`:""}</aside>
+      ${r.skill?`<article style="grid-column:1/-1;border-top:1px solid var(--line)">
+        <h2>Analisi della skill <span class="skillStamp">${esc(session||"")}</span></h2>
+        ${r.skill.analysis?`<p>${esc(r.skill.analysis)}</p>`:""}
+        ${r.skill.next?`<p><b>Proposta:</b> ${esc(r.skill.next)}</p>`:""}
+        ${r.skill.draft?`<div class="draft"><span>BOZZA REVIEW</span><p>${esc(r.skill.draft)}</p></div>
+        <button class="btn" id="dDraft">Copia bozza</button>`:""}
+      </article>`:""}`;
+    const act=$("dAction");if(act)act.onclick=()=>copyText(act,r.action.text);
+    const dr=$("dDraft");if(dr)dr.onclick=()=>copyText(dr,r.skill.draft);
   }else{
     $("dMark").textContent=r.assignees.length?"○":"!";$("dMark").className="largeMark "+(r.assignees.length?"waiting":"attention");
     $("dKicker").textContent=`issue #${r.n} · ${r.author} · opened ${r.created}`;
@@ -216,8 +271,17 @@ function renderDetail(){
         <div><dt>Labels</dt><dd>${r.labels.join(", ")||"none"}</dd></div>
         <div><dt>Assignees</dt><dd>${r.assignees.join(", ")||"unassigned"}</dd></div>
         <div><dt>Comments</dt><dd>${r.comments}</dd></div></dl></article>
-      <article class="nextCard"><h2>Next move</h2><p>${r.assignees.length?`assigned to ${esc(r.assignees.join(", "))}`:"unassigned — a candidate for /issue-triage"}</p><small>type read from labels and title; root-cause analysis belongs to /issue-triage.</small></article>
-      <aside><h2>Age</h2><div class="signal"><b>${ageDays(r.created)} days</b><span>since ${esc(r.created)}</span></div></aside>`;
+      <article class="nextCard"><h2>Next move</h2><p>${r.assignees.length?`assigned to ${esc(r.assignees.join(", "))}`:"unassigned — a candidate for /issue-triage"}</p>
+        ${r.action?`<div class="actionText">${esc(r.action.text)}</div>
+        <button class="btn primary" id="dAction">${esc(r.action.label)}</button>`:""}
+        <div style="margin-top:8px"><small>tipo letto da label e titolo; la root-cause la fa /issue-triage.</small></div></article>
+      <aside><h2>Age</h2><div class="signal"><b>${ageDays(r.created)} days</b><span>since ${esc(r.created)}</span></div></aside>
+      ${r.skill?`<article style="grid-column:1/-1;border-top:1px solid var(--line)">
+        <h2>Analisi della skill <span class="skillStamp">${esc(session||"")}</span></h2>
+        <p>${esc(r.skill.finding||"")}</p>
+        <p class="mono">${esc([r.skill.type,r.skill.phase,r.skill.size].filter(Boolean).join(" · "))}</p>
+      </article>`:""}`;
+    const act=$("dAction");if(act)act.onclick=()=>copyText(act,r.action.text);
   }
 }
 
@@ -244,7 +308,7 @@ async function load(refresh){
       fetch("/api/issues"+suffix).then(r=>r.json()),
     ]);
     if(q.error||i.error)throw new Error(q.error||i.error);
-    meta=m;prs=q.rows;issues=i.rows;
+    meta=m;prs=q.rows;issues=i.rows;chase=q.chase||{};chaseVerified=!!q.chase_verified;session=q.session;
     $("repoLabel").textContent=`${m.repo} · ${m.me}`;
     $("syncLabel").textContent=`updated ${q.generated}`;
     render();
@@ -256,6 +320,7 @@ async function load(refresh){
 
 $("q").oninput=e=>{query=e.target.value;render();};
 $("refresh").onclick=()=>load(true);
+document.querySelectorAll("[data-cmd]").forEach(b=>b.onclick=()=>copyText(b,b.dataset.cmd));
 load(false);
 </script>
 </body>

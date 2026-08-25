@@ -18,8 +18,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
+import deskstate
 from providers import get_provider
-from verdicts import decorate, issue_type
+from verdicts import decorate, fallback_chase, handoff, issue_handoff, issue_type
 
 STATIC = Path(__file__).resolve().parent / "static"
 CACHE_TTL = 120
@@ -55,17 +56,29 @@ class Desk:
 
     def queue(self, refresh=False):
         def load():
-            rows = self.provider.queue(self.repo, self.me)
-            return decorate(rows, self.me)
-        return self._cached("queue", load, refresh)
+            rows = decorate(self.provider.queue(self.repo, self.me), self.me)
+            for row in rows:
+                row["action"] = handoff(row, self.repo,
+                                        self.provider.merge_command(self.repo, row["n"]))
+            return rows
+        rows = self._cached("queue", load, refresh)
+        state = deskstate.load(self.repo)
+        deskstate.annotate_prs(rows, state)
+        chase = state.get("chase") or fallback_chase(rows)
+        return {"rows": rows, "chase": chase,
+                "chase_verified": bool(state.get("chase")),
+                "session": state.get("session")}
 
     def issues(self, refresh=False):
         def load():
             rows = self.provider.issues(self.repo)
             for row in rows:
                 row["type"] = issue_type(row["labels"], row["title"])
+                row["action"] = issue_handoff(row, self.repo)
             return rows
-        return self._cached("issues", load, refresh)
+        rows = self._cached("issues", load, refresh)
+        deskstate.annotate_issues(rows, deskstate.load(self.repo))
+        return {"rows": rows}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -95,11 +108,11 @@ class Handler(BaseHTTPRequestHandler):
                                  "provider": self.desk.provider.name,
                                  "generated": time.strftime("%H:%M:%S")})
             elif url.path == "/api/queue":
-                self._send(200, {"rows": self.desk.queue(refresh),
-                                 "generated": time.strftime("%H:%M:%S")})
+                self._send(200, dict(self.desk.queue(refresh),
+                                     generated=time.strftime("%H:%M:%S")))
             elif url.path == "/api/issues":
-                self._send(200, {"rows": self.desk.issues(refresh),
-                                 "generated": time.strftime("%H:%M:%S")})
+                self._send(200, dict(self.desk.issues(refresh),
+                                     generated=time.strftime("%H:%M:%S")))
             else:
                 self._send(404, {"error": "not found"})
         except Exception as exc:

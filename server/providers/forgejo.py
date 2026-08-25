@@ -100,6 +100,11 @@ class ForgejoProvider(Provider):
             "url": pr.get("html_url") or "%s/%s/pulls/%s" % (self.base, repo, pr["number"]),
         }
 
+    def merge_command(self, repo, n):
+        return ("curl -X POST -H 'Authorization: token $FORGEJO_TOKEN' "
+                "%s/api/v1/repos/%s/pulls/%s/merge -d '{\"Do\":\"squash\",\"delete_branch_after_merge\":true}'"
+                % (self.base, repo, n))
+
     def issues(self, repo):
         issues = self._get("/repos/%s/issues" % repo, state="open", type="issues", limit=100)
         rows = []
