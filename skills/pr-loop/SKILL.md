@@ -608,41 +608,26 @@ the end of the loop:
   review drafted but not sent in that PR's `draft` key;
 - one feed line per action (`notify.py`), in plain words;
 - **say which PRs you are on, before you start on them**, so the desk puts the
-  needle on those rows instead of leaving the user to read the feed:
+  needle on those rows instead of leaving the user to read the feed, and close
+  the loop's request when it ends:
 
 ```bash
-# one at a time
 python3 ${CLAUDE_PLUGIN_ROOT}/server/notify.py --repo <owner/repo> \
   --pr <n> --working "cosa stai facendo su questa, in una riga"
 
-# a batch: all of its rows glow, not just the first
 python3 ${CLAUDE_PLUGIN_ROOT}/server/notify.py --repo <owner/repo> \
   --batch 1145,1128,1059 --working "in parallelo, un worktree per PR"
-```
 
-  While a batch is live, `--pr <n> --working "…"` **refines that one item** and
-  leaves the set standing: per-PR progress reaches the desk without collapsing
-  three glowing rows back to one. Move the marker as the loop moves, and when
-  the queue is empty drop it.
-
-  **One request per loop, not per item.** The ▶ button's lock is `run:pr-loop`
-  and stays a single request however wide the batches — closing it per item
-  would re-arm the button mid-loop. What a batch changes is the report, which
-  must name every item:
-
-```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/server/notify.py --repo <owner/repo> \
   --done run:pr-loop "2 merge (#1145 #1059), 1 riallineo (#1102), 1 fallita (#1128: conflitto in un file che la base ha riscritto)"
 ```
 
-  That command closes the loop's request (unlocking the ▶ pr-loop button and
-  showing the outcome in its place) and clears the highlight. Use `--failed`
-  only when **nothing** was accomplished: a loop that merged two and lost one
-  did its job and says so in the report. A marker nobody updates for fifteen
-  minutes is dropped by the desk on its own — a row left glowing after the loop
-  died reads as work in progress, which is worse than no highlight — but that
-  is a backstop, not a substitute.
-
+**The semantics of those flags** — why a batch marker is a set, why marking one
+member refines it instead of collapsing it, why the loop closes ONE request
+however wide its batches, and when `--failed` is the wrong word — are in
+`${CLAUDE_PLUGIN_ROOT}/skills/review-desk/SKILL.md` §3, *Say which rows you are
+on* and *Close the request when you are done*. That file is the protocol; this
+one only uses it.
 
 ## How to talk about the lanes
 

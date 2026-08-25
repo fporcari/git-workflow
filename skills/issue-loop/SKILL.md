@@ -232,33 +232,24 @@ merely did not get to, and never where the ball is already the user's.
 
 ## The desk
 
-Mark the rows you are on, so the dashboard is the radar instead of the feed:
+Mark the rows you are on, so the dashboard is the radar instead of the feed,
+and close the loop's request when it ends:
 
 ```bash
-# one at a time
 python3 ${CLAUDE_PLUGIN_ROOT}/server/notify.py --repo <owner/repo> \
   --pr <n> --working "<one line: what you are doing on this one>"
 
-# a batch: all of its rows glow, not just the first
 python3 ${CLAUDE_PLUGIN_ROOT}/server/notify.py --repo <owner/repo> \
   --batch 1145,1128,1059 --working "fix in parallelo, un worktree per issue"
-```
 
-While a batch is live, `--pr <n> --working "…"` **refines that one item** and
-leaves the set standing — that is how per-issue progress reaches the desk
-without collapsing four glowing rows back to one.
-
-**One request per loop, not per item.** The ▶ button's lock is `run:issue-loop`
-and it stays a single request however wide the batches: closing it per item
-would re-arm the button mid-loop. What the batch changes is the report, which
-must name every item:
-
-```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/server/notify.py --repo <owner/repo> \
   --done run:issue-loop "3 PR aperte (#1145 #1059 #1102), 1 fallita (#1128: la fixture pg non parte), 2 non raggiunte"
 ```
 
-That command closes the request, shows the outcome in the button's place, and
-drops the highlight. Use `--failed` only when **nothing** was accomplished; a
-loop that opened three PRs and lost one did its job and says so in the report.
-One feed line per action, in plain words, throughout.
+One feed line per action, in plain words, throughout. **The semantics of
+those flags** — why a batch marker is a set, why marking one member refines
+it instead of collapsing it, why the loop closes ONE request however wide its
+batches, and when `--failed` is the wrong word — are in
+`${CLAUDE_PLUGIN_ROOT}/skills/review-desk/SKILL.md` §3, *Say which rows you
+are on* and *Close the request when you are done*. That file is the protocol;
+this one only uses it.

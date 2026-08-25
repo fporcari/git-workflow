@@ -145,19 +145,36 @@ While working any event, post progress so the desk shows it live:
 python3 ${CLAUDE_PLUGIN_ROOT}/server/notify.py --repo <owner/repo> [--pr <n>] "<one line>"
 ```
 
-### Say which row you are on
+### Say which rows you are on
 
-Any event that works one PR or issue at a time — a `run` above all, but also
-an `analyze` — should mark it while it lasts, so the desk highlights that row
-and the user can see where the needle is without reading the feed:
+**This section is the protocol. `pr-loop` and `issue-loop` point here rather
+than restating it — it encodes exact flags, and three copies of exact flags
+drift.**
+
+Any event that works PRs or issues — a `run` above all, but also an
+`analyze` — marks them while it lasts, so the desk highlights those rows and
+the user sees where the needle is without reading the feed:
 
 ```bash
+# one at a time
 python3 ${CLAUDE_PLUGIN_ROOT}/server/notify.py --repo <owner/repo> \
   --pr <n> --working "cosa stai facendo, in una riga"
+
+# a batch: every row it is working glows, not just the first
+python3 ${CLAUDE_PLUGIN_ROOT}/server/notify.py --repo <owner/repo> \
+  --batch 1145,1128,1059 --working "in parallelo, un worktree per PR"
 ```
 
-One row at a time: setting it again moves it. `--idle` drops it, and so does
-closing a request with `--done`/`--failed`.
+Setting a number the marker does not hold **moves** it: that is the loop
+walking to the next one. Setting one the live batch **does** hold refines
+that item and leaves the set standing — which is how per-item progress
+reaches the desk without collapsing N glowing rows back to one.
+
+`--idle` drops the marker, and so does closing a request with
+`--done`/`--failed`. A marker nobody updates for a quarter of an hour is
+dropped by the desk itself: a row left glowing after the session died reads
+as work in progress, which is worse than no highlight. That is a backstop,
+not a substitute for `--idle`.
 
 ### Close the request when you are done — always
 
@@ -178,6 +195,21 @@ Keys: `analyze:<n>`, `explain:<n>`, `order:<n>`, `issue-analyze:<n>`,
 `triage:<flow>`, `run:<flow>`. A request you never close goes stale after
 half an hour so a dead session cannot wedge the button forever — but that is
 a backstop, not a substitute for closing it.
+
+**One request per loop, not per item.** `run:<flow>` stays a single request
+however wide the loop's batches: closing it per item would re-arm the ▶
+button mid-loop. What a batch changes is the *report*, which must name every
+item — a group of four with one failure is three successes and one failure,
+said in four names:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/server/notify.py --repo <owner/repo> \
+  --done run:pr-loop "2 merge (#1145 #1059), 1 fallita (#1128: conflitto in un file che la base ha riscritto), 3 non raggiunte"
+```
+
+Use `--failed` only when **nothing** was accomplished. A loop that merged two
+and lost one did its job and says so in the report; marking the whole run
+failed would hide the two that landed.
 
 The user drives from the chat; the desk is the radar. Decisions (picks,
 go-aheads beyond an order, anything Lane B) are asked HERE, never rendered
