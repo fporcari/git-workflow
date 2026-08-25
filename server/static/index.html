@@ -456,8 +456,8 @@ function renderDetail(){
         <div><dt>Assegnatari</dt><dd>${r.assignees.join(", ")||"nessuno"}</dd></div>
         <div><dt>Commenti</dt><dd>${r.comments}</dd></div></dl></article>
       <article class="nextCard"><h2>Prossima mossa</h2><p>${r.assignees.length?`assegnata a ${esc(r.assignees.join(", "))}`:"senza assegnatario — candidata per issue-run"}</p>
-        ${analyses["i"+r.n]?.status==="queued"?`<div class="actionText">📨 in analisi nella chat collegata — segui il feed.</div>`:`<button class="btn primary" id="dIssueAnalyze" data-tip="La skill issue-analyze verifica la root cause nel codice (o il riuso già esistente per le richieste) in un contesto pulito, e classifica: SINGLE-PHASE o WORKFLOW, EASY/MEDIUM/HARD. Read-only.">▶ issue-analyze in chat</button>`}
-        <div style="margin-top:8px"><small>tipo letto da label e titolo; l'analisi gira in un contesto vergine e l'esito arriva qui.</small></div></article>
+        ${analyses["i"+r.n]?.status==="queued"?`<div class="actionText">📨 chip in preparazione nella chat primaria — clicca la chip lì per aprire la sessione dedicata.</div>`:`<button class="btn primary" id="dIssueAnalyze" data-tip="Prepara una SESSIONE DEDICATA per questa issue: nella chat primaria compare una chip, un tuo click apre la sessione che analizza fresca e — se è una modifica coerente singola — fixa in un worktree e apre la PR. Se è tosta, disegna le fasi (e propone un phased workflow solo se quel plugin è installato).">▶ lavora in sessione dedicata</button>`}
+        <div style="margin-top:8px"><small>tipo letto da label e titolo; la sessione dedicata parte da una chip nella chat primaria e riporta qui l'esito.</small></div></article>
       <aside><h2>Età</h2><div class="signal"><b>${ageDays(r.created)} giorni</b><span>dal ${esc(r.created)}</span></div></aside>
       ${r.skill?`<article style="grid-column:1/-1;border-top:1px solid var(--line)">
         <h2>Analisi della skill <span class="skillStamp">${esc(session||"")}</span></h2>

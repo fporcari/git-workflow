@@ -63,9 +63,20 @@ each event in order:
   instruction means the proposal as it stands, any other text wins). Set the
   order's `status` to `done` with a one-line `report`, or `failed`/
   `needs-input` with why. Report in chat what was done.
-- **`{"kind": "issue-analyze", "n": N}`** — spawn one fresh read-only agent
-  following `../issue-analyze/SKILL.md` on issue #N (virgin context by
-  design); it persists the verdict to the desk state itself.
+- **`{"kind": "issue-analyze", "n": N}`** — the user wants issue #N worked
+  in a **dedicated session**. Read the issue's title (one `gh issue view`),
+  then create a spawn-task chip (the `spawn_task` tool) with:
+  - `title`: `Lavora issue #N — <slug>`;
+  - `prompt` (self-contained, the new session knows nothing): the repo, the
+    issue number and title, the checkout directory, and the instruction to
+    follow `${CLAUDE_PLUGIN_ROOT}/skills/issue-work/SKILL.md` — analyze
+    fresh, fix in a worktree and open the PR when it is one coherent change,
+    otherwise lay out the phases (offering a phased workflow only if that
+    plugin is installed there);
+  - `cwd`: the repo checkout.
+  Then notify the desk: `sessione dedicata pronta per #N — clicca la chip
+  in chat per aprirla`. The chip is the user's click: never start the work
+  in this session.
 - **`{"kind": "ping", "token": T}`** — the desk's test mode checking the
   roundtrip. Answer immediately and cheaply, nothing else:
   `python3 ${CLAUDE_PLUGIN_ROOT}/server/notify.py --repo <owner/repo> --pong T "pong — chat collegata e in ascolto"`,
