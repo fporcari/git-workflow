@@ -60,6 +60,16 @@ class El {
   set textContent(v) { this._text = String(v); this.children = []; this._html = ""; }
   get disabled() { return !!this.attrs.disabled; }
   set disabled(v) { this.attrs.disabled = v; }
+  // a checkbox: `checked` starts from the attribute, `indeterminate` is a
+  // property only — markup cannot carry it, which is why the page sets it
+  // on the node
+  get checked() {
+    if (this._checked === undefined) this._checked = "checked" in this.attrs;
+    return this._checked;
+  }
+  set checked(v) { this._checked = !!v; }
+  get indeterminate() { return !!this._indeterminate; }
+  set indeterminate(v) { this._indeterminate = !!v; }
   get title() { return this.attrs.title || ""; }
   set title(v) { this.setAttr("title", v); }
   insertAdjacentHTML(_pos, html) { this.innerHTML = this._html + html; }
@@ -68,10 +78,15 @@ class El {
   querySelector(sel) { return this.querySelectorAll(sel)[0] || null; }
   scrollIntoView() {} focus() {} blur() {}
   addEventListener(k, fn) { this.handlers[k] = fn; }
-  click() {
+  click(ev) {
+    if (this.attrs.type === "checkbox" && !(ev && ev.keepChecked))
+      this.checked = !this.checked;      // the browser flips it before the handler
     const fn = this.onclick || this.handlers.click;
-    if (fn) { try { fn({ target: this, preventDefault() {}, stopPropagation() {} }); }
-              catch (e) { errors.push(e); } }
+    if (fn) {
+      const event = Object.assign({ target: this, preventDefault() {},
+                                    stopPropagation() {} }, ev || {});
+      try { fn(event); } catch (e) { errors.push(e); }
+    }
   }
 }
 
@@ -388,19 +403,82 @@ page.select(three[1]);
 ok("the detail of one batch member shows its own line, not the batch label",
    /giro i test/.test(document.getElementById("detailGrid").innerHTML));
 
-/* ---- 7g. rows picked by hand ---- */
+/* ---- 7g. rows picked by hand, with a checkbox ----
+   The gesture has to be visible and it must not be the same one that opens
+   the row: ticking picks, and the action stays one click further on. */
 page.clearPicks();
-page.rowClick(three[0], { metaKey: true });
-page.rowClick(three[1], { metaKey: true });
-ok("cmd-click picks rows instead of moving the cursor",
+page.render();
+const boxes = () => document.getElementById("tbody").querySelectorAll('input[type=checkbox]');
+ok("every row carries a checkbox", boxes().length === page.visiblePrs().length);
+ok("the header carries a select-all", !!document.getElementById("pickAll"));
+
+const box = n => boxes().find(b => +b.dataset.pick === n);
+box(three[0]).click();
+box(three[1]).click();
+ok("ticking a box picks the row",
    page.state.picked.length === 2 && page.state.picked.includes(three[0]));
 ok("a picked row is marked in the table",
    document.getElementById("tbody").querySelectorAll("tr")
      .filter(tr => tr.classList.contains("picked")).length === 2);
-ok("a plain click never drops the picks", (() => {
+ok("ticking does not move the cursor, so the panel stays put", (() => {
+  const before = page.state.selected;
+  box(page.visiblePrs()[5].n).click();
+  const same = page.state.selected === before;
+  box(page.visiblePrs()[5].n).click();       // untick it again
+  return same;
+})());
+ok("unticking removes just that one", (() => {
+  box(three[1]).click();
+  const only = page.state.picked.length === 1 && page.state.picked.includes(three[0]);
+  box(three[1]).click();
+  return only;
+})());
+ok("a plain click on the row never drops the picks", (() => {
   page.rowClick(page.visiblePrs()[4].n, {});
   return page.state.picked.length === 2;
 })());
+ok("a click that lands on the checkbox does not also open the row", (() => {
+  const before = page.state.selected;
+  const target = box(page.visiblePrs()[6].n);
+  page.rowClick(page.visiblePrs()[6].n, { target });
+  const untouched = page.state.selected === before;
+  return untouched;
+})());
+ok("shift-click on a box takes the stretch", (() => {
+  page.clearPicks(); page.render();
+  const list = page.visiblePrs();
+  boxes().find(b => +b.dataset.pick === list[1].n).click();
+  const far = boxes().find(b => +b.dataset.pick === list[4].n);
+  far.click({ shiftKey: true });
+  const got = page.state.picked.slice().sort();
+  const want = [list[1].n, list[2].n, list[3].n, list[4].n].sort();
+  return JSON.stringify(got) === JSON.stringify(want);
+})());
+ok("select-all takes every row of THIS view, not the whole queue", (() => {
+  page.clearPicks(); page.render();
+  document.getElementById("pickAll").click();
+  return page.state.picked.length === page.visiblePrs().length &&
+         page.state.picked.length < page.state.prs.length;
+})());
+ok("select-all again clears them", (() => {
+  document.getElementById("pickAll").click();
+  return page.state.picked.length === 0;
+})());
+ok("a non-table view leaves no stale checkbox behind", (() => {
+  const tabs = document.getElementById("tabs").querySelectorAll("button");
+  tabs.find(b => b.dataset.v === "blocks").click();
+  const stale = document.getElementById("tbody").querySelectorAll("input[type=checkbox]").length;
+  tabs.find(b => b.dataset.v === "todo").click();
+  return stale === 0;
+})());
+ok("the header box shows the in-between state when only some are picked", (() => {
+  page.clearPicks(); page.render();
+  boxes().find(b => +b.dataset.pick === three[0]).click();
+  return document.getElementById("pickAll").indeterminate === true;
+})());
+page.clearPicks(); page.render();
+box(three[0]).click();
+box(three[1]).click();
 ok("the pick bar says which rows and offers to run them", (() => {
   const bar = document.getElementById("pickBar");
   return bar.classList.contains("on") && bar.innerHTML.includes("pRun");
@@ -412,8 +490,8 @@ ok("▶ on several picked rows asks batch or one at a time, it does not guess",
                    /Una alla volta/.test(bar); })());
 ok("the batch it offers never exceeds one answer box", page.MAX_BATCH === 4);
 ok("a single picked row is not asked about", (() => {
-  page.clearPicks();
-  page.rowClick(three[0], { metaKey: true });
+  page.clearPicks(); page.render();
+  boxes().find(b => +b.dataset.pick === three[0]).click();
   page.doRun();
   return !page.state.askBatch;
 })());

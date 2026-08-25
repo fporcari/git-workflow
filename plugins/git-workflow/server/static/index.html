@@ -96,6 +96,20 @@ tbody tr.working td:first-child{box-shadow:inset 3px 0 var(--amber);animation:ne
 .workingBar.on{display:flex}
 .workingBar b{font:600 11px var(--mono)}
 .workingBar .spin{width:7px;height:7px;border-radius:50%;background:var(--amber);animation:pulse 1s infinite;flex:none}
+.pickCol{width:30px;text-align:center;padding-left:12px}
+/* Gmail's shape, for Gmail's reason: ticking a box must not be the same
+   gesture as opening the row. The action stays one click further on, so a
+   slip picks instead of acting. */
+.pick{appearance:none;-webkit-appearance:none;width:13px;height:13px;border:1.5px solid var(--line);
+  border-radius:3px;background:var(--panel);cursor:pointer;vertical-align:middle;position:relative;flex:none}
+.pick:hover{border-color:var(--muted)}
+.pick:checked{background:var(--rust);border-color:var(--rust)}
+.pick:checked::after{content:"";position:absolute;left:3px;top:0;width:4px;height:8px;
+  border:solid var(--panel);border-width:0 1.5px 1.5px 0;transform:rotate(40deg)}
+.pick:indeterminate{background:var(--muted);border-color:var(--muted)}
+.pick:indeterminate::after{content:"";position:absolute;left:2px;top:5px;width:7px;height:0;
+  border-top:1.5px solid var(--panel)}
+.pick:focus-visible{outline:2px solid var(--rust);outline-offset:1px}
 .markCol{width:32px}
 .mark{text-align:center;font:700 12px var(--mono)}
 tr.attention .mark{color:var(--red)}tr.decision .mark{color:var(--amber)}
@@ -241,6 +255,7 @@ const triageRunning={pr:false,issue:false};
 let flows={};   // triage/run outstanding, from the server's ledger
 let workingOn=null;  // the rows the chat is on right now
 let picked=new Set();   // the rows chosen by hand for the next loop
+let lastPick=null;      // anchor for a shift-click range, as in a mail client
 let askBatch=false;     // ▶ pressed on a multi-row pick: one at a time, or in parallel?
 const MAX_BATCH=4;      // one decision group holds four readable proposals
 const onNow=n=>!!workingOn&&(workingOn.ns||[workingOn.n]).includes(n);
@@ -347,19 +362,56 @@ function nowMsg(n){
    detail must not cost the four he chose. cmd/ctrl toggles one, shift takes
    the stretch from the cursor. */
 function rowClick(n,ev){
-  if(ev&&(ev.metaKey||ev.ctrlKey)){togglePick(n);return;}
-  if(ev&&ev.shiftKey&&selected!==null){pickRange(selected,n);return;}
+  // the checkbox owns picking; a click on the row only ever opens it
+  if(ev&&ev.target&&ev.target.classList&&ev.target.classList.contains("pick"))return;
   select(n);
+}
+function pickCell(r){
+  return `<td class="pickCol"><input type="checkbox" class="pick" data-pick="${r.n}"
+    ${picked.has(r.n)?"checked":""} aria-label="scegli #${r.n}"
+    title="Scegli questa per il prossimo loop. Selezionare non lancia niente: l'azione è nella striscia in basso."></td>`;
+}
+function pickHead(list){
+  // the third state (some but not all) is set on the node in wirePicks:
+  // `indeterminate` is a property, not an attribute, so markup cannot carry it
+  const all=list.length&&list.every(r=>picked.has(r.n));
+  return `<th class="pickCol"><input type="checkbox" class="pick" id="pickAll" ${all?"checked":""}
+    aria-label="scegli tutte le righe di questa vista"
+    title="${all?"Togli la scelta da tutte le righe di questa vista"
+                :"Scegli tutte le righe di questa vista"} (${list.length})"></th>`;
+}
+function wirePicks(list){
+  const all=$("pickAll");
+  if(all){
+    const every=list.length&&list.every(r=>picked.has(r.n));
+    all.indeterminate=!every&&list.some(r=>picked.has(r.n));
+    all.onclick=ev=>{
+      ev.stopPropagation();
+      if(every)list.forEach(r=>picked.delete(r.n));
+      else list.forEach(r=>picked.add(r.n));
+      askBatch=false;render();
+    };
+  }
+  document.querySelectorAll("[data-pick]").forEach(box=>{
+    box.onclick=ev=>{
+      ev.stopPropagation();           // ticking must not open the row
+      const n=+box.dataset.pick;
+      // shift extends from the last box touched, the way a mail client does
+      if(ev.shiftKey&&lastPick!==null&&lastPick!==n)pickRange(lastPick,n,box.checked);
+      else box.checked?picked.add(n):picked.delete(n);
+      lastPick=n;askBatch=false;render();
+    };
+  });
 }
 function togglePick(n){
   picked.has(n)?picked.delete(n):picked.add(n);
   askBatch=false;render();
 }
-function pickRange(from,to){
+function pickRange(from,to,on){
   const list=rows(),a=list.findIndex(r=>r.n===from),b=list.findIndex(r=>r.n===to);
   if(a<0||b<0)return togglePick(to);
-  for(let i=Math.min(a,b);i<=Math.max(a,b);i++)picked.add(list[i].n);
-  askBatch=false;render();
+  for(let i=Math.min(a,b);i<=Math.max(a,b);i++)
+    on?picked.add(list[i].n):picked.delete(list[i].n);
 }
 function clearPicks(){picked.clear();askBatch=false;render();}
 function selectedRow(){
@@ -470,7 +522,7 @@ function renderPick(runFlow,runOut){
     return;
   }
   bar.innerHTML=`<b>${n} scelt${n===1?"a":"e"}</b><span>${esc(label)}</span>
-    <span style="color:var(--muted)">cmd-clic per aggiungerne, shift-clic per un tratto</span>
+    <span style="color:var(--muted)">shift-clic su una casella per un tratto · <span class="kbd">x</span> per la riga sotto il cursore</span>
     <span class="grow">
       <button class="btn" id="pRun" ${watcherAlive&&!runOut?"":"disabled"}
         title="Lancia ${esc(runFlow)} solo su queste, e poi si ferma.">▶ ${esc(runFlow)} su queste</button>
@@ -520,19 +572,25 @@ function renderTable(){
   const onChase=view==="chase",onBlocks=view==="blocks";
   $("tableWrap").style.display=(onChase||onBlocks)?"none":"";
   $("chaseWrap").classList.toggle("on",onChase||onBlocks);
-  if(onChase){renderChase();return;}
-  if(onBlocks){renderBlocks();return;}
+  if(onChase||onBlocks){
+    // drop the hidden table: stale checkboxes keep live handlers bound to the
+    // previous view's list, and a select-all would then pick the wrong rows
+    head.innerHTML="";tb.innerHTML="";
+    (onChase?renderChase:renderBlocks)();
+    return;
+  }
   if(!loaded){
     head.innerHTML="";
-    tb.innerHTML=`<tr><td colspan="9" class="skel">${"<div></div>".repeat(6)}</td></tr>`;
+    tb.innerHTML=`<tr><td colspan="10" class="skel">${"<div></div>".repeat(6)}</td></tr>`;
     $("empty").style.display="none";return;
   }
   const list=rows();
   if(DESK==="issue"){
-    head.innerHTML=`<tr><th class="markCol"></th>${th("n","#")}${th("title","issue")}${th("type","tipo",'title="DEFECT bug reale · REQUEST nuova funzione · QUESTION domanda · DOCS documentazione"')}${th("author","autore")}<th>label</th>${th("assignees","assignees")}${th("comments","commenti",'class="num"')}${th("created","età",'class="num"')}</tr>`;
+    head.innerHTML=`<tr>${pickHead(list)}<th class="markCol"></th>${th("n","#")}${th("title","issue")}${th("type","tipo",'title="DEFECT bug reale · REQUEST nuova funzione · QUESTION domanda · DOCS documentazione"')}${th("author","autore")}<th>label</th>${th("assignees","assignees")}${th("comments","commenti",'class="num"')}${th("created","età",'class="num"')}</tr>`;
     tb.innerHTML=list.map(r=>{
       const note=shortlist&&shortlist.rows.find(x=>x.n===r.n);
       return `<tr data-n="${r.n}" class="${r.assignees.length?"waiting":"attention"}${selected===r.n?" selected":""}${picked.has(r.n)?" picked":""}${onNow(r.n)?" working":""}">
+        ${pickCell(r)}
         <td class="mark"><span title="${r.assignees.length?"presa":"libera"}">${r.assignees.length?"○":"!"}</span></td>
         <td class="mono">#${r.n}</td>
         <td class="prTitle"><span>${esc(r.title)}</span>${r.skill||note?'<small class="dot" title="analisi disponibile">●</small>':""}${onNow(r.n)?'<span class="nowChip"><i></i>ora</span>':""}</td>
@@ -543,8 +601,9 @@ function renderTable(){
         <td class="num">${r.comments||"—"}</td>
         <td class="num mono">${ageDays(r.created)}g</td></tr>`;}).join("");
   }else{
-    head.innerHTML=`<tr><th class="markCol"></th>${th("title","pull request")}${th("author","autore")}${th("decision","review")}${th("merge","merge")}${th("unresolved","unresolved",'class="num" title="Thread di review non risolti"')}<th>base</th>${th("todo","prossima mossa")}${th("autorun","autorun",`title="${esc(AUTORUN_TIP)}"`)}</tr>`;
+    head.innerHTML=`<tr>${pickHead(list)}<th class="markCol"></th>${th("title","pull request")}${th("author","autore")}${th("decision","review")}${th("merge","merge")}${th("unresolved","unresolved",'class="num" title="Thread di review non risolti"')}<th>base</th>${th("todo","prossima mossa")}${th("autorun","autorun",`title="${esc(AUTORUN_TIP)}"`)}</tr>`;
     tb.innerHTML=list.map(r=>`<tr data-n="${r.n}" class="${r.state}${selected===r.n?" selected":""}${picked.has(r.n)?" picked":""}${onNow(r.n)?" working":""}">
+      ${pickCell(r)}
       <td class="mark"><span title="${STATE_LABEL[r.state]}">${MARK[r.state]}</span></td>
       <td class="prTitle"><b>#${r.n}</b><span>${esc(r.title)}</span>${r.skill?'<small class="dot" title="analisi disponibile">●</small>':""}${onNow(r.n)?'<span class="nowChip"><i></i>ora</span>':""}<small>${ageDays(r.created)}g</small></td>
       <td><span class="avatar">${esc((r.author||"??").slice(0,2).toUpperCase())}</span>${esc(r.author)}</td>
@@ -557,6 +616,7 @@ function renderTable(){
   }
   head.querySelectorAll("[data-sort]").forEach(el=>el.onclick=()=>setSort(el.dataset.sort));
   tb.querySelectorAll("tr[data-n]").forEach(tr=>tr.onclick=ev=>rowClick(+tr.dataset.n,ev));
+  wirePicks(list);
   $("empty").style.display=list.length?"none":"flex";
   $("empty").innerHTML=`<b>Niente in questa vista</b><span>Prova un altro tab, azzera il filtro o rileggi il provider con ⟳.</span>`;
 }
@@ -924,6 +984,10 @@ document.addEventListener("keydown",e=>{
   if(e.target.tagName==="INPUT")     {if(e.key==="Escape")e.target.blur();return;}
   if(e.key==="ArrowDown"||e.key==="j"){e.preventDefault();moveSelection(1);}
   else if(e.key==="ArrowUp"||e.key==="k"){e.preventDefault();moveSelection(-1);}
+  else if(e.key==="x"||e.key==="X"){
+    e.preventDefault();
+    if(selected!==null){togglePick(selected);lastPick=selected;}
+  }
   else if(e.key==="/"){e.preventDefault();$("q").focus();}
   else if(e.key==="Enter"){const b=$("aExec")||$("aAnalyze")||$("aWork");if(b&&!b.disabled)b.click();}
   else if(e.key>="1"&&e.key<="4"){const t=$("detailTabs");if(t&&t.children[+e.key-1])t.children[+e.key-1].click();}
