@@ -277,8 +277,54 @@ ok("the gate says who may land",
    /riservato a|non protetta|codeowner/.test(quadro.innerHTML),
    quadro.innerHTML.slice(quadro.innerHTML.indexOf("Gate di"),
                           quadro.innerHTML.indexOf("Gate di") + 160));
-ok("an explain button asks the model for one row, not the whole queue",
-   document.getElementById("detailActions").innerHTML.includes("aExplain"));
+/* Analizza is THE action button — it hands the PR to the chat. Spiega is a
+   fallback that only shows up when the desk cannot answer "what is this for"
+   from the data itself. */
+ok("Analizza is always offered: it is the action button",
+   document.getElementById("detailActions").innerHTML.includes("aAnalyze"));
+ok("the detail says what the PR is for, straight from the data",
+   /Cosa risolve/.test(quadro.innerHTML) &&
+   !!page.state.prs.find(r => r.summary));
+ok("Spiega is hidden when the author's own description answers it", (() => {
+  const withSummary = page.visiblePrs().find(r => r.summary);
+  page.select(withSummary.n);
+  return !document.getElementById("detailActions").innerHTML.includes("aExplain");
+})());
+ok("Spiega appears when there is no description to read", (() => {
+  const row = page.state.prs.find(r => r.summary);
+  const keep = row.summary;
+  row.summary = null;
+  page.select(row.n);
+  const shown = document.getElementById("detailActions").innerHTML.includes("aExplain");
+  row.summary = keep;
+  return shown;
+})());
+ok("a closed issue is named with its title, not just its number",
+   page.state.prs.some(r => (r.closes || []).some(c => c.title)));
+
+/* ---- 7d. one press, one hand-over ---- */
+const target = page.visiblePrs()[0];
+page.select(target.n);
+target.requests = { analyze: { status: "queued", at: "10:00:00", kind: "analyze" } };
+page.render();
+const acts = document.getElementById("detailActions").innerHTML;
+ok("an outstanding request locks its button instead of re-arming it",
+   acts.includes("in chat") && !acts.includes('id="aAnalyze"'));
+ok("the panel says where the ball is",
+   /passata alla chat/.test(document.getElementById("detailGrid").innerHTML));
+target.requests = { analyze: { status: "done", at: "10:00:00",
+                               closed_at: "10:02:00", report: "niente da rispondere" } };
+page.render();
+ok("a closed request shows its outcome",
+   /niente da rispondere/.test(document.getElementById("detailGrid").innerHTML));
+ok("and the button comes back", document.getElementById("detailActions")
+   .innerHTML.includes('id="aAnalyze"'));
+target.requests = { analyze: { status: "failed", at: "10:00:00",
+                               report: "gate non passato" } };
+page.render();
+ok("a failure reads as a failure",
+   /gate non passato/.test(document.getElementById("detailGrid").innerHTML));
+target.requests = {};
 
 ok("chase blocks carry the dates the message needs",
    Object.values(snapshot.queue.chase).some(t => /\(\d{4}-\d{2}-\d{2}\)/.test(t)));

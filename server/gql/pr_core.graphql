@@ -4,13 +4,13 @@ query($q:String!){
     pageInfo{hasNextPage}
     nodes{
       ...on PullRequest{
-        number title createdAt isDraft baseRefName reviewDecision
+        number title bodyText createdAt isDraft baseRefName reviewDecision
         author{login}
         reviewRequests(first:8){nodes{requestedReviewer{...on User{login}}}}
         reviews(last:8){nodes{author{login} state submittedAt}}
         comments(last:1){nodes{author{login} createdAt}}
         reviewThreads(first:10){nodes{isResolved comments(last:1){nodes{author{login} createdAt}}}}
-        closingIssuesReferences(first:8){nodes{number assignees(first:4){nodes{login}}}}
+        closingIssuesReferences(first:8){nodes{number title assignees(first:4){nodes{login}}}}
       }
     }
   }

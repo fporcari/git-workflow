@@ -9,6 +9,7 @@ including the 304 path.
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import threading
@@ -427,7 +428,7 @@ class Gate(unittest.TestCase):
 
     def gate(self, **kw):
         base = {"branch": "develop", "protected": True, "landers": None,
-                "can_land": True, "bypass": False,
+                "can_land": True, "as_admin": False,
                 "conversation_resolution": False}
         return dict(base, **kw)
 
@@ -441,11 +442,22 @@ class Gate(unittest.TestCase):
         self.assertEqual(got[1], "waiting")
         self.assertIn("lander", got[0])
 
-    def test_an_admin_bypass_is_a_decision_not_an_autorun(self):
+    def test_a_restriction_that_does_not_bind_an_admin_keeps_the_autorun(self):
+        """Capability, not ownership: an admin the restriction does not bind
+        still owns his own merge. Whose merge it is by convention is a house
+        rule, not something to read off a protection setting."""
         got = verdicts.verdict(self.APPROVED, "me",
-                               self.gate(landers=["lander"], can_land=False, bypass=True))
-        self.assertEqual((got[1], got[2]), ("decision", "asks"))
-        self.assertIn("admin", got[0])
+                               self.gate(landers=["lander"], can_land=True,
+                                         as_admin=True))
+        self.assertEqual(got[2], "A1")
+
+    def test_but_the_note_says_the_branch_is_somebody_else_s(self):
+        notes = gatelib.notes(self.gate(landers=["lander"], can_land=True,
+                                        as_admin=True, codeowners_required=False,
+                                        codeowners_path=None, dismiss_stale=False))
+        joined = " ".join(notes)
+        self.assertIn("lander", joined)
+        self.assertIn("admin", joined)
 
     def test_being_on_the_list_keeps_the_autorun(self):
         got = verdicts.verdict(self.APPROVED, "me",
@@ -483,6 +495,22 @@ class Gate(unittest.TestCase):
     def test_an_unprotected_base_says_clean_means_nothing(self):
         notes = gatelib.notes({"branch": "feat/x", "protected": False})
         self.assertIn("non protetta", " ".join(notes))
+
+    def test_an_admin_is_not_bound_by_a_restriction_unless_admins_are(self):
+        """The two real shapes, side by side: the same restriction binds on a
+        branch where enforce_admins is on and does not where it is off."""
+        loose = gatelib.parse_codeowners  # keep the import honest
+        self.assertTrue(callable(loose))
+        for enforce, expected in ((False, True), (True, False)):
+            protection = {
+                "required_pull_request_reviews": {},
+                "enforce_admins": {"enabled": enforce},
+                "restrictions": {"users": [{"login": "other"}], "teams": [], "apps": []},
+            }
+            got = gatelib._shape(protection, (None, None), "admin", "me", "b")
+            self.assertEqual(got["can_land"], expected,
+                             "enforce_admins=%s" % enforce)
+            self.assertEqual(got["as_admin"], expected)
 
     def test_the_desk_attaches_the_gate_to_every_row(self):
         rows = fresh_desk().queue()["rows"]
@@ -556,7 +584,8 @@ class Chase(unittest.TestCase):
                "title": "c", "req": [], "reviews": [], "decision": "APPROVED",
                "merge": "CLEAN", "unresolved": 0, "last": None, "base": "develop"}
         gate = {"branch": "develop", "protected": True, "landers": ["lander"],
-                "can_land": False, "bypass": False, "conversation_resolution": False}
+                "can_land": False, "as_admin": False,
+                "conversation_resolution": False}
         rows = verdicts.decorate([row], "me", {"develop": gate})
         self.assertEqual(rows[0]["waiting_on"], "lander")
         self.assertIn("lander", verdicts.chase(rows))
@@ -636,3 +665,185 @@ class RowsExport(unittest.TestCase):
         self.assertEqual(len(exported["grid"]["blocks"]), 5)
         self.assertTrue(exported["shortlist"])
         self.assertLessEqual(len(exported["shortlist"]), 10)
+
+
+class HandOverExactlyOnce(unittest.TestCase):
+    """A click hands work to the chat, which may take minutes. The lock lives
+    on the SERVER: one kept in the page is lost on reload and in a second tab,
+    and the user presses again because nothing visibly happened — every extra
+    press being another event the chat has to work through."""
+
+    def setUp(self):
+        state = deskstate.load(REPO)
+        state.pop("requests", None)
+        state.pop("orders", None)
+        deskstate.save(REPO, state)
+
+    def test_a_second_press_is_refused_while_the_first_is_out(self):
+        first, created = deskstate.request(REPO, "analyze:7", "analyze", 7)
+        self.assertTrue(created)
+        again, created = deskstate.request(REPO, "analyze:7", "analyze", 7)
+        self.assertFalse(created)
+        self.assertEqual(again["at"], first["at"], "a new record was minted")
+
+    def test_a_closed_request_can_be_pressed_again(self):
+        deskstate.request(REPO, "analyze:7", "analyze", 7)
+        deskstate.close_request(REPO, "analyze:7", "done", "letto il diff")
+        _, created = deskstate.request(REPO, "analyze:7", "analyze", 7)
+        self.assertTrue(created)
+
+    def test_a_lock_the_chat_never_closed_goes_stale_instead_of_wedging(self):
+        deskstate.request(REPO, "analyze:9", "analyze", 9)
+        state = deskstate.load(REPO)
+        state["requests"]["analyze:9"]["epoch"] -= deskstate.REQUEST_STALE + 10
+        deskstate.save(REPO, state)
+        _, created = deskstate.request(REPO, "analyze:9", "analyze", 9)
+        self.assertTrue(created, "a dead chat must not lock the button forever")
+
+    def test_the_outcome_reaches_the_row(self):
+        deskstate.request(REPO, "analyze:11", "analyze", 11)
+        deskstate.close_request(REPO, "analyze:11", "done", "niente da rispondere")
+        rows = [{"n": 11}]
+        deskstate.annotate_requests(rows, deskstate.load(REPO))
+        got = rows[0]["requests"]["analyze"]
+        self.assertEqual(got["status"], "done")
+        self.assertEqual(got["report"], "niente da rispondere")
+        self.assertIn("closed_at", got)
+
+    def test_a_failure_is_reported_as_a_failure(self):
+        deskstate.request(REPO, "order:12", "order", 12)
+        deskstate.close_request(REPO, "order:12", "failed", "gate non passato")
+        rows = [{"n": 12}]
+        deskstate.annotate_requests(rows, deskstate.load(REPO))
+        self.assertEqual(rows[0]["requests"]["order"]["status"], "failed")
+
+    def test_requests_land_on_the_right_row_only(self):
+        deskstate.request(REPO, "analyze:100", "analyze", 100)
+        rows = [{"n": 100}, {"n": 1000}, {"n": 10}]
+        deskstate.annotate_requests(rows, deskstate.load(REPO))
+        self.assertIn("analyze", rows[0]["requests"])
+        self.assertEqual(rows[1]["requests"], {})
+        self.assertEqual(rows[2]["requests"], {})
+
+    def test_notify_closes_a_request_from_the_command_line(self):
+        """This is how the chat reports back — the desk shows what it says."""
+        deskstate.request(REPO, "analyze:13", "analyze", 13)
+        out = subprocess.run(
+            (sys.executable, str(ROOT / "notify.py"), "--repo", REPO,
+             "--done", "analyze:13", "fatto"),
+            capture_output=True, text=True, env=dict(os.environ, HOME=_HOME))
+        self.assertEqual(out.returncode, 0, out.stderr)
+        got = deskstate.load(REPO)["requests"]["analyze:13"]
+        self.assertEqual((got["status"], got["report"]), ("done", "fatto"))
+
+
+class ChatButtonsThroughTheLedger(unittest.TestCase):
+    """The HTTP side of the same promise: the ledger is checked BEFORE the
+    inbox, so a duplicate press never becomes a duplicate event."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.desk = fresh_desk(chat=True, kind="pr")
+        prdesk.Handler.desk = cls.desk
+        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), prdesk.Handler)
+        cls.port = cls.server.server_address[1]
+        threading.Thread(target=cls.server.serve_forever, daemon=True).start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+
+    def setUp(self):
+        state = deskstate.load(REPO)
+        state.pop("requests", None)
+        deskstate.save(REPO, state)
+        inbox.truncate(REPO)
+
+    def post(self, path, body=None):
+        req = Request("http://127.0.0.1:%s%s" % (self.port, path),
+                      data=json.dumps(body or {}).encode(),
+                      headers={"Content-Type": "application/json"})
+        try:
+            with urlopen(req, timeout=30) as resp:
+                return resp.status, json.loads(resp.read())
+        except HTTPError as exc:
+            return exc.code, json.loads(exc.read())
+
+    def events(self):
+        raw = inbox.inbox_path(REPO)
+        if not raw.exists() or not raw.stat().st_size:
+            return []
+        return [json.loads(line) for line in raw.read_text().splitlines() if line]
+
+    def test_one_press_one_event(self):
+        status, payload = self.post("/api/pr/1145/analyze")
+        self.assertEqual(status, 202)
+        self.assertTrue(payload["queued"])
+        self.assertEqual(len(self.events()), 1)
+
+    def test_five_presses_still_one_event(self):
+        for _ in range(5):
+            self.post("/api/pr/1145/analyze")
+        self.assertEqual(len(self.events()), 1, "the chat got duplicates")
+
+    def test_the_refusal_hands_back_the_outstanding_request(self):
+        self.post("/api/pr/1145/analyze")
+        status, payload = self.post("/api/pr/1145/analyze")
+        self.assertEqual(status, 200)
+        self.assertTrue(payload["already"])
+        self.assertEqual(payload["request"]["status"], "queued")
+
+    def test_every_chat_button_is_covered(self):
+        for path, body in (("/api/pr/1145/analyze", {}),
+                           ("/api/pr/1145/explain", {}),
+                           ("/api/pr/1145/order", {"propose": "x"}),
+                           ("/api/issue/1166/analyze", {}),
+                           ("/api/triage", {"flow": "pr-triage"}),
+                           ("/api/run", {"flow": "pr-run"})):
+            inbox.truncate(REPO)
+            state = deskstate.load(REPO)
+            state.pop("requests", None)
+            deskstate.save(REPO, state)
+            self.post(path, body)
+            self.post(path, body)
+            self.assertEqual(len(self.events()), 1, path)
+
+    def test_a_closed_request_lets_the_button_work_again(self):
+        self.post("/api/pr/1145/analyze")
+        deskstate.close_request(REPO, "analyze:1145", "done", "ok")
+        inbox.truncate(REPO)
+        status, payload = self.post("/api/pr/1145/analyze")
+        self.assertEqual(status, 202)
+        self.assertEqual(len(self.events()), 1)
+
+    def test_outstanding_flows_reach_the_ui(self):
+        self.post("/api/triage", {"flow": "pr-triage"})
+        flows = self.desk.live_state()["flows"]
+        self.assertEqual(flows["pr-triage"]["status"], "queued")
+
+
+class SummaryFromData(unittest.TestCase):
+    """What a PR is FOR: the author already wrote it. Asking a model to
+    paraphrase 52 titles was the expensive way to learn it."""
+
+    def test_rows_carry_the_author_s_own_description(self):
+        rows = fresh_desk().queue()["rows"]
+        with_summary = [r for r in rows if r.get("summary")]
+        self.assertTrue(with_summary, "no row carried a summary")
+
+    def test_the_summary_is_trimmed_not_the_whole_body(self):
+        from providers.github import SUMMARY_CHARS, _summary
+        self.assertIsNone(_summary(""))
+        self.assertIsNone(_summary(None))
+        self.assertEqual(_summary("  one   two\n\nthree "), "one two three")
+        long = "Problem. " + ("word " * 400)
+        got = _summary(long)
+        self.assertLess(len(got), SUMMARY_CHARS + 20)
+        self.assertTrue(got.endswith("…"))
+
+    def test_closing_issues_carry_their_titles(self):
+        rows = fresh_desk().queue()["rows"]
+        closes = [c for r in rows for c in (r.get("closes") or [])]
+        self.assertTrue(closes)
+        self.assertTrue(any(c.get("title") for c in closes),
+                        "a closed issue's title is what makes the link readable")

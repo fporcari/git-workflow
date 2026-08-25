@@ -3,16 +3,28 @@
 pr-triage §3 asks four questions before any verdict is honest, and every one
 of them is a plain API read:
 
-    who may actually land on this base   restrictions.users/teams/apps
+    CAN THE USER land on this base      restrictions + enforce_admins + his
+                                        own permission, together
     how many approvals clear it          required_approving_review_count
     do unresolved threads block it       required_conversation_resolution
     does an admin walk past all of it    enforce_admins + my own permission
 
-This is not academic. A base with a push restriction is common on a repo
-where one person cuts the releases, and there "approved + CLEAN + mine" is
-NOT the user's merge — it is the lander's, unless the user deliberately
-bypasses as an admin where `enforce_admins` is off. A verdict engine that
-does not read the gate says `A1 → merge it` there, and is wrong.
+`restrictions` answers CAPABILITY, never ownership. Who *should* merge a PR
+is a house rule — on this user's team it is the author/assignee — and the
+desk has no business overriding it from a protection setting. What the gate
+settles is whether the merge is possible at all:
+
+    listed in restrictions            -> can land
+    admin and enforce_admins is off   -> can land (the restriction does not
+                                         bind admins; say so, do not treat it
+                                         as a reason to hand the PR away)
+    neither                           -> cannot land, whatever the reviews say
+
+The distinction is not academic. On one real repo `develop` is restricted to
+the maintainer with `enforce_admins: false`, and `master` to the same person
+with `enforce_admins: true` — so the same user can merge on the first and
+genuinely cannot on the second. Reading the restriction alone gets both
+wrong.
 
 CODEOWNERS is parsed for its owner set only. Deciding which rule a given PR
 matches needs that PR's changed paths, which is a diff read — that stays
@@ -80,12 +92,17 @@ def parse_codeowners(text):
 
 def read(repo, me, branch):
     """The gate for one base branch. Four reads, run together."""
-    with ThreadPoolExecutor(max_workers=3) as pool:
+    with ThreadPoolExecutor(max_workers=3) as pool:  # noqa: E501
         prot = pool.submit(_protection, repo, branch)
         cown = pool.submit(_codeowners, repo, branch)
         perm = pool.submit(_permission, repo, me)
         protection, (co_path, co_text), permission = prot.result(), cown.result(), perm.result()
 
+    return _shape(protection, (co_path, co_text), permission, me, branch)
+
+
+def _shape(protection, codeowners, permission, me, branch):
+    co_path, co_text = codeowners
     if protection is None:
         # an unprotected base: CLEAN means nothing, and anyone with write lands
         return {"branch": branch, "protected": False, "approvals": 0,
@@ -94,7 +111,7 @@ def read(repo, me, branch):
                 "conversation_resolution": False, "enforce_admins": False,
                 "landers": None, "permission": permission,
                 "can_land": permission in ("admin", "maintain", "write"),
-                "bypass": False}
+                "as_admin": False}
 
     reviews = protection.get("required_pull_request_reviews") or {}
     restrictions = protection.get("restrictions")
@@ -107,6 +124,8 @@ def read(repo, me, branch):
     enforce_admins = bool((protection.get("enforce_admins") or {}).get("enabled"))
     is_admin = permission == "admin"
     listed = landers is None or me in (landers or [])
+    # an admin is not bound by the restriction unless admins are enforced
+    admin_pass = is_admin and not enforce_admins
     return {
         "branch": branch,
         "protected": True,
@@ -121,10 +140,11 @@ def read(repo, me, branch):
         "enforce_admins": enforce_admins,
         "landers": landers,
         "permission": permission,
-        # who may land: on the restriction list, or an admin where admins are
-        # not themselves enforced
-        "can_land": listed,
-        "bypass": (not listed) and is_admin and not enforce_admins,
+        # capability, not ownership: on the list, or an admin the
+        # restriction does not bind
+        "can_land": listed or admin_pass,
+        # informational: he gets through, but the branch is somebody else's
+        "as_admin": (not listed) and admin_pass,
     }
 
 
@@ -144,10 +164,15 @@ def notes(gate):
     if not gate["protected"]:
         out.append("base non protetta: CLEAN non significa nulla qui")
         return out
-    if gate["landers"] is not None and not gate["can_land"]:
+    if gate["landers"] is not None:
         who = ", ".join(gate["landers"]) or "nessuno"
-        out.append("il merge su %s è riservato a %s" % (gate["branch"], who)
-                   + (" — tu passi solo come admin" if gate["bypass"] else ""))
+        if gate.get("as_admin"):
+            out.append("push su %s riservati a %s: tu ci arrivi come admin "
+                       "(enforce_admins è off) — chi non è admin no"
+                       % (gate["branch"], who))
+        elif not gate["can_land"]:
+            out.append("non puoi mergiare su %s: è riservato a %s e "
+                       "enforce_admins è attivo" % (gate["branch"], who))
     if gate["codeowners_required"] and not gate["codeowners_path"]:
         out.append("richiede l'approvazione di un codeowner ma il file CODEOWNERS "
                    "non c'\u00e8 su %s: il requisito non ha proprietari da "

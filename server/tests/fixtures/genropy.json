@@ -19,6 +19,7 @@
    "unresolved": 0,
    "threads": 0,
    "closes": [],
+   "summary": "Hotfix on master: dropping a file onto the grid of attachmentPane() uploads it to storage but writes no record \u2014 grid empty, no toast, no console error, no traceback. Cause Regression left behind by the fix for #722. at_attachmentPane arms the grid as a Files drop target passing only the pre-upload callback, and AttachManager.onDropFiles forwards only that one in the RPC params. \u2026",
    "last": {
     "t": "2026-08-25T15:13:30Z",
     "who": "fporcari",
@@ -44,11 +45,13 @@
    "closes": [
     {
      "issue": 1160,
+     "title": "[BUG] Nested form: a refused save shows no message because the save_failed controller watches the wrong datapath",
      "assignees": [
       "fporcari"
      ]
     }
    ],
+   "summary": "Problem / Root cause th_form declares on the form node a dataController that alerts the user when a save is refused, watching ^.controller.save_failed \u2014 a relative path (resources/common/th/th_form.py:239). At build time FrameForm.createContent re-parents the children declared on the form node into the FramePane center content node (gnrjs/gnr_d11/js/genro_components.js, content.concat(children) in gnrwdg._beforeCreat \u2026",
    "last": null,
    "url": "https://github.com/genropy/genropy/pull/1164"
   },
@@ -70,11 +73,13 @@
    "closes": [
     {
      "issue": 1162,
+     "title": "[BUG] NewIncludedView.setSelectedId overwrites the subscribed selectedId with null for an unknown pkey",
      "assignees": [
       "fporcari"
      ]
     }
    ],
+   "summary": "Fixes #1162 Problem NewIncludedView.mixin_setSelectedId resolves the row with collectionStore().getIdxFromPkey(pkey) and guards only the upper bound. getIdxFromPkey returns -1 when the pkey is not in the store (genro_components.js:6895 and :8094), and selection.select(-1) is not inert: addToSelection(-1) finds onCanSelect returning true unconditionally, so it fires grid.onSelected(-1) \u2192 _gnrUpdateSelect(-1) (genro_gr \u2026",
    "last": null,
    "url": "https://github.com/genropy/genropy/pull/1163"
   },
@@ -95,6 +100,7 @@
    "unresolved": 0,
    "threads": 0,
    "closes": [],
+   "summary": "Adds --collect to gnr web serve: the development server records every request and every call the site makes to its site register, into one archive per run. A request header joins the two, so every register call is attributable to the exchange that caused it \u2014 which is what neither an HTTP log nor a SQL trace can show. \u2026",
    "last": null,
    "url": "https://github.com/genropy/genropy/pull/1161"
   },
@@ -148,35 +154,41 @@
    "closes": [
     {
      "issue": 1146,
+     "title": "[BUG] Every datastore change is dispatched to every dynamic attribute subscription",
      "assignees": [
       "fporcari"
      ]
     },
     {
      "issue": 1147,
+     "title": "[BUG] Full source-tree walk on every del/upd trigger to refresh index and subscribers",
      "assignees": [
       "fporcari"
      ]
     },
     {
      "issue": 1148,
+     "title": "[TASK] Cache widget factory resolution and handler mixin plans",
      "assignees": [
       "fporcari"
      ]
     },
     {
      "issue": 1149,
+     "title": "[TASK] Bag hot-path cleanups: htraverse fast path, static walk, fromXmlDoc conversions",
      "assignees": [
       "fporcari"
      ]
     },
     {
      "issue": 1150,
+     "title": "[FEATURE] Heavy test page and client-side profiler for build/trigger profiling",
      "assignees": [
       "fporcari"
      ]
     }
    ],
+   "summary": "What Profiling-driven optimization of the client engine (gnrjs) for very large pages, plus the profiling infrastructure used to find the real bottlenecks and a document with the findings. Measured on the new test/perf/test_heavy_build page (~8.200 source nodes, ~1.400 dojo widgets), median of 6 runs: metric before after startUp build 1609 ms 514 ms (3.1x) 600 setData on bound fields 384 ms 30 ms (13x) How gnr.GnrTrig \u2026",
    "last": {
     "t": "2026-08-25T12:23:01Z",
     "who": "dgpaci",
@@ -213,11 +225,13 @@
    "closes": [
     {
      "issue": 1144,
+     "title": "[BUG] Grid selectedId always fires the ^ trigger, even when id and row attributes are unchanged",
      "assignees": [
       "fporcari"
      ]
     }
    ],
+   "summary": "Fixes #1144 What was wrong selectedId is published with the whole row as node attributes, so ^grid.selectedId?field works. setAttributeInDatasource() compared the value alone, so the only way to keep those attributes fresh was forceChanges, which wrote (and triggered) unconditionally: clicking the already selected row, or any re-publication of the same selection, re-ran every controller bound to that path. \u2026",
    "last": {
     "t": "2026-08-25T14:35:51Z",
     "who": "dgpaci",
@@ -242,6 +256,7 @@
    "unresolved": 0,
    "threads": 0,
    "closes": [],
+   "summary": "Problem The XSS sanitization introduced in #774 was meant to be opt-in (sanitize_js switch in instanceconfig, default OFF), but the client check never worked: genro.getData('gnr.switches?sanitize_js') ignores the ?attr suffix and returns the node value, which is always a truthy Bag (set unconditionally by gnrwebpage.py). \u2026",
    "last": null,
    "url": "https://github.com/genropy/genropy/pull/1143"
   },
@@ -268,6 +283,7 @@
    "unresolved": 0,
    "threads": 0,
    "closes": [],
+   "summary": "Two docu issues that meet in the same publishing area, plus the removal of a notification channel the batch no longer needs to own. Heads-up: the third commit removes the Telegram notification of the export (and the docu preferences gating it). Notifications are configured through gnrxadm now. Nothing else in the tree referenced it. \u2026",
    "last": {
     "t": "2026-08-25T15:06:41Z",
     "who": "dgpaci",
@@ -294,11 +310,13 @@
    "closes": [
     {
      "issue": 1136,
+     "title": "[BUG] joinPdf swaps pages between the source pdfs",
      "assignees": [
       "fporcari"
      ]
     }
    ],
+   "summary": "Fixes #1136 Symptom joinPdf returns a merged document with the right page count and raises nothing, but one page carries the content of a different file of the list \u2014 intermittently, on the very same list of files merged repeatedly in one process. Some documents also log cannot find XObject resource / cannot find ExtGState resource while being read. \u2026",
    "last": null,
    "url": "https://github.com/genropy/genropy/pull/1137"
   },
@@ -324,6 +342,7 @@
    "unresolved": 0,
    "threads": 0,
    "closes": [],
+   "summary": "Summary Macro 1 of 6 of the test15 -> test example triage: build the net that makes the rest of the migration safe, establish the recipe, and run it over the first two areas. 60 pages leave test15, 16 arrive in test documented, and two suites keep both packages from sliding back. \u2026",
    "last": {
     "t": "2026-08-24T13:31:08Z",
     "who": "fporcari",
@@ -353,48 +372,13 @@
    "unresolved": 0,
    "threads": 0,
    "closes": [],
+   "summary": "Summary Macro 2 of 6 of the test15 -> test example triage: the gnrwdg area is empty. The 25 pages it held are gone from test15, four deleted as dead, fifteen promoted into test/webpages/gnrwdg/ and six folded into the counterparts that already existed there, every promoted case carrying a title and a one-line docstring. test15/webpages/gnrwdg/ no longer exists and the Gnrwdg branch left test15/menu.py. \u2026",
    "last": {
     "t": "2026-08-24T13:38:26Z",
     "who": "fporcari",
     "ch": "changes_requested"
    },
    "url": "https://github.com/genropy/genropy/pull/1132"
-  },
-  {
-   "n": 1131,
-   "title": "During image build, stop if the instance is not found",
-   "created": "2026-08-21",
-   "author": "cgabriel",
-   "draft": false,
-   "base": "develop",
-   "merge": null,
-   "decision": "APPROVED",
-   "req": [
-    "genro"
-   ],
-   "reviews": [
-    {
-     "who": "fporcari",
-     "state": "APPROVED",
-     "on": "2026-08-24"
-    }
-   ],
-   "unresolved": 0,
-   "threads": 0,
-   "closes": [
-    {
-     "issue": 1121,
-     "assignees": [
-      "cgabriel"
-     ]
-    }
-   ],
-   "last": {
-    "t": "2026-08-24T13:13:40Z",
-    "who": "fporcari",
-    "ch": "approved"
-   },
-   "url": "https://github.com/genropy/genropy/pull/1131"
   },
   {
    "n": 1130,
@@ -414,17 +398,20 @@
    "closes": [
     {
      "issue": 1103,
+     "title": "[BUG] genro_grid calls this.setSelectedId on a class that does not have it",
      "assignees": [
       "fporcari"
      ]
     },
     {
      "issue": 1127,
+     "title": "[BUG] includedViewBox grids throw 'setSelectedId is not a function' and stay empty",
      "assignees": [
       "fporcari"
      ]
     }
    ],
+   "summary": "Problem Legacy grids created by includedViewBox fail while installing a replacement datastore because their subscribed selectedId invokes a method the widget does not implement. The exception leaves the grid empty. \u2026",
    "last": null,
    "url": "https://github.com/genropy/genropy/pull/1130"
   },
@@ -455,11 +442,13 @@
    "closes": [
     {
      "issue": 1107,
+     "title": "[TASK] Deprecate the hand-maintained Tests menu of the gnrdevelop instance",
      "assignees": [
       "fporcari"
      ]
     }
    ],
+   "summary": "Motivation The test and test15 packages maintain a second, manual index of pages that are already available through package routing and discovery. Those lists drift from the webpages tree, and a stale directory branch raises instead of degrading gracefully. Change Remove the test package menu contribution. Remove the test15 package menu contribution. \u2026",
    "last": {
     "t": "2026-08-25T14:53:10Z",
     "who": "dgpaci",
@@ -496,11 +485,13 @@
    "closes": [
     {
      "issue": 1007,
+     "title": "[FEATURE] Restore default PDF margin preferences and apply them in all htmltopdf implementations",
      "assignees": [
       "dgpaci"
      ]
     }
    ],
+   "summary": "Fixes #1007 Problem The sys.pdf_render margin preferences (margin_top/bottom/left/right) were only shown when the wk_legacy checkbox was on, and only wkhtmltopdf ever consumed them: it translated each key into a --margin-* CLI flag. The WeasyPrint service dropped pdf_kwargs into **kwargs and ignored it. \u2026",
    "last": {
     "t": "2026-08-25T10:14:15Z",
     "who": "cgabriel",
@@ -532,11 +523,13 @@
    "closes": [
     {
      "issue": 1101,
+     "title": "[BUG] bagField without resource= raises UnboundLocalError on mixinedClass",
      "assignees": [
       "fporcari"
      ]
     }
    ],
+   "summary": "Problem bagField without a resource= argument raises UnboundLocalError on the server. This is the common case: the client (gnrjs/gnr_d11/js/genro_components.js:3116-3118) only sets remote__if='resource' when resource is actually present, so a resource-less bagField fires the remote unconditionally and 500s. Root cause gnrpy/gnr/web/gnrwebpage.py \u2014 bagFieldDispatcher: if resource: ... \u2026",
    "last": {
     "t": "2026-08-25T12:21:32Z",
     "who": "genro",
@@ -563,11 +556,13 @@
    "closes": [
     {
      "issue": 1062,
+     "title": "Usernames containing dots break Bag-label keyed features (chat first, audit needed)",
      "assignees": [
       "fporcari"
      ]
     }
    ],
+   "summary": "Problem Issue #1062: usernames containing a dot (or @) break any GenroPy feature that keys a Bag by the raw username, because Bag labels split on . in both the Python Bag and the JS GnrBag. PR #1063 fixed the chat half. This PR is the audit-driven fix for the remaining sites. Root cause Bag.__setitem__ / __getitem__ treat . as the path separator, so bag['amelia.martin'] is really bag['amelia']['martin']. \u2026",
    "last": null,
    "url": "https://github.com/genropy/genropy/pull/1100"
   },
@@ -595,11 +590,13 @@
    "closes": [
     {
      "issue": 1092,
+     "title": "[BUG] sys/ep_error truncate error description + unable to copy",
      "assignees": [
       "fporcari"
      ]
     }
    ],
+   "summary": "Fixes #1092 Problem On sys/ep_error the error description is truncated with an ellipsis and cannot be selected or copied by hand. The reporter observed the truncation persisting even at a 3812px window width. Root cause Two independent causes, neither of them related to the available width. 1. The ellipsis is pure CSS. gnrjs/gnr_d11/css/gnrbase_css/14_gnr_traceback.css had: .gnr-tb-toolbar-title { flex: 1; \u2026",
    "last": {
     "t": "2026-08-25T08:03:55Z",
     "who": "genro",
@@ -631,11 +628,13 @@
    "closes": [
     {
      "issue": 928,
+     "title": "[TASK] Handle RPC errors during service restart: return retriable 503 from Nginx (no 500)",
      "assignees": [
       "fporcari"
      ]
     }
    ],
+   "summary": "Motivation During a service restart (systemctl stop/start gnrsiterunner_<service>) the gunicorn socket is gone and nginx answers with a generic 502 or 504. Nothing in that response tells a client that the condition is transient. Issue #928 asks for a retriable 503 with a Retry-After header and a stable JSON body instead. \u2026",
    "last": {
     "t": "2026-08-25T08:03:56Z",
     "who": "genro",
@@ -662,11 +661,13 @@
    "closes": [
     {
      "issue": 1079,
+     "title": "[BUG] boto3 declared without an upper bound conflicts with the aiobotocore that arrives via s3fs",
      "assignees": [
       "fporcari"
      ]
     }
    ],
+   "summary": "Problem gnrpy/pyproject.toml declared \"boto3\" bare in [project].dependencies. Installing genropy next to any s3fs consumer produces an unsatisfiable set, so the environment ends up broken. Reproduced in a scratch venv: $ pip install s3fs s3fs 2026.7.0, aiobotocore 3.9.0, botocore 1.43.56 aiobotocore requires: botocore<1.43.57,>=1.43.3 $ pip install boto3 # what the core dependency did boto3 1.43.73 requires botocore< \u2026",
    "last": {
     "t": "2026-08-24T16:14:43Z",
     "who": "fporcari",
@@ -692,11 +693,13 @@
    "closes": [
     {
      "issue": 1076,
+     "title": "[BUG] toDHZ attaches a timezone with replace() and resolves LOCAL to an abbreviation on POSIX",
      "assignees": [
       "fporcari"
      ]
     }
    ],
+   "summary": "Problem gnr.core.gnrdate.toDHZ raises or silently miscomputes the UTC offset it attaches, depending on the timezone argument: timezone='LOCAL' on POSIX systems fails with pytz.exceptions.UnknownTimeZoneError whenever the local zone's DST abbreviation (e.g. CEST, EDT) is not itself a valid pytz zone name \u2014 which is the common case in summer. \u2026",
    "last": {
     "t": "2026-08-24T16:14:41Z",
     "who": "fporcari",
@@ -722,11 +725,13 @@
    "closes": [
     {
      "issue": 1081,
+     "title": "[BUG] siteregister Pyro proxy is created pre-fork: workers share one socket, causing random 'reply sequence out of sync' / connection reset",
      "assignees": [
       "fporcari"
      ]
     }
    ],
+   "summary": "Fixes #1081. Stacked on #1084 (retry work for #1082), which this branch is rebased on \u2014 the base will retarget to develop by itself once #1084 merges. Review only the last commit. The bug main() in gnrserveprod.py builds the wsgi app \u2014 and with it the site and its SiteRegisterClient \u2014 and only then hands it to gunicorn, so the register client is created before the workers are forked. \u2026",
    "last": {
     "t": "2026-08-24T13:54:31Z",
     "who": "fporcari",
@@ -753,11 +758,13 @@
    "closes": [
     {
      "issue": 980,
+     "title": "[BUG] gridData sorts rows by selectionPkeys even when the query is not built from the current selection",
      "assignees": [
       "fporcari"
      ]
     }
    ],
+   "summary": "Problem TableScriptToHtml.gridData() (gnr/web/gnrbaseclasses.py) crashes with ValueError: '<pkey>' is not in list when printing/exporting a resource whose gridQueryParameters() returns its own query and the current selection is only a strict subset of what that query returns. \u2026",
    "last": null,
    "url": "https://github.com/genropy/genropy/pull/1074"
   },
@@ -785,11 +792,13 @@
    "closes": [
     {
      "issue": 987,
+     "title": "[BUG] HierarchicalHandler.trigger_before computes hierarchical_* fields before auto-assigning _row_count",
      "assignees": [
       "fporcari"
      ]
     }
    ],
+   "summary": "Fixes #987 Problem Silent data corruption in hierarchical tables that use the counter as a hierarchical field. For a table declared sysFields(..., hierarchical='<fld>,_row_count', counter=True), any insert that does not carry an explicit _row_count stores a broken hierarchical__row_count: record stored before expected root NULL '1' child 'None/None' (literal string) '1/1' The bug is easy to miss for three reasons: _h \u2026",
    "last": {
     "t": "2026-08-25T08:10:51Z",
     "who": "genro",
@@ -831,11 +840,13 @@
    "closes": [
     {
      "issue": 975,
+     "title": "[BUG] Task scheduler matches hour/minute against UTC time: tasks run shifted by the local timezone offset",
      "assignees": [
       "fporcari"
      ]
     }
    ],
+   "summary": "Problem The month/day/hour/minute columns of sys.task are entered by the user and mean local wall-clock time, but both schedulers compared them against a UTC timestamp. Every cron-style task therefore fired shifted by the local offset: a task set for hour=9 on a Europe/Rome instance ran at 11:00 local time (09:00 UTC) in summer, 10:00 in winter. \u2026",
    "last": {
     "t": "2026-08-25T12:32:55Z",
     "who": "genro",
@@ -862,11 +873,13 @@
    "closes": [
     {
      "issue": 956,
+     "title": "Regression in #882 - _runCleanup will never execute.",
      "assignees": [
       "genro"
      ]
     }
    ],
+   "summary": "Problem GnrWsgiSite._runCleanup is a no-op whenever the site has at least one live connection: the orphan-folder cleanup worker silently stops expiring stale pages/connections and dropping their filesystem folders. Root cause At gnrpy/gnr/web/gnrwsgisite.py:1770-1772 the code did: live_connections = {c['register_item_id'] for c in self.register.connections()} self.register on GnrWsgiSite is a SiteRegisterClient. \u2026",
    "last": null,
    "url": "https://github.com/genropy/genropy/pull/1069"
   },
@@ -913,6 +926,7 @@
    "unresolved": 2,
    "threads": 10,
    "closes": [],
+   "summary": "Summary Adds MenuStruct.docpage() for opening a public document from a registered storage service inside the application frame. This is intentionally a resolver-only feature: the menu resolves a storage path to a stable public URL and loads that document directly. It does not add an authenticated viewer page. \u2026",
    "last": {
     "t": "2026-08-25T15:00:42Z",
     "who": "dgpaci",
@@ -939,12 +953,14 @@
    "closes": [
     {
      "issue": 1006,
+     "title": "[BUG] gnr app checkdep ignores packages declared via required_packages()",
      "assignees": [
       "cgabriel",
       "dgpaci"
      ]
     }
    ],
+   "summary": "Refs #1006 Draft on purpose. The code change implements one of two incompatible fixes discussed on the issue. The decision between them is open \u2014 see Design decision required below. Do not merge before it is settled. Problem gnr app checkdep reports All good! on instances that are missing Python dependencies. \u2026",
    "last": null,
    "url": "https://github.com/genropy/genropy/pull/1058"
   },
@@ -978,11 +994,13 @@
    "closes": [
     {
      "issue": 994,
+     "title": "[BUG] dbSelect setCondition re-asserts a stale captured value (async write-back race)",
      "assignees": [
       "fporcari"
      ]
     }
    ],
+   "summary": "Fixes #994 Problem DynamicBaseCombo.mixin_setCondition revalidated the current value with write-back semantics. The null reset wrote a transient null to the bound datapath, while the asynchronous identity response could later restore the stale value captured before the condition changed. \u2026",
    "last": {
     "t": "2026-08-24T16:14:44Z",
     "who": "fporcari",
@@ -1007,6 +1025,7 @@
    "unresolved": 0,
    "threads": 0,
    "closes": [],
+   "summary": "This already works today ${...} is presence-only, not value-based. CONDITIONAL_PATTERN (gnrpy/gnr/core/gnrstring.py:42) and conditionalTemplate (:454-461) only test m.group(1) in symbolDict and value not in (None,''). The client mirror (gnrjs/gnr_d11/js/gnrlang.js:325-339) does the same. No value comparison happens anywhere in this path. \u2026",
    "last": null,
    "url": "https://github.com/genropy/genropy/pull/1056"
   },
@@ -1035,11 +1054,13 @@
    "closes": [
     {
      "issue": 1021,
+     "title": "[BUG] batchUpdate without where/pkey silently returns without updating anything",
      "assignees": [
       "fporcari"
      ]
     }
    ],
+   "summary": "Problem SqlTable.batchUpdate returns None without touching a single row, without logging and without raising, when the call carries no row selection at all \u2014 no where, no pkey, no _pkeys. In the anaci project a one-shot upgrade script backfilled a new indexed column on ~26k rows with tbl.batchUpdate(cb, columns='$ragione_sociale,$cognome,$nome,$societa') expecting \"no where = all rows\". \u2026",
    "last": {
     "t": "2026-08-21T14:39:37Z",
     "who": "dgpaci",
@@ -1072,11 +1093,13 @@
    "closes": [
     {
      "issue": 1019,
+     "title": "[BUG] sys.upgrade: filenames longer than 40 chars crash the whole migration run after the upgrade has executed",
      "assignees": [
       "fporcari"
      ]
     }
    ],
+   "summary": "Problem sys.upgrade declares filename as size=':40' (projects/gnrcore/packages/sys/model/upgrade.py:13), but runUpgrades builds upgrade keys from arbitrary filenames found on disk with no length check. When a filename is longer than 40 characters, the upgrade's main(db) runs successfully, and only then does the tracking insert fail with StringDataRightTruncation, which propagates out of runUpgrade and aborts the whol \u2026",
    "last": {
     "t": "2026-08-19T14:06:46Z",
     "who": "cgabriel",
@@ -1106,6 +1129,7 @@
    "unresolved": 0,
    "threads": 0,
    "closes": [],
+   "summary": "Problem Real-world case reported in #1018: in a production multidb application, supplier registry records referenced by invoices were missing from secondary stores although their subscription rows existed in the root. \u2026",
    "last": {
     "t": "2026-08-25T08:03:51Z",
     "who": "genro",
@@ -1136,6 +1160,7 @@
    "unresolved": 0,
    "threads": 0,
    "closes": [],
+   "summary": "site.currentPage is backed by a ThreadedDict keyed on the thread ident: assigning a page stores it under that ident, assigning None pops the entry. GnrWsgiSite.dispatcher() already guarantees the pop from a finally block, but the task runners that set currentPage outside a request did not. Same leak class as #1042 (currentDomain in dispatcher()), refs #379 / #380. \u2026",
    "last": {
     "t": "2026-08-25T08:06:15Z",
     "who": "fporcari",
@@ -1166,6 +1191,7 @@
    "unresolved": 0,
    "threads": 0,
    "closes": [],
+   "summary": "What already works today Before anything else: the plumbing is already generic, and this call shape works on current develop with no framework change at all. script = page.loadTableScript(table='pkg.mytable', respath='html_res/<some html_res module>', record_template='stampa_badge') pdfpath = script(record=record_id, pdf=True) record_template is already a constructor kwarg of BagToHtmlWeb with an instance override (g \u2026",
    "last": {
     "t": "2026-08-25T14:53:54Z",
     "who": "dgpaci",
@@ -1208,6 +1234,7 @@
    "unresolved": 0,
    "threads": 0,
    "closes": [],
+   "summary": "This is already possible today Before anything else: @dgpaci's goal is reachable right now, with no framework change, by declaring the column with the default (text) dtype and numeric-looking keys. This is the established idiom in this repo \u2014 docu.documentation: # projects/gnrcore/packages/docu/model/documentation.py:20 tbl.column('revision', size=':3', name_long='!!Revision', values='001:Draft,050:Work in progress,0 \u2026",
    "last": {
     "t": "2026-08-25T13:27:43Z",
     "who": "dgpaci",
@@ -1244,11 +1271,13 @@
    "closes": [
     {
      "issue": 1032,
+     "title": "A `Bag` returned by a page is mistaken for a WSGI response",
      "assignees": [
       "fporcari"
      ]
     }
    ],
+   "summary": "Problem Requests to a table handler page (/sys/thpage/<pkg>/<table>) failed with a confusing TypeError, both in production (7 occurrences in one day, regular user) and locally: TypeError: Bag.__call__() takes from 1 to 2 positional arguments but 3 were given File \"gnr/web/gnrwsgisite.py\", line 1157, in dispatcher return self._dispatcher(environ, start_response) File \"gnr/web/gnrwsgisite.py\", line 1379, in _dispatcher \u2026",
    "last": {
     "t": "2026-08-25T15:57:13Z",
     "who": "fporcari",
@@ -1279,6 +1308,7 @@
    "unresolved": 0,
    "threads": 0,
    "closes": [],
+   "summary": "Problem The whole BaseGnrDaemonTest web suite \u2014 tests/web/gnrwsgisite_test.py and tests/web/gnrstoragehandler_test.py, 57 tests \u2014 never ran on CI nor on a fresh checkout. CI logs show tests/web/gnrwsgisite_test.py sssssssssss, and the reported reason pointed nowhere useful: SKIPPED [1] tests/web/gnrwsgisite_test.py:10: Daemon not available: 'NoneType' object has no attribute 'services_handler' Root cause Two independ \u2026",
    "last": {
     "t": "2026-08-25T08:09:49Z",
     "who": "fporcari",
@@ -1311,11 +1341,13 @@
    "closes": [
     {
      "issue": 106,
+     "title": "Empty table created when the python module name differs from the pkg.table() first parameter",
      "assignees": [
       "fporcari"
      ]
     }
    ],
+   "summary": "Fixes #106 Problem A model module whose filename differs from the table declared by config_db caused both names to be materialized: the declared table and an empty, pkey-less table named after the file. An empty model module likewise created an empty table. The mismatch also left the module's Table mixin bound to the phantom table, so the declared table silently lost its methods, triggers, and defaults. \u2026",
    "last": {
     "t": "2026-08-21T08:22:49Z",
     "who": "fporcari",
@@ -1347,12 +1379,14 @@
    "closes": [
     {
      "issue": 146,
+     "title": "New relations on virtual columns dragged in grid show a parsing error",
      "assignees": [
       "mbertoldi",
       "fporcari"
      ]
     }
    ],
+   "summary": "Problem Dragging the green root node of a virtual column with a relation (a formulaColumn returning an id with .relation() attached) from the fields tree into a grid renders every cell of the new column as a parse error: Body: Parsererror: H3: This page contains the following errors: Div: error on line 1 at column 1: Start tag expected, '<' not found ... Dragging a real (physical) relation root works fine. \u2026",
    "last": {
     "t": "2026-08-25T08:03:52Z",
     "who": "genro",
@@ -1390,6 +1424,7 @@
    "unresolved": 0,
    "threads": 0,
    "closes": [],
+   "summary": "Summary Show the notification body from json.message (fallback json.text) and support optional icon, badge and tag payload keys. Activate updated workers immediately (skipWaiting on install, clients.claim on activate) so fixes roll out without closing every tab. Add a message listener that stores the wpn_config handshake (vapidPublicKey, syncUrl, deviceUuid) posted by the page into IndexedDB. \u2026",
    "last": {
     "t": "2026-08-20T16:50:23Z",
     "who": "fporcari",
@@ -1419,6 +1454,7 @@
    "unresolved": 0,
    "threads": 0,
    "closes": [],
+   "summary": "Summary Reworks the adm.notification audience handling so the two alignment paths stay coherent, and adds static/dynamic lists plus an activity window. Coherence Previously the audience was evaluated in two divergent ways: bulk snapshot (notification triggers \u2192 updateUserNotificationsFromQuery): considered tag_rule, group_code, linked_query; \u2026",
    "last": {
     "t": "2026-07-28T14:34:25Z",
     "who": "fporcari",
@@ -1456,6 +1492,7 @@
    "unresolved": 0,
    "threads": 0,
    "closes": [],
+   "summary": "Summary at_attachmentGrid creates its drop uploader internally and offered no way to configure it. This adds an uploader kwargs family (@extract_kwargs(uploader=True)) forwarded to the dropUploader, so callers can set, for example, a client-side upload size limit: pane.attachmentGrid(..., uploader_maxsize=2000000) # 2 MB The dropUploader already supports maxsize in JS; \u2026",
    "last": {
     "t": "2026-08-24T15:07:59Z",
     "who": "fporcari",
@@ -1483,6 +1520,7 @@
    "unresolved": 0,
    "threads": 0,
    "closes": [],
+   "summary": "Summary Adds a multi-tab self-contained HTML documentation site that walks through the 7 widgets in the grouplet family \u2014 grouplet, groupletChunk, groupletForm, groupletPanel, groupletWizard, groupletGrid, Topic Grid \u2014 plus the three genro.dlg.*DataEditor variants and a final cheat sheet. \u2026",
    "last": {
     "t": "2026-08-24T15:13:00Z",
     "who": "fporcari",
@@ -1512,6 +1550,7 @@
    "unresolved": 0,
    "threads": 0,
    "closes": [],
+   "summary": "Third of three PRs from #901, replacement of the now-closed #904. Cherry-picked onto develop after #903 was merged, so the diff is exactly the four widget commits with no leftover noise from the split that #903 already delivered. \u2026",
    "last": {
     "t": "2026-08-03T16:06:10Z",
     "who": "fporcari",
@@ -1541,6 +1580,7 @@
    "unresolved": 0,
    "threads": 0,
    "closes": [],
+   "summary": "Summary Introduce gnr.GnrCmd, a single namespace exposing the framework's core client-side capabilities (open page, run batch, show dialog, save form, ...) as ~47 thin wrappers over existing primitives. Each command carries an explicit machine-readable schema, so the catalog is introspectable at runtime via genro.cmd.list() and genro.cmd.toolsManifest(). Three equivalent invocation channels are supported. \u2026",
    "last": {
     "t": "2026-08-03T16:06:11Z",
     "who": "fporcari",
@@ -1573,6 +1613,7 @@
    "unresolved": 0,
    "threads": 0,
    "closes": [],
+   "summary": "A batch returns a file path, allowing Genropy to serve it as a download. Unfortunately, when the path contained special characters (a comma?), it stopped working. I found that the filename value in the Content-Disposition header was missing quotes: filename=name.pdf => wrong filename=\"name.pdf\" => ok I also added UTF-8 encoding support: filename*=UTF-8''name.pdf Also added urllib.parse.quote for non-ASCII characters. \u2026",
    "last": {
     "t": "2026-08-14T11:15:46Z",
     "who": "fporcari",
@@ -1609,11 +1650,13 @@
    "closes": [
     {
      "issue": 797,
+     "title": "Fix Excel importer: column shift with empty headers and update_only+sql_mode handling",
      "assignees": [
       "dgpaci"
      ]
     }
    ],
+   "summary": "Summary XlsxReader._sheetlines: use cell.column to position values at the correct index, preventing column shift when openpyxl (read_only mode) omits leading empty cells from data rows XlsxReader.addSheet: apply slugify before the empty-header check so that headers which slugify to '' (e.g. \u2026",
    "last": {
     "t": "2026-08-24T13:20:42Z",
     "who": "fporcari",
@@ -1646,6 +1689,7 @@
    "unresolved": 0,
    "threads": 0,
    "closes": [],
+   "summary": "The --reload option of the gnr web wsgiserve server is very aggressive and also includes temporary files. This patch exludes them Examples: ..../genropy_projects/erpygel/packages/fcrm/webpages/__pycache__/proxy.cpython-312.pyc.129955984444992 ..../genropy_projects/erpygel/instances/erpygel/site/data/_connections/hcv_ZoiZM9mKbM33mAIpfw/hjI0kcRqPrCezmzhA4FGHw/V_fcrm_op_opportunity.pik' ..../genropy_projects/erpygel/.gi \u2026",
    "last": {
     "t": "2026-08-14T11:15:43Z",
     "who": "fporcari",
@@ -1667,6 +1711,7 @@
    "unresolved": 0,
    "threads": 0,
    "closes": [],
+   "summary": "Summary This PR introduces a capability registry pattern to decouple the GenroPy framework core (gnrpy/gnr/) from optional packages like adm and sys. The goal (ref #564) is to allow using the framework without adm/sys packages \u2014 applications that don't need preferences, user objects, counters, etc. should work without those packages being installed. \u2026",
    "last": {
     "t": "2026-03-04T14:20:02Z",
     "who": "cgabriel",
@@ -1694,6 +1739,7 @@
    "unresolved": 0,
    "threads": 0,
    "closes": [],
+   "summary": "Summary When gnrdbsetup detects a Postgres database, it prints a deprecation warning and delegates to gnr db migrate SQLite path remains unchanged This makes the old SqlModelChecker bugs (like #626) irrelevant for Postgres users Test plan flake8: zero errors Manual: gnrdbsetup <postgres_instance> should print warning and run migrate Manual: gnrdbsetup <sqlite_instance> should work as before Ref #630",
    "last": {
     "t": "2026-03-03T09:19:36Z",
     "who": "cgabriel",
@@ -1715,11 +1761,12 @@
    "unresolved": 0,
    "threads": 0,
    "closes": [],
+   "summary": "Summary Introduces db.runtimeModel() \u2014 a context manager that injects virtual columns and relations into queries temporarily, without modifying the static model. Why Currently, adding a formula column requires defining it in the model (formulaColumn_* methods or customVirtualColumns). \u2026",
    "last": null,
    "url": "https://github.com/genropy/genropy/pull/542"
   }
  ],
- "queue_total": 52,
+ "queue_total": 51,
  "queue_truncated": false,
  "issues": [
   {
@@ -1987,20 +2034,6 @@
    "assignees": [],
    "comments": 0,
    "url": "https://github.com/genropy/genropy/issues/1123"
-  },
-  {
-   "n": 1121,
-   "title": "Ci Building problem",
-   "created": "2026-08-21",
-   "author": "cgabriel",
-   "labels": [
-    "bug"
-   ],
-   "assignees": [
-    "cgabriel"
-   ],
-   "comments": 1,
-   "url": "https://github.com/genropy/genropy/issues/1121"
   },
   {
    "n": 1119,
@@ -4459,7 +4492,7 @@
    "url": "https://github.com/genropy/genropy/issues/8"
   }
  ],
- "issues_total": 228,
+ "issues_total": 227,
  "issues_truncated": false,
  "gates": {
   "master": {
@@ -4637,7 +4670,6 @@
   "complete": true
  },
  "branches": [
-  "1121-ci-building-problem",
   "136-fitz-requirement",
   "183-uniform-dumprestore-formats",
   "227-gnr-db-migrate-issue",

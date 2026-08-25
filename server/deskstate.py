@@ -123,6 +123,66 @@ def save(repo, state):
     state_path(repo).write_text(json.dumps(state, indent=1))
 
 
+REQUEST_STALE = 1800
+
+
+def request(repo, key, kind, n=None, label=""):
+    """Record a button press, and refuse a second one while the first is out.
+
+    The ledger lives on the SERVER, not in the page: a click enqueues work
+    for the chat, and the chat may take minutes. A lock kept in the browser
+    is lost on reload, in a second tab, and by the user who presses again
+    because nothing visibly happened — and every extra press is another
+    event the chat has to work through.
+
+    Returns (record, created). created is False when one was already out.
+    """
+    state = load(repo)
+    ledger = state.setdefault("requests", {})
+    existing = ledger.get(key)
+    if existing and existing.get("status") == "queued":
+        age = time.time() - existing.get("epoch", 0)
+        if age < REQUEST_STALE:
+            return existing, False
+        existing["status"] = "stale"          # the chat died holding it
+    record = {"kind": kind, "n": n, "label": label, "status": "queued",
+              "at": time.strftime("%H:%M:%S"), "epoch": time.time()}
+    ledger[key] = record
+    save(repo, state)
+    return record, True
+
+
+def close_request(repo, key, status="done", report=""):
+    """The chat says how it went — this is what the desk shows in place of
+    the lock."""
+    state = load(repo)
+    ledger = state.setdefault("requests", {})
+    record = ledger.get(key) or {"kind": key.split(":")[0], "status": "queued"}
+    record.update(status=status, report=report,
+                  closed_at=time.strftime("%H:%M:%S"))
+    ledger[key] = record
+    save(repo, state)
+    return record
+
+
+def request_key(kind, n):
+    return "%s:%s" % (kind, n)
+
+
+def annotate_requests(rows, state):
+    """Attach every request outstanding or recently closed, keyed by kind, so
+    the UI can lock the button it belongs to and show its outcome."""
+    ledger = state.get("requests") or {}
+    per_row = {}
+    for key, record in ledger.items():
+        kind, _, number = key.rpartition(":")
+        if number.isdigit():
+            per_row.setdefault(int(number), {})[kind] = record
+    for row in rows:
+        row["requests"] = per_row.get(row["n"], {})
+    return rows
+
+
 def add_order(repo, n, propose, draft, instruction):
     """Record the user's go-ahead on one PR. /pr-run reads pending orders as
     pre-authorized work: the click in the desk was the approval."""

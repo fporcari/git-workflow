@@ -1,4 +1,4 @@
-"""Append a progress notification to the desk feed.
+"""Append a progress notification to the desk feed, and close desk requests.
 
 Used by the chat session while it works, so the dashboard shows what is
 happening step by step:
@@ -27,12 +27,21 @@ def main():
     parser.add_argument("--repo", required=True)
     parser.add_argument("--pr", type=int)
     parser.add_argument("--pong", help="answer a desk ping: store the token so the UI sees the roundtrip")
+    parser.add_argument("--done", metavar="KEY",
+                        help="close a desk request (e.g. analyze:1145): the "
+                             "button's lock becomes this outcome")
+    parser.add_argument("--failed", metavar="KEY",
+                        help="close a desk request as failed")
     parser.add_argument("msg")
     args = parser.parse_args()
     if args.pong:
         state = deskstate.load(args.repo)
         state["pong"] = args.pong
         deskstate.save(args.repo, state)
+    if args.done:
+        deskstate.close_request(args.repo, args.done, "done", args.msg)
+    if args.failed:
+        deskstate.close_request(args.repo, args.failed, "failed", args.msg)
     notify(args.repo, args.msg, args.pr)
 
 

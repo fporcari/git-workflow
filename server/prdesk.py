@@ -214,6 +214,7 @@ class Desk:
                                     self.provider.merge_command(self.repo, row["n"]))
         state = deskstate.load(self.repo)
         deskstate.annotate_prs(rows, state)
+        deskstate.annotate_requests(rows, state)
         orders = state.get("orders") or {}
         for row in rows:
             row["order"] = orders.get(str(row["n"]))
@@ -244,6 +245,7 @@ class Desk:
             row["action"] = issue_handoff(row, self.repo)
         state = deskstate.load(self.repo)
         deskstate.annotate_issues(rows, state)
+        deskstate.annotate_requests(rows, state)
         try:
             check = self._crosscheck(self._raw_queue(False)["rows"], refresh)
             issuecheck.annotate(rows, check)
@@ -266,7 +268,10 @@ class Desk:
         age = deskstate.watcher_age(self.repo)
         sp = deskstate.state_path(self.repo)
         busy = sp.exists() and (time.time() - sp.stat().st_mtime) < 180
-        return {"feed": (st.get("feed") or [])[-50:],
+        ledger = st.get("requests") or {}
+        flows = {key.split(":", 1)[1]: rec for key, rec in ledger.items()
+                 if key.startswith(("triage:", "run:"))}
+        return {"feed": (st.get("feed") or [])[-50:], "flows": flows,
                 "grid": st.get("grid"), "shortlist": st.get("shortlist"),
                 "chase": st.get("chase") or {},
                 "session": st.get("session"), "pong": st.get("pong"),
@@ -416,18 +421,32 @@ class Handler(BaseHTTPRequestHandler):
                 # the one line the computed grid cannot write: what this PR is
                 # FOR, in the user's language. One row, one sentence — instead
                 # of the whole queue's titles rewritten every refresh.
-                self._chat_only({"kind": "explain", "n": int(parts[2])},
-                                "explain needs the desk launched from a chat session")
+                n = int(parts[2])
+                self._chat_only({"kind": "explain", "n": n},
+                                "explain needs the desk launched from a chat session",
+                                key=deskstate.request_key("explain", n),
+                                label="una riga su cosa risolve")
             elif len(parts) == 4 and parts[:2] == ["api", "pr"] and parts[3] == "order":
                 n = int(parts[2])
+                key = deskstate.request_key("order", n)
+                record, created = deskstate.request(self.desk.repo, key, "order", n,
+                                                    body.get("propose", ""))
+                if not created:
+                    self._send(200, {"queued": False, "already": True,
+                                     "request": record})
+                    return
                 order = deskstate.add_order(self.desk.repo, n, body.get("propose", ""),
                                             body.get("draft"), body.get("instruction", ""))
                 if self.desk.chat:
                     inbox.push(self.desk.repo, {"kind": "order", "n": n})
-                self._send(200, {"order": order, "queued": self.desk.chat})
+                self._send(200, {"order": order, "queued": self.desk.chat,
+                                 "request": record})
             elif len(parts) == 4 and parts[:2] == ["api", "issue"] and parts[3] == "analyze":
-                self._chat_only({"kind": "issue-analyze", "n": int(parts[2])},
-                                "issue-analyze needs the desk launched from a chat session")
+                n = int(parts[2])
+                self._chat_only({"kind": "issue-analyze", "n": n},
+                                "issue-analyze needs the desk launched from a chat session",
+                                key=deskstate.request_key("issue-analyze", n),
+                                label="sessione dedicata")
             elif parts == ["api", "fetch"]:
                 # explicit re-read of the provider, on the caller's demand
                 self._send(200, dict(self.desk.snapshot(refresh=True), refetched=True))
@@ -440,33 +459,51 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, {"bye": True})
                 threading.Thread(target=self.server.shutdown, daemon=True).start()
             elif parts == ["api", "run"]:
-                self._chat_only({"kind": "run", "flow": body.get("flow", "pr-run")},
-                                "run needs the desk launched from a chat session")
+                flow = body.get("flow", "pr-run")
+                self._chat_only({"kind": "run", "flow": flow},
+                                "run needs the desk launched from a chat session",
+                                key=deskstate.request_key("run", flow), label=flow)
             elif parts == ["api", "ping"]:
                 self._chat_only({"kind": "ping", "token": body.get("token") or ""},
                                 "il ping ha senso solo in modalità chat")
             elif parts == ["api", "triage"]:
                 # the triage reads the JSON the desk already downloaded
                 path = self.desk.export_rows()
-                self._chat_only({"kind": "triage", "flow": body.get("flow", "pr-triage"),
-                                 "rows": str(path)},
-                                "triage needs the desk launched from a chat session")
+                flow = body.get("flow", "pr-triage")
+                self._chat_only({"kind": "triage", "flow": flow, "rows": str(path)},
+                                "triage needs the desk launched from a chat session",
+                                key=deskstate.request_key("triage", flow), label=flow)
             else:
                 self._send(404, {"error": "not found"})
         except Exception as exc:
             self._send(502, {"error": str(exc)})
 
-    def _chat_only(self, event, complaint):
+    def _chat_only(self, event, complaint, key=None, label=""):
+        """Hand work to the chat, exactly once.
+
+        The ledger is checked BEFORE the inbox: a second press while the
+        first is still out must not enqueue a second event, or the chat works
+        through a queue of duplicates the user never meant to send.
+        """
         if not self.desk.chat:
             self._send(409, {"error": complaint})
             return
+        if key:
+            record, created = deskstate.request(
+                self.desk.repo, key, event["kind"], event.get("n"), label)
+            if not created:
+                self._send(200, {"queued": False, "already": True,
+                                 "request": record})
+                return
         inbox.push(self.desk.repo, event)
-        self._send(202, {"queued": True})
+        self._send(202, {"queued": True,
+                         "request": record if key else None})
 
     def _analyze_pr(self, n):
         if self.desk.chat:
-            inbox.push(self.desk.repo, {"kind": "analyze", "n": n})
-            self._send(202, {"queued": True})
+            self._chat_only({"kind": "analyze", "n": n}, "", 
+                            key=deskstate.request_key("analyze", n),
+                            label="pr-analyze")
         else:
             job_id = jobs.analyze_pr(self.desk.repo, n, self.desk.me, self.desk.cwd)
             self._send(202, {"job": job_id})

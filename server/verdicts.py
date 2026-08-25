@@ -14,9 +14,12 @@ input, and a whole turn of latency, to re-derive a mapping.
 
 Pass a `gate` (see gate.py) and the verdicts stop being conservative where an
 API read settles the question — above all WHO MAY LAND. On a base whose
-protection restricts pushes, an approved CLEAN PR of the user's own is not
-his merge, and a verdict engine that has not read the gate says
-`A1 → merge it` there and is wrong.
+protection makes the merge impossible for him, an approved CLEAN PR of his
+own is not something he can land, and a verdict engine that has not read the
+gate says `A1 → merge it` there and is wrong. The reverse matters just as
+much: a restriction that does NOT bind him (an admin where enforce_admins is
+off) must keep its `A1` — whose merge it is by convention is a house rule,
+not something to infer from a protection setting.
 """
 
 
@@ -30,14 +33,17 @@ def _last_who(row):
 
 
 def _landing(gate):
-    """The verdict for an otherwise-mergeable PR the user may not land."""
-    if not gate or gate.get("landers") is None or gate.get("can_land"):
+    """The verdict for an otherwise-mergeable PR the user CANNOT land.
+
+    Capability only. Whose merge it is by convention — on this team the
+    author's/assignee's — is not the gate's business, and an admin who gets
+    through a restriction still owns his own merge: that case keeps its A1
+    and says so in a note (gate.notes), it is not handed away.
+    """
+    if not gate or gate.get("can_land", True):
         return None
-    who = ", ".join(gate["landers"]) or "nessuno"
-    if gate.get("bypass"):
-        return ("approvata \u2014 il merge su %s \u00e8 di %s, tu passi solo "
-                "come admin" % (gate["branch"], who), "decision", "asks")
-    return ("approvata \u2014 il merge su %s \u00e8 di %s"
+    who = ", ".join(gate.get("landers") or []) or "nessuno"
+    return ("approvata \u2014 non puoi mergiare su %s, \u00e8 riservato a %s"
             % (gate["branch"], who), "waiting", "-")
 
 

@@ -24,6 +24,7 @@ body{font:13px/1.4 system-ui,sans-serif}
 .btn.primary{background:var(--ink);border-color:var(--ink);color:var(--panel)}
 .btn.copied,.btn.done{border-color:var(--green);color:var(--green);background:color-mix(in srgb,var(--green) 8%,var(--panel))}
 .btn.working{border-color:var(--amber);color:var(--amber)}
+.btn.locked{border-style:dashed;color:var(--amber);border-color:var(--amber);cursor:default;background:color-mix(in srgb,var(--amber) 6%,var(--panel))}
 .sync{display:flex;align-items:center;gap:6px}
 .sync i{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px color-mix(in srgb,var(--green) 12%,transparent);flex:none}
 .sync.loading i{background:var(--amber);box-shadow:0 0 0 3px color-mix(in srgb,var(--amber) 12%,transparent);animation:pulse 1s infinite}
@@ -213,6 +214,7 @@ let issuesTruncated=null,gridComputed=true,shortlistComputed=true,gates={};
 let selected=null,tab="quadro",sort={key:"created",dir:-1},acting={},truncated=null,pendingMerge=false;
 let deskEtag=null,fetching=false,lastGenerated=null,timings={};
 const triageRunning={pr:false,issue:false};
+let flows={};   // triage/run outstanding, from the server's ledger
 
 /* ---------- helpers ---------- */
 function ageDays(d){return Math.max(0,Math.round((Date.now()-new Date(d))/864e5));}
@@ -262,6 +264,7 @@ function applyDesk(d){
   // there is one, arrives here already substituted by the server
   grid=d.queue.grid||grid;
   shortlist=d.issues.shortlist||shortlist;
+  flows=d.state&&d.state.flows||flows;
   pendingMerge=!!d.queue.mergestate_pending;
   applyState(d.state);
   loaded=true;
@@ -368,17 +371,23 @@ function renderTabs(){
   $("tabs").querySelectorAll("button").forEach(b=>b.onclick=()=>{view=b.dataset.v;stateFilter=null;selectFirst();render();});
   const onIssue=DESK==="issue";
   const tri=$("btnTriage");
-  tri.textContent=(triageRunning[onIssue?"issue":"pr"]?"⏳ ":"↻ ")+(onIssue?"issue-triage":"pr-triage");
+  const triFlow=onIssue?"issue-triage":"pr-triage";
+  const triOut=flows[triFlow]&&flows[triFlow].status==="queued";
+  tri.textContent=(triOut?"→ in chat · ":"↻ ")+triFlow;
   tri.title=(onIssue
     ?"Lancia issue-triage nella chat collegata sulle issue GIÀ scaricate qui (nessuna nuova query al provider)."
     :"Lancia pr-triage nella chat collegata sulle PR GIÀ scaricate qui: il desk gli passa il JSON, la skill non rifà le query.");
-  tri.disabled=!watcherAlive||triageRunning[onIssue?"issue":"pr"]||!loaded;
+  tri.disabled=!watcherAlive||triOut||!loaded;
+  tri.classList.toggle("locked",!!triOut);
   const run=$("btnRun");
-  run.textContent="▶ "+(onIssue?"issue-run":"pr-run");
+  const runFlow=onIssue?"issue-run":"pr-run";
+  const runOut=flows[runFlow]&&flows[runFlow].status==="queued";
+  run.textContent=(runOut?"→ in chat · ":"▶ ")+runFlow;
   run.title=onIssue
     ?"issue-run lavora il batch in chat: un'analisi a contesto pulito per issue, la scelta, poi branch e PR."
     :"pr-run svuota la coda in chat: merge delle tue PR approvate, risposte banali, riallineo dei branch, il resto una PR alla volta.";
-  run.disabled=!watcherAlive;
+  run.disabled=!watcherAlive||runOut;
+  run.classList.toggle("locked",!!runOut);
   document.querySelectorAll(".metric").forEach(m=>m.classList.toggle("on",stateFilter===m.dataset.filter));
 }
 function renderSync(){
@@ -502,22 +511,48 @@ function renderDetail(){
   (isPr?renderPrTab:renderIssueTab)(r);
 }
 
+const REQ_LABEL={analyze:"pr-analyze",explain:"spiegazione",order:"ordine",
+                 "issue-analyze":"sessione dedicata"};
+function requests(r){return r.requests||{};}
+function pending(r,kind){const q=requests(r)[kind];return q&&q.status==="queued"?q:null;}
+function closed(r,kind){const q=requests(r)[kind];return q&&q.status!=="queued"?q:null;}
+
+/* The button's own state, from the ledger the SERVER keeps: a lock held in
+   the page is lost on reload and in a second tab, and the user presses again
+   because nothing visibly happened. */
+function actionButton(id,kind,label,tip,row,primary){
+  const q=pending(row,kind);
+  if(q)return `<span class="btn locked" title="Richiesta passata alla chat alle ${esc(q.at)}. Il bottone resta bloccato finché non torna l'esito, così un secondo clic non accoda un doppione.">→ in chat · ${esc(q.at)}</span>`;
+  const done=closed(row,kind);
+  return `<button class="btn ${primary?"primary":""}" id="${id}" ${watcherAlive?"":"disabled"} title="${esc(tip)}">${done?"↻ ":""}${label}</button>`;
+}
 function actBadge(r){
+  const out=[];
+  for(const [kind,q] of Object.entries(requests(r))){
+    const name=REQ_LABEL[kind]||kind;
+    if(q.status==="queued")
+      out.push(`<div class="actionText">📨 <b>${esc(name)}</b> passata alla chat alle ${esc(q.at)} — l'esito compare qui. Il bottone è bloccato: un altro clic accoderebbe un doppione.</div>`);
+    else if(q.status==="failed")
+      out.push(`<div class="actionText" style="color:var(--red)">✗ <b>${esc(name)}</b> non riuscita${q.closed_at?" alle "+esc(q.closed_at):""}${q.report?`: ${esc(q.report)}`:""}</div>`);
+    else if(q.status==="stale")
+      out.push(`<div class="actionText" style="color:var(--amber)">⚠ <b>${esc(name)}</b> mai chiusa dalla chat — il lucchetto è scaduto, puoi ritentare.</div>`);
+    else
+      out.push(`<div class="actionText" style="color:var(--green)">✓ <b>${esc(name)}</b> chiusa${q.closed_at?" alle "+esc(q.closed_at):""}${q.report?`: ${esc(q.report)}`:""}</div>`);
+  }
   const a=acting[(DESK==="issue"?"i":"p")+r.n];
-  if(!a)return "";
-  if(a.status==="queued")return `<div class="actionText">📨 ${esc(a.what)} — la chat collegata la sta prendendo; l'esito arriva qui e nel feed.</div>`;
-  if(a.status==="error")return `<div class="actionText" style="color:var(--red)">Errore: ${esc(a.error)}</div>`;
-  return "";
+  if(a&&a.status==="error")out.push(`<div class="actionText" style="color:var(--red)">Errore: ${esc(a.error)}</div>`);
+  return out.join("");
 }
 function renderPrActions(r){
   const exec=r.autorun==="A1"?{label:"▶ Merge",tip:"Ordina il merge alla chat collegata: pr-run riverifica i 5 gate freschi (autore, approvazioni sull'ultimo head, CLEAN su base protetta) e solo allora fa squash + delete branch."}
            :r.autorun==="A3"?{label:"▶ Merge base",tip:"Ordina il riallineo alla chat collegata: merge della base nel branch (mai rebase), regole A3 di pr-run."}:null;
-  const done=r.order&&r.order.status!=="pending";
   $("detailActions").innerHTML=`
-    ${exec&&!r.order?`<button class="btn primary" id="aExec" ${watcherAlive?"":"disabled"} title="${esc(exec.tip)}">${exec.label}</button>`:""}
-    ${r.order?`<span class="btn ${done?"done":"working"}" title="Ordine registrato: lo esegue la chat collegata senza altre conferme">${done?"✓ "+esc(r.order.status):"⏳ ordine inviato"}</span>`:""}
-    <button class="btn" id="aExplain" ${watcherAlive?"":"disabled"} title="Chiede al modello una riga sola: cosa risolve questa PR, in italiano. Costa una frase invece dei ${prs.length} titoli che il triage riscriveva tutti insieme.">▶ Spiega</button>
-    <button class="btn ${exec&&!r.order?"":"primary"}" id="aAnalyze" ${watcherAlive?"":"disabled"} title="pr-analyze legge tutto il diff, verifica i claim della descrizione e i thread, e produce cosa/storia/proposta con l'eventuale draft. Read-only.">▶ Analizza</button>
+    ${exec?actionButton("aExec","order",exec.label,exec.tip,r,true):""}
+    ${actionButton("aAnalyze","analyze","▶ Analizza",
+       "Passa la palla alla chat: pr-analyze legge tutto il diff, verifica i claim della descrizione e i thread, e riporta qui cosa/storia/proposta con l'eventuale draft. Read-only, non posta nulla.",
+       r,!exec)}
+    ${r.summary?"":actionButton("aExplain","explain","▶ Spiega",
+       "Questa PR non ha descrizione, quindi il desk non può dire da solo cosa risolve: chiede al modello una riga.",r,false)}
     <a class="btn" href="${r.url}" target="_blank" rel="noreferrer">GitHub ↗</a>`;
   const ex=$("aExec");if(ex)ex.onclick=()=>doOrder(r,ex);
   const an=$("aAnalyze");if(an)an.onclick=()=>doAnalyze(r,an);
@@ -525,7 +560,9 @@ function renderPrActions(r){
 }
 function renderIssueActions(r){
   $("detailActions").innerHTML=`
-    <button class="btn primary" id="aWork" ${watcherAlive?"":"disabled"} title="Prepara una sessione dedicata: nella chat primaria compare una chip, un click apre la sessione che analizza fresca e — se è una modifica coerente singola — fixa in un worktree e apre la PR.">▶ Lavora</button>
+    ${actionButton("aWork","issue-analyze","▶ Lavora",
+      "Passa la palla alla chat: prepara una sessione dedicata — nella chat primaria compare una chip, un click apre la sessione che analizza fresca e, se è una modifica coerente singola, fixa in un worktree e apre la PR.",
+      r,true)}
     <a class="btn" href="${r.url}" target="_blank" rel="noreferrer">GitHub ↗</a>`;
   const w=$("aWork");if(w)w.onclick=()=>doIssueWork(r,w);
 }
@@ -536,7 +573,11 @@ function renderPrTab(r){
     const reviews=(r.reviews||[]).map(v=>`<div class="signal"><b>${esc(v.who)}</b><span>${esc(v.state)} · ${esc(v.on)}</span></div>`).join("")
       ||`<div class="signal"><span>ancora nessuna review</span></div>`;
     g.innerHTML=`
-      <article><h2>Quadro</h2>
+      <article><h2>Cosa risolve</h2>
+        ${r.summary?`<p style="margin-bottom:10px">${esc(r.summary)}</p>`
+          :`<p style="margin-bottom:10px;color:var(--muted)">Nessuna descrizione sulla PR${(r.closes||[]).length?"":" e nessuna issue collegata"} — <b>▶ Spiega</b> la fa riassumere al modello.</p>`}
+        ${(r.closes||[]).length?`<div class="signal"><b>chiude</b><span>${(r.closes||[]).map(c=>`#${c.issue}${c.title?" "+esc(c.title):""}`).join(" · ")}</span></div>`:""}
+        <h2 style="margin-top:12px">Quadro</h2>
         <dl>
           <div><dt>Review decision</dt><dd>${esc(r.decision||"—")}</dd></div>
           <div><dt>Review richiesta a</dt><dd>${esc(r.req.join(", ")||"nessuno")}</dd></div>
@@ -544,7 +585,7 @@ function renderPrTab(r){
           <div><dt>Base</dt><dd>${esc(r.base)}</dd></div>
           <div><dt>Thread</dt><dd>${r.unresolved}/${r.threads} unresolved</dd></div>
           <div><dt>Ultimo a parlare</dt><dd>${r.last?esc(`${r.last.who} · ${r.last.ch} · ${r.last.t.slice(0,10)}`):"—"}</dd></div>
-          <div><dt>Chiude</dt><dd>${(r.closes||[]).map(c=>"#"+c.issue).join(" ")||"nessuna issue"}</dd></div>
+
         </dl>
         ${(r.gate||[]).length?`<h2 style="margin-top:11px">Gate di ${esc(r.base)}</h2>
           <ul>${r.gate.map(g=>`<li>${esc(g)}</li>`).join("")}</ul>`:""}
@@ -597,7 +638,11 @@ function renderIssueTab(r){
   const note=shortlist&&shortlist.rows.find(x=>x.n===r.n);
   if(tab==="quadro"){
     g.innerHTML=`
-      <article><h2>Quadro</h2>
+      <article><h2>Cosa risolve</h2>
+        ${r.summary?`<p style="margin-bottom:10px">${esc(r.summary)}</p>`
+          :`<p style="margin-bottom:10px;color:var(--muted)">Nessuna descrizione sulla PR${(r.closes||[]).length?"":" e nessuna issue collegata"} — <b>▶ Spiega</b> la fa riassumere al modello.</p>`}
+        ${(r.closes||[]).length?`<div class="signal"><b>chiude</b><span>${(r.closes||[]).map(c=>`#${c.issue}${c.title?" "+esc(c.title):""}`).join(" · ")}</span></div>`:""}
+        <h2 style="margin-top:12px">Quadro</h2>
         <dl><div><dt>Tipo</dt><dd>${esc(r.type)}</dd></div>
         <div><dt>Label</dt><dd>${esc(r.labels.join(", ")||"nessuna")}</dd></div>
         <div><dt>Assignees</dt><dd>${esc(r.assignees.join(", ")||"nessuno")}</dd></div>
@@ -639,57 +684,36 @@ async function post(path,body){
   if(d.error)throw new Error(d.error);
   return d;
 }
-function markActing(kind,n,what){acting[kind+n]={status:"queued",what};}
-async function doOrder(r,btn,draft){
+async function handOver(r,btn,path,body,kind,note){
   btn.disabled=true;btn.classList.add("working");
   try{
-    const d=await post(`/api/pr/${r.n}/order`,{propose:r.todo,draft:draft||(r.skill&&r.skill.draft)||null});
-    r.order=d.order;markActing("p",r.n,"ordine: "+r.todo);
-    localFeed(`ordine su #${r.n} inviato alla chat: ${r.todo}`);
-  }catch(e){acting["p"+r.n]={status:"error",error:e.message};}
+    const d=await post(path,body);
+    // the server owns the lock: adopt what it says, do not invent it here
+    if(d.request)(r.requests=r.requests||{})[kind]=d.request;
+    if(d.order)r.order=d.order;
+    localFeed(d.already?`${note} su #${r.n}: già passata alla chat, non la riaccodo`
+                       :`${note} su #${r.n} passata alla chat`);
+  }catch(e){acting[(DESK==="issue"?"i":"p")+r.n]={status:"error",error:e.message};}
   render();
 }
-async function doAnalyze(r,btn){
-  btn.disabled=true;btn.classList.add("working");
+const doOrder=(r,btn,draft)=>handOver(r,btn,`/api/pr/${r.n}/order`,
+  {propose:r.todo,draft:draft||(r.skill&&r.skill.draft)||null},"order","ordine");
+const doAnalyze=(r,btn)=>handOver(r,btn,`/api/pr/${r.n}/analyze`,{},"analyze","pr-analyze");
+const doExplain=(r,btn)=>handOver(r,btn,`/api/pr/${r.n}/explain`,{},"explain","spiegazione");
+const doIssueWork=(r,btn)=>handOver(r,btn,`/api/issue/${r.n}/analyze`,{},
+  "issue-analyze","sessione dedicata");
+async function doFlow(path,flow,note){
   try{
-    await post(`/api/pr/${r.n}/analyze`);
-    markActing("p",r.n,"pr-analyze");
-    localFeed(`pr-analyze su #${r.n} inviata alla chat collegata`);
-  }catch(e){acting["p"+r.n]={status:"error",error:e.message};}
-  render();
-}
-async function doExplain(r,btn){
-  btn.disabled=true;btn.classList.add("working");
-  try{
-    await post(`/api/pr/${r.n}/explain`);
-    markActing("p",r.n,"spiegazione di una riga");
-    localFeed(`spiegazione richiesta alla chat per #${r.n}`);
-  }catch(e){acting["p"+r.n]={status:"error",error:e.message};}
-  render();
-}
-async function doIssueWork(r,btn){
-  btn.disabled=true;btn.classList.add("working");
-  try{
-    await post(`/api/issue/${r.n}/analyze`);
-    markActing("i",r.n,"sessione dedicata");
-    localFeed(`sessione dedicata per la issue #${r.n} richiesta alla chat`);
-  }catch(e){acting["i"+r.n]={status:"error",error:e.message};}
-  render();
-}
-async function doTriage(){
-  const flow=DESK==="issue"?"issue-triage":"pr-triage";
-  try{
-    await post("/api/triage",{flow});
-    triageRunning[DESK==="issue"?"issue":"pr"]=true;
-    localFeed(`${flow} lanciato sul JSON già scaricato — nessuna nuova query al provider`);
+    const d=await post(path,{flow});
+    flows[flow]=d.request||{status:"queued",at:""};
+    localFeed(d.already?`${flow}: già in corso nella chat, non lo riaccodo`:note);
   }catch(e){banner("errBox",esc(e.message),true);}
   render();
 }
-async function doRun(){
-  const flow=DESK==="issue"?"issue-run":"pr-run";
-  try{await post("/api/run",{flow});localFeed(`${flow} avviato nella chat collegata`);}
-  catch(e){banner("errBox",esc(e.message),true);}
-}
+const doTriage=()=>doFlow("/api/triage",DESK==="issue"?"issue-triage":"pr-triage",
+  "triage lanciato sul JSON già scaricato — nessuna nuova query al provider");
+const doRun=()=>doFlow("/api/run",DESK==="issue"?"issue-run":"pr-run",
+  "run avviato nella chat collegata");
 
 /* ---------- summary ---------- */
 function renderSummary(){

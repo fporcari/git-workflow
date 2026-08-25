@@ -100,12 +100,13 @@ then for each event in order:
   roundtrip. Answer immediately and cheaply, nothing else:
   `python3 ${CLAUDE_PLUGIN_ROOT}/server/notify.py --repo <owner/repo> --pong T "pong — chat collegata e in ascolto"`,
   then restart the watcher. No analysis, no chat prose beyond one line.
-- **`{"kind": "explain", "n": N}`** — the user wants ONE line on what PR #N
-  is for, in Italian, because the computed grid shows the raw title and
-  nothing else. Read the PR's description and the issue it closes (no diff),
-  write `prs.<N>.what` in the desk state file, and say the same line in chat.
-  One sentence. This event exists so the desk never pays for 52 titles
-  rewritten at once.
+- **`{"kind": "explain", "n": N}`** — one line, in Italian, on what PR #N is
+  for. The desk only offers this button when the PR has **no description of
+  its own**: otherwise it shows the author's own opening straight from the
+  payload, which costs nothing. So when this arrives, there is genuinely
+  nothing to paraphrase — read the issue it closes and the diff's shape (file
+  names, not contents), write `prs.<N>.what`, close the request. One
+  sentence.
 - **`{"kind": "triage", "flow": ..., "rows": "<path>"}`** — run that
   skill here, report-only, **reading `rows` instead of querying the
   provider**. That file holds `{repo, me, generated, queue, issues, grid,
@@ -133,6 +134,26 @@ While working any event, post progress so the desk shows it live:
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/server/notify.py --repo <owner/repo> [--pr <n>] "<one line>"
 ```
+
+### Close the request when you are done — always
+
+Every button press is recorded in the desk's ledger and **locks that button**
+until you close it: the click hands work to a chat that may take minutes, and
+without a lock the user presses again because nothing visibly happened, and
+you get the same event three times. The lock is also the only place the
+outcome shows up.
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/server/notify.py --repo <owner/repo> \
+  --done analyze:1145 "nessuna risposta da dare: il claim regge"
+#            ^^^^^^^^^^^^ <kind>:<number>, or <kind>:<flow> for triage/run
+# --failed instead of --done when it did not work out, with why
+```
+
+Keys: `analyze:<n>`, `explain:<n>`, `order:<n>`, `issue-analyze:<n>`,
+`triage:<flow>`, `run:<flow>`. A request you never close goes stale after
+half an hour so a dead session cannot wedge the button forever — but that is
+a backstop, not a substitute for closing it.
 
 The user drives from the chat; the desk is the radar. Decisions (picks,
 go-aheads beyond an order, anything Lane B) are asked HERE, never rendered

@@ -42,6 +42,28 @@ def _gh(*args, timeout=90):
     return out.stdout
 
 
+SUMMARY_CHARS = 420
+
+
+def _summary(body):
+    """The opening of the PR's own description, trimmed.
+
+    This is the cheap answer to "what is this PR FOR": the author already
+    wrote it. Asking a model to paraphrase 52 titles was the expensive way to
+    learn something the payload could carry — `bodyText` costs nothing
+    measurable on the search (within run-to-run noise), and trimming it here
+    keeps the 211 KB of full descriptions off the wire.
+    """
+    text = " ".join((body or "").split())
+    if not text:
+        return None
+    if len(text) <= SUMMARY_CHARS:
+        return text
+    cut = text[:SUMMARY_CHARS]
+    stop = max(cut.rfind(". "), cut.rfind("; "))
+    return (cut[:stop + 1] if stop > SUMMARY_CHARS // 2 else cut.rstrip()) + " …"
+
+
 def _graphql(doc, **variables):
     args = ["api", "graphql", "-F", "query=@%s" % (GQL / doc)]
     for key, value in variables.items():
@@ -100,9 +122,10 @@ class GitHubProvider(Provider):
             "reviews": reviews,
             "unresolved": unresolved,
             "threads": len(node["reviewThreads"]["nodes"]),
-            "closes": [{"issue": c["number"],
+            "closes": [{"issue": c["number"], "title": c.get("title"),
                         "assignees": [a["login"] for a in c["assignees"]["nodes"]]}
                        for c in node["closingIssuesReferences"]["nodes"]],
+            "summary": _summary(node.get("bodyText")),
             "last": spoke[-1] if spoke else None,
             "url": "https://github.com/%s/pull/%s" % (repo, node["number"]),
         }
