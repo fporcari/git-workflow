@@ -130,13 +130,16 @@ class Handler(BaseHTTPRequestHandler):
             elif url.path == "/api/state":
                 st = deskstate.load(self.desk.repo)
                 age = deskstate.watcher_age(self.desk.repo)
+                sp = deskstate.state_path(self.desk.repo)
+                busy = sp.exists() and (time.time() - sp.stat().st_mtime) < 180
                 self._send(200, {"feed": (st.get("feed") or [])[-50:],
                                  "grid": st.get("grid"), "situa": st.get("situa"),
                                  "chase": st.get("chase") or {},
                                  "session": st.get("session"),
                                  "pong": st.get("pong"),
                                  "watcher": {"alive": self.desk.chat and age is not None and age < 10,
-                                             "age": age, "chat": self.desk.chat}})
+                                             "age": age, "chat": self.desk.chat,
+                                             "busy": bool(busy)}})
             elif url.path == "/api/selftest":
                 out = {}
                 try:

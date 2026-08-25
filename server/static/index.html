@@ -175,12 +175,9 @@ const VIEWS=()=>DESK==="issue"?[
   {id:"grid",label:"Situa",tip:"L'output di issue-triage: le 10 issue recenti non analizzate, tipo e cross-check di branch e PR. Si aggiorna col bottone ↻.",count:situa?situa.rows.length:0},
   {id:"issues",label:"Tutte",tip:"Tutte le issue aperte del repo, live dai campi (si caricano col ⟳)",count:loaded?issues.length:"—"},
 ]:[
-  {id:"grid",label:"Triage",tip:"L'output di pr-triage: la griglia a blocchi con i gate veri e i solleciti verificati. Si aggiorna col bottone ↻.",count:grid?grid.blocks.reduce((a,b)=>a+b.rows.length,0):0},
-  {id:"queue",label:"Coda",tip:"Le PR che aspettano una mossa tua o una tua decisione (lettura live dei campi, col ⟳)",count:loaded?prs.filter(r=>r.state!=="waiting").length:"—"},
-  {id:"ready",label:"Mergiabili",tip:"Approvate e CLEAN: pronte al merge",count:loaded?prs.filter(r=>r.state==="ready").length:"—"},
-  {id:"waiting",label:"In attesa",tip:"Ferme su qualcun altro: reviewer o autore",count:loaded?prs.filter(r=>r.state==="waiting").length:"—"},
-  {id:"chase",label:"Solleciti",tip:"Un messaggio pronto da incollare per ogni persona da sollecitare (verificati, da pr-triage)",count:Object.keys(chase).length||"—"},
-  {id:"all",label:"Tutte",tip:"Tutte le PR aperte in cui sei coinvolto (col ⟳)",count:loaded?prs.length:"—"},
+  {id:"grid",label:"Triage",tip:"L'output di pr-triage: la coda organizzata per blocchi, con i gate veri. Si aggiorna col bottone ↻.",count:grid?grid.blocks.reduce((a,b)=>a+b.rows.length,0):"—"},
+  {id:"chase",label:"Solleciti",tip:"Un messaggio pronto da incollare per ogni persona da sollecitare (verificati, da pr-triage)",count:Object.keys(chase).length},
+  {id:"all",label:"Tutte",tip:"Tutte le PR aperte in cui sei coinvolto, in lista piatta: dal triage, raffinata coi campi live se premi ⟳",count:loaded?prs.length:(grid?gridAllRows().length:"—")},
 ];
 
 async function copyText(btn,text){
@@ -221,6 +218,9 @@ function visibleIssues(){
   const q=query.toLowerCase();
   return issues.filter(r=>!q||[r.n,r.title,r.author,(r.labels||[]).join(" ")].join(" ").toLowerCase().includes(q));
 }
+
+function gridAllRows(){return grid?grid.blocks.flatMap(b=>b.rows):[];}
+function gridBlockRows(title){const b=grid&&grid.blocks.find(x=>x.title===title);return b?b.rows:[];}
 
 const analyses={};
 
@@ -275,9 +275,15 @@ async function pollState(){
     const w=st.watcher||{};
     watcherAlive=!!w.alive;
     const wb=$("watcherBox");
-    if(w.chat&&!w.alive){
+    if(w.chat&&!w.alive&&w.busy){
+      watcherAlive=true;
       wb.style.display="block";
-      wb.innerHTML="<b>Chat non in ascolto.</b> La sessione collegata non sta guardando l'inbox: i bottoni sono disattivati. Nella chat che ha lanciato il desk rilancia <code>/review-desk</code> (o chiedi di riavviare il watcher).";
+      wb.style.borderColor="var(--amber)";wb.style.color="var(--amber)";
+      wb.innerHTML="<b>Chat occupata.</b> La sessione collegata sta lavorando un evento: i nuovi click si accodano e verranno presi a fine lavoro.";
+    }else if(w.chat&&!w.alive){
+      wb.style.display="block";
+      wb.style.borderColor="var(--red)";wb.style.color="var(--red)";
+      wb.innerHTML="<b>Chat non in ascolto.</b> La sessione collegata non sta guardando l'inbox: i bottoni sono disattivati. Nella chat che ha lanciato il desk rilancia il desk (o chiedi di riavviare il watcher).";
     }else{wb.style.display="none";}
     if(Object.keys(st.chase||{}).length||!loaded)chase=st.chase||chase;
     const box=$("feedBox"),feed=st.feed||[];
@@ -401,10 +407,20 @@ function renderTable(){
   const tb=$("tbody"),th=$("thead");
   renderChase();renderGrid();
   if(view==="chase"||view==="grid"){$("empty").style.display="none";tb.innerHTML="";th.innerHTML="";return;}
+  if(!loaded&&view==="all"&&DESK==="pr"&&grid){
+    th.innerHTML=`<tr><th style="width:64px">#</th><th style="width:92px">data</th><th style="width:100px">autore</th><th>titolo</th><th style="width:190px">prossima mossa</th><th style="width:64px">autorun</th><th style="width:86px"></th></tr>`;
+    const q=query.toLowerCase();
+    const rows=gridAllRows().filter(r=>!q||[r.n,r.what,r.author,r.todo].join(" ").toLowerCase().includes(q));
+    tb.innerHTML=rows.map(r=>`<tr data-dlg="p${r.n}"><td class="mono">#${r.n}</td><td class="mono">${esc(r.date||"")}</td><td>${esc(r.author||"")}</td><td class="next" style="max-width:none">${esc(r.what||"")}</td><td><b>${esc(r.todo||"")}</b></td><td class="mono">${esc(r.autorun||"")}</td><td><button class="rowBtn" data-dlg="p${r.n}">Azioni…</button></td></tr>`).join("");
+    $("empty").style.display=rows.length?"none":"flex";
+    $("empty").innerHTML=`<b>Ancora nessun dato</b><span>Il triage riempie questa lista all'avvio; ⟳ la raffina coi campi live.</span>`;
+    tb.querySelectorAll("[data-dlg]").forEach(el=>el.onclick=e=>{e.stopPropagation();openDialog(el.dataset.dlg);});
+    return;
+  }
   if(!loaded){
     th.innerHTML="";tb.innerHTML="";
     $("empty").style.display="flex";
-    $("empty").innerHTML=`<b>Coda non caricata</b><span>Il desk parte vuoto: premi ⟳ in alto per leggere PR e issue live dal provider.</span>`;
+    $("empty").innerHTML=`<b>Non ancora caricato</b><span>Premi ⟳ in alto per leggere i campi live dal provider.</span>`;
     return;
   }
   $("empty").innerHTML=`<b>Niente in questa vista</b><span>Prova un altro filtro o un altro tab.</span>`;
@@ -517,6 +533,26 @@ function renderDialog(){
 }
 
 function renderSummary(){
+  if(!loaded&&DESK==="pr"&&grid){
+    const merg=gridBlockRows("Da mergiare subito").length;
+    const mine=merg+gridBlockRows("Azione banale").length+gridBlockRows("Review da fare").length;
+    const dec=gridBlockRows("Solo tue").length;
+    const wait=gridBlockRows("In attesa di altri").length;
+    $("mAttention").textContent=mine;$("mDecision").textContent=dec;
+    $("mWaiting").textContent=wait;$("mReady").textContent=merg;
+    $("cPrs").textContent=gridAllRows().length;$("cIssues").textContent="—";
+    const tot=mine+dec;
+    $("leadTitle").textContent=tot?`${tot} pull request aspettano una mossa tua`:"nessuna PR aspetta una mossa tua";
+    $("leadSub").textContent=`dal triage delle ${grid.generated.slice(11,16)} · ↻ per rifarlo · ⟳ per i campi live · provider ${meta.provider||"—"}`;
+    return;
+  }
+  if(!loaded&&DESK==="issue"&&situa){
+    ["mAttention","mDecision","mWaiting","mReady"].forEach(id=>$(id).textContent="—");
+    $("cIssues").textContent=situa.rows.length;$("cPrs").textContent="—";
+    $("leadTitle").textContent=`${situa.rows.length} issue in situa`;
+    $("leadSub").textContent=`dal triage delle ${situa.generated.slice(11,16)} · ↻ per rifarlo · ⟳ per tutte le issue live · provider ${meta.provider||"—"}`;
+    return;
+  }
   if(!loaded){
     ["mAttention","mDecision","mWaiting","mReady","cPrs","cIssues"].forEach(id=>$(id).textContent="—");
     $("leadTitle").textContent=DESK==="issue"?"issue desk":"pr desk";
