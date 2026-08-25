@@ -1,7 +1,7 @@
 {
   "name": "git-workflow",
   "description": "PR and issue workflow toolkit: pr-triage / pr-run / issue-triage skills plus a local review-desk dashboard server with pluggable git hosting providers (GitHub today, Forgejo ready).",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": {
     "name": "Francesco Porcari",
     "email": "fporcari@softwell.it"
