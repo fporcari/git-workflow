@@ -1,9 +1,11 @@
 ---
-name: pr-run
-description: Drain the PR queue until the user has nothing left to do himself — first the moves that need no permission (merge his own fully-approved PRs, answer small named review requests, realign his DIRTY branches), then the rest presented one PR at a time for a go-ahead. Explicit invocation ONLY - use exclusively when the user invokes /pr-run by name, or as the mandatory continuation of pr-triage, which always hands over to it; never trigger it on your own in any other situation, however well a request seems to match.
+name: pr-loop
+description: Loop over the PR queue until the user has nothing left that only he can do — first the moves that need no permission (merge his own fully-approved PRs, answer small named review requests, realign his DIRTY branches), then the rest presented for a go-ahead, one at a time or in a batch. Takes the numbers to work and a batch size, so several can be proposed together and executed in parallel worktrees.
+argument-hint: opzionale — "1145,1128,1059" per lavorare solo quelle · "batch=4" per proporne 4 insieme
+disable-model-invocation: true
 ---
 
-# PR run
+# PR loop
 
 ## The goal
 
@@ -28,6 +30,28 @@ discover it later is.
 nobody merged, a `DIRTY` branch, a review request sitting on him, a
 `CHANGES_REQUESTED` he never answered.
 
+## The mandate: `$ARGUMENTS`
+
+| what he typed | what it means |
+|---|---|
+| `1145,1128,1059` (`#` optional) | **the working set**: exactly those, **in that order**, and then stop. No other PR is read, merged, answered or realigned — including by Lane A |
+| `batch=N` | present N together in Lane B instead of one. Clamped to **1..4** |
+| anything else | a scope note, not a filter — say back how you read it |
+
+**Default `batch=1`.** One at a time is the shape that costs nothing when he
+says no; `batch` is him saying *"I have already decided, spend the reads"*.
+Clamped to 4 because one `AskUserQuestion` box holds four options, and a
+fifth proposal would cost the answer its clickable path for nothing.
+
+**A named working set narrows Lane A too.** `/pr-loop 1145` means that PR
+and no other: an approved PR of his elsewhere in the queue is not touched,
+and the closing report says so rather than pretending the queue was drained.
+
+**From a desk button** the event is
+`{"kind": "run", "flow": "pr-loop", "ns": [...], "batch": N}`. `ns` is the
+rows he picked by hand in the dashboard, and it means what the typed list
+means. Do not re-ask which ones — the picking was the answer.
+
 ## The loop
 
 Two lanes, in order, and Lane A **iterates to a fixed point** before Lane B
@@ -38,7 +62,7 @@ repeat:
     read the queue fresh
     do every A1, A2, A3 that qualifies
 until a full pass changes nothing
-then Lane B, one PR at a time
+then Lane B, one PR at a time (or one batch at a time)
 report against the goal
 ```
 
@@ -67,7 +91,7 @@ one question before handing over, and its answer is the exclusion list. Do not
 ask again: a second confirmation turns a mandatory handover back into the manual
 driving the split was meant to end.
 
-**Invoked on its own, there is no grid and no veto.** Take the queue as it stands
+**Invoked with no arguments and no grid, there is no veto.** Take the queue as it stands
 and say, in one line before acting, which PRs Lane A is about to touch. Same
 information as the `autorun` column, arriving a moment later. Never refuse to
 start for want of a triage: this skill reads the queue itself on every pass by
@@ -269,7 +293,7 @@ Report Lane A as a table of what was done and the real check numbers, then say
 what is left. If Lane A did nothing, say that too — it means the queue's
 remaining work all needs him.
 
-# Lane B — one PR at a time
+# Lane B — one PR at a time, or one batch
 
 Ordered by who is blocked. For each, four lines and then stop:
 
@@ -285,6 +309,55 @@ to the next PR without re-asking. Anything else is a conversation about that PR:
 answer it, adjust the proposal, ask again. Never present the next PR before the
 current one is settled — the whole point of the format is that he holds one
 decision in his head at a time.
+
+### With `batch=N`
+
+The four-line block does **not** degrade into a summary: it repeats. Print all
+N blocks separated by a blank line, then ask **once** — one `AskUserQuestion`,
+one question, `multiSelect: true`, one option per proposal (`#1145 vai`,
+`#1128 vai`, …). Ticked means go, unticked means skip, and "Other" is there for
+*"il 2 sì ma senza toccare i test"*. A typed answer (`1 vai, 2 no, 3 vai`, or
+`tutte vai`) is accepted just the same — the box is the convenience, not the
+protocol.
+
+**A conversation about one does not hold up the others.** The clean `vai`
+proposals start immediately; the one he wants to discuss returns at the head of
+the next batch. Otherwise the batch buys nothing.
+
+### What can run in parallel, and what cannot
+
+**Never hand an approved batch straight to N agents.** Build the conflict graph
+over the approved set, take its connected components, and run the components in
+parallel while the members of one component run in sequence, in queue order.
+Two PRs conflict when any of these holds:
+
+- **they touch the same file** — intersect `gh pr diff <n> --name-only`;
+- **they are stacked** — one's `baseRefName` is the other's `headRefName`
+  (`gh pr view <n> --json baseRefName,headRefName`); the chain is sequential
+  base→head;
+- **they meet on the same issue** — intersecting `closingIssuesReferences`;
+- **one of them is an A1 merge or an A3 realign** on a base the other shares.
+  A merge into the base invalidates every `mergeStateStatus` read a moment
+  ago, so **a merge or a realign runs alone**;
+- they would push the same head branch.
+
+**Unknown means sequential.** Say the grouping before launching, one line per
+group:
+
+> gruppo 2 (sequenziale): #1145 → #1128, toccano entrambe
+> `gnrpy/gnr/web/gnrbaseclasses.py`
+
+Every agent that touches a working tree runs with `isolation: "worktree"`, one
+per PR, and never `git stash`: worktrees share a single stash stack, so a stash
+in one agent surfaces in another. Use a patch file.
+
+### When one of them fails
+
+Each agent returns `{n, status: ok|failed, what, why}`. The report is **per
+item, never aggregate** — there is no "batch completato" line: four items with
+one failure is three successes and one failure, said in four rows. A failure
+does not stop the others, but inside a **sequential** group it aborts the rest
+of that group, reported as *"#1128 non tentata: #1145 è fallita"*.
 
 **`basta` / `stop` / `per ora ok` ends the lane, and that is a normal ending.**
 Go straight to Closing with what stands: what Lane A did, what was settled in
@@ -518,15 +591,15 @@ Report against the goal, not as a diary of what you did.
 If Lane A did nothing on its first pass, say that too — it means everything
 remaining needed him, which is itself the answer to "do I have anything to do".
 
-Never close with a PR silently unaccounted for. Every PR that entered the run
+Never close with a PR silently unaccounted for. Every PR that entered the loop
 appears in exactly one of the three lists, including the ones you deliberately
 left alone and why.
 
 ## Publish to the review desk
 
-**The desk must react to what the run does.** After every action that
+**The desk must react to what the loop does.** After every action that
 changes the queue — a merge, an answered review, a realign — and again at
-the end of the run:
+the end of the loop:
 
 - remove the settled PR's rows from `grid.blocks` in
   `~/.local/state/git-workflow/<owner>__<repo>.json` (a merged PR must
@@ -535,27 +608,42 @@ the end of the run:
 - refresh `analysis`/`next` for what moved, and put the full text of any
   review drafted but not sent in that PR's `draft` key;
 - one feed line per action (`notify.py`), in plain words;
-- **say which PR you are on, before you start on it**, so the desk puts the
-  needle on that row instead of leaving the user to read the feed:
+- **say which PRs you are on, before you start on them**, so the desk puts the
+  needle on those rows instead of leaving the user to read the feed:
 
 ```bash
+# one at a time
 python3 ${CLAUDE_PLUGIN_ROOT}/server/notify.py --repo <owner/repo> \
   --pr <n> --working "cosa stai facendo su questa, in una riga"
+
+# a batch: all of its rows glow, not just the first
+python3 ${CLAUDE_PLUGIN_ROOT}/server/notify.py --repo <owner/repo> \
+  --batch 1145,1128,1059 --working "in parallelo, un worktree per PR"
 ```
 
-  Update it as you move to the next PR — the marker is a single row, not a
-  list — and when the queue is empty drop it:
+  While a batch is live, `--pr <n> --working "…"` **refines that one item** and
+  leaves the set standing: per-PR progress reaches the desk without collapsing
+  three glowing rows back to one. Move the marker as the loop moves, and when
+  the queue is empty drop it.
+
+  **One request per loop, not per item.** The ▶ button's lock is `run:pr-loop`
+  and stays a single request however wide the batches — closing it per item
+  would re-arm the button mid-loop. What a batch changes is the report, which
+  must name every item:
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/server/notify.py --repo <owner/repo> \
-  --done run:pr-run "coda svuotata: 2 merge, 1 riallineo"
+  --done run:pr-loop "2 merge (#1145 #1059), 1 riallineo (#1102), 1 fallita (#1128: conflitto in un file che la base ha riscritto)"
 ```
 
-  That one command closes the run's request (unlocking the ▶ pr-run button
-  and showing the outcome in its place) and clears the highlight. A marker
-  nobody updates for fifteen minutes is dropped by the desk on its own — a
-  row left glowing after the run died reads as work in progress, which is
-  worse than no highlight — but that is a backstop, not a substitute.
+  That command closes the loop's request (unlocking the ▶ pr-loop button and
+  showing the outcome in its place) and clears the highlight. Use `--failed`
+  only when **nothing** was accomplished: a loop that merged two and lost one
+  did its job and says so in the report. A marker nobody updates for fifteen
+  minutes is dropped by the desk on its own — a row left glowing after the loop
+  died reads as work in progress, which is worse than no highlight — but that
+  is a backstop, not a substitute.
+
 
 ## How to talk about the lanes
 

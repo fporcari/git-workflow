@@ -1,6 +1,6 @@
 ---
 name: pr-desk
-description: Launch the PR desk — the dashboard of the pull request queue, attached to this chat. At startup it runs pr-triage by itself and fills its grid; buttons (merge orders, pr-analyze, pr-run, reload triage) come back here as events. Use when the user asks for the PR desk or a PR dashboard.
+description: Launch the PR desk — the dashboard of the pull request queue, attached to this chat. At startup it runs pr-triage by itself and fills its grid; buttons (merge orders, pr-analyze, pr-loop, reload triage) come back here as events. Use when the user asks for the PR desk or a PR dashboard.
 ---
 
 # PR desk

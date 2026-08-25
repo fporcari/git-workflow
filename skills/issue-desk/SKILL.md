@@ -1,6 +1,6 @@
 ---
 name: issue-desk
-description: Launch the issue desk — the dashboard of the repo's open issues, attached to this chat. At startup it runs issue-triage by itself and fills its shortlist; buttons (dedicated work sessions, issue-run, reload triage) come back here as events. Use when the user asks for the issue desk or an issue dashboard.
+description: Launch the issue desk — the dashboard of the repo's open issues, attached to this chat. At startup it runs issue-triage by itself and fills its shortlist; buttons (dedicated work sessions, issue-loop, reload triage) come back here as events. Use when the user asks for the issue desk or an issue dashboard.
 ---
 
 # Issue desk

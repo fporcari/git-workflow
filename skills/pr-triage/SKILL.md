@@ -1,22 +1,22 @@
 ---
 name: pr-triage
-description: Show every open PR the user is involved in, split into blocks by the kind of work it needs — mergeable now, trivial action, reviews he owes, people to chase (grouped per person, copy-pasteable), and the calls only he can make — each row carrying number, date, author, what it is, what is to be done, and whether /pr-run would handle it unattended, read from the GitHub fields rather than by reading diffs. Explicit invocation ONLY - use exclusively when the user invokes /pr-triage by name; never trigger it on your own, however well a request seems to match. Read-only itself, it does not stop at the grid: it hands over to pr-run, which acts on it, after one question about what to leave alone.
+description: Show every open PR the user is involved in, split into blocks by the kind of work it needs — mergeable now, trivial action, reviews he owes, people to chase (grouped per person, copy-pasteable), and the calls only he can make — each row carrying number, date, author, what it is, what is to be done, and whether /pr-loop would handle it unattended, read from the GitHub fields rather than by reading diffs. Explicit invocation ONLY - use exclusively when the user invokes /pr-triage by name; never trigger it on your own, however well a request seems to match. Read-only itself, it does not stop at the grid: it hands over to pr-loop, which acts on it, after one question about what to leave alone.
 ---
 
 # PR triage
 
 Read-only. Answers "what is on my plate" from the GitHub fields, never the diffs.
-Acting on what it finds is `pr-run`.
+Acting on what it finds is `pr-loop`.
 
 **A queue is finished when the user has nothing left to do himself** — not when
 every PR is merged. Every verdict is written from his side: whose move is it, and
 if it is his, which move.
 
-**Never does:** read diffs, verify, write review bodies (that is `pr-run`); post,
+**Never does:** read diffs, verify, write review bodies (that is `pr-loop`); post,
 push, rebase, merge, assign, withdraw a request; judge a PR he is not involved
 in; claim searched or verified for anything not done this session — an unread
 field is `not checked`, not a guess. When a cell needs a diff read to fill
-honestly, write what the fields say and let `pr-run` find out.
+honestly, write what the fields say and let `pr-loop` find out.
 
 Every rule below was learned by getting it wrong. `WHY.md` in this directory has
 the case behind each one — **read the relevant section when you are about to skip
@@ -195,7 +195,7 @@ stop at the one he has time for. Same six columns everywhere:
   the turnaround (4h critical, 24h high, 48h normal, a week low); `updatedAt` is
   useless, any push resets it · **author**, `me` for his own · **what it is** in
   one line in the user's language, no verdict · **what is to be done** from the
-  vocabulary below · **autorun** = what `pr-run` does with it.
+  vocabulary below · **autorun** = what `pr-loop` does with it.
 
 Never write an `A1`/`A2`/`A3` whose gates you have not checked. When a gate needs
 a diff read, the honest cell is `asks`.
@@ -319,7 +319,7 @@ Three counts, one line each:
   the same line that they are excluded and sit in block 4.
 
 Then **one** question and only this one: anything on the unattended list to leave
-alone? Then invoke `pr-run` with the vetoes, in the same session — not "you can
+alone? Then invoke `pr-loop` with the vetoes, in the same session — not "you can
 now run it". `vai`, `ok`, an empty answer or silence all exclude nothing.
 
 Two cases end the run instead, and both must be said out loud:

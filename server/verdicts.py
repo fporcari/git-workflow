@@ -237,7 +237,7 @@ def fallback_chase(rows):
 
 def handoff(row, repo, merge_command):
     """The prepared action for one row: the exact command for an A1, a
-    ready-to-paste /pr-run prompt for everything else that is the user's
+    ready-to-paste /pr-loop prompt for everything else that is the user's
     move. The desk never executes; it hands over."""
     n, todo = row["n"], row["todo"]
     if row["autorun"] == "A1":
@@ -252,7 +252,7 @@ def handoff(row, repo, merge_command):
                % (row["title"], row["author"], row["decision"] or "nessuna",
                   row["merge"], row["unresolved"], row["threads"]))
     return {"kind": "prompt", "label": "Copia prompt per Claude",
-            "text": "/pr-run — solo la PR #%s di %s: %s. Contesto dal desk: %s."
+            "text": "/pr-loop — solo la PR #%s di %s: %s. Contesto dal desk: %s."
                     % (n, repo, todo, context)}
 
 

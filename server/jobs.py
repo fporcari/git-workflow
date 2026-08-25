@@ -2,11 +2,11 @@
 
 The desk's Analyze button spawns a read-only `claude -p` run following the
 pr-analyze skill: it reads the PR through gh, verifies the description's
-claims, and returns the pr-run Lane B block (what / history / propose).
+claims, and returns the pr-loop Lane B block (what / history / propose).
 
 Execution of the block's proposal is NOT spawned from here: the go-ahead is
 recorded as a pending order in the desk state file, and a chat session (or
-/pr-run) picks it up. See orders() below.
+/pr-loop) picks it up. See orders() below.
 """
 
 import json

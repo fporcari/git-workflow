@@ -167,7 +167,9 @@ globalThis.fetch = async () => { throw new Error("network is off in this test");
 /* ---- run the page's script ---- */
 const script = html.match(/<script>\n([\s\S]*)\n<\/script>/)[1];
 const page = new Function(`${script}\nreturn {applyDesk,applyState,render,renderDetail,select,moveSelection,setSort,visiblePrs,visibleIssues,
-  get state(){return {prs,issues,selected,tab,view,loaded,DESK,truncated,pendingMerge,sort};},
+  rowClick,togglePick,clearPicks,doRun,MAX_BATCH,
+  get state(){return {prs,issues,selected,tab,view,loaded,DESK,truncated,pendingMerge,sort,
+                      picked:[...picked],askBatch};},
   set view(v){view=v;}, set query(v){query=v;}, set watcher(v){watcherAlive=v;}};`)();
 
 /* ---- 1. what the server handed over ---- */
@@ -359,9 +361,64 @@ ok("the bar offers a jump to the row",
 page.select(runner.n);
 ok("the detail panel says the chat is on this one",
    /la chat sta lavorando questa/.test(document.getElementById("detailGrid").innerHTML));
+/* ---- 7f. a batch marks every row it is working ---- */
+const three = page.visiblePrs().slice(0, 3).map(r => r.n);
+page.applyState({ working: { n: three[0], ns: three, items: {}, msg: "3 in parallelo",
+                             at: "19:20:00" },
+                  watcher: { alive: true, chat: true }, feed: [] });
+page.render();
+ok("every row of a batch glows, not just the first",
+   document.getElementById("tbody").querySelectorAll("tr")
+     .filter(tr => tr.classList.contains("working")).length === 3);
+ok("the bar names the whole batch", (() => {
+  const bar = document.getElementById("workingBar").innerHTML;
+  return three.every(n => bar.includes(String(n))) && /in parallelo/.test(bar);
+})());
+page.applyState({ working: { n: three[0], ns: three,
+                             items: { [three[1]]: "giro i test" },
+                             msg: "3 in parallelo", at: "19:20:00" },
+                  watcher: { alive: true, chat: true }, feed: [] });
+page.select(three[1]);
+ok("the detail of one batch member shows its own line, not the batch label",
+   /giro i test/.test(document.getElementById("detailGrid").innerHTML));
+
+/* ---- 7g. rows picked by hand ---- */
+page.clearPicks();
+page.rowClick(three[0], { metaKey: true });
+page.rowClick(three[1], { metaKey: true });
+ok("cmd-click picks rows instead of moving the cursor",
+   page.state.picked.length === 2 && page.state.picked.includes(three[0]));
+ok("a picked row is marked in the table",
+   document.getElementById("tbody").querySelectorAll("tr")
+     .filter(tr => tr.classList.contains("picked")).length === 2);
+ok("a plain click never drops the picks", (() => {
+  page.rowClick(page.visiblePrs()[4].n, {});
+  return page.state.picked.length === 2;
+})());
+ok("the pick bar says which rows and offers to run them", (() => {
+  const bar = document.getElementById("pickBar");
+  return bar.classList.contains("on") && bar.innerHTML.includes("pRun");
+})());
+ok("▶ on several picked rows asks batch or one at a time, it does not guess",
+   (() => { page.doRun();
+            const bar = document.getElementById("pickBar").innerHTML;
+            return page.state.askBatch && /Batch da 2/.test(bar) &&
+                   /Una alla volta/.test(bar); })());
+ok("the batch it offers never exceeds one answer box", page.MAX_BATCH === 4);
+ok("a single picked row is not asked about", (() => {
+  page.clearPicks();
+  page.rowClick(three[0], { metaKey: true });
+  page.doRun();
+  return !page.state.askBatch;
+})());
+page.clearPicks();
+ok("svuota leaves nothing picked and nothing marked",
+   page.state.picked.length === 0 &&
+   !document.getElementById("pickBar").classList.contains("on"));
+
 page.applyState({ working: null, watcher: { alive: true, chat: true }, feed: [] });
 page.render();
-ok("when the run ends nothing is left glowing",
+ok("when the loop ends nothing is left glowing",
    !document.getElementById("workingBar").classList.contains("on") &&
    !document.getElementById("tbody").innerHTML.includes("nowChip"));
 

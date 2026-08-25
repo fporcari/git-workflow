@@ -1,5 +1,5 @@
 ---
-description: Show the issue shortlist — the 10 most recent open issues not yet analyzed, ranked by impact, classified by type, with existing branches and PRs cross-checked — read-only, exported to the review desk. Working them (one analysis and one proposal at a time, then branches and PRs) is /issue-run, which this command offers at the end. Explicit invocation ONLY. Re-run to advance to the next batch.
+description: Show the issue shortlist — the 10 most recent open issues not yet analyzed, ranked by impact, classified by type, with existing branches and PRs cross-checked — read-only, exported to the review desk. Working them (one analysis and one proposal at a time, then branches and PRs) is /issue-loop, which this command offers at the end. Explicit invocation ONLY. Re-run to advance to the next batch.
 argument-hint: optional — "batch=N" to change the 10, "mine" to restrict to issues assigned to me
 allowed-tools: Bash, Read, Grep, Glob, AskUserQuestion, ToolSearch, mcp__ccd_session_mgmt__set_session_title
 ---
@@ -7,7 +7,7 @@ allowed-tools: Bash, Read, Grep, Glob, AskUserQuestion, ToolSearch, mcp__ccd_ses
 # Issue triage — the shortlist — $ARGUMENTS
 
 Read-only: no branches, no comments, no PRs, no assignments. Acting on the
-batch is `/issue-run`.
+batch is `/issue-loop`.
 
 ## Step 0 — Scope
 
@@ -99,6 +99,6 @@ question — the user drives from the dashboard.
 
 ## Step 3 — Handover
 
-One question only: work the batch now with `/issue-run`, and which issues to
-leave alone? On a yes, invoke `issue-run` in the same session with the batch
+One question only: work the batch now with `/issue-loop`, and which issues to
+leave alone? On a yes, invoke `issue-loop` in the same session with the batch
 and the exclusions. On a no, stop — the shortlist was the deliverable.

@@ -1,9 +1,9 @@
 ---
 name: pr-analyze
-description: Analyze ONE pull request the pr-run way — read the whole diff, verify the description's claims against the code, read the threads — and return the Lane B block (what / history / propose) plus any draft worth posting. Read-only, never posts or pushes. Used headless by the review-desk dashboard's Analyze button, or from chat on a single PR.
+description: Analyze ONE pull request the pr-loop way — read the whole diff, verify the description's claims against the code, read the threads — and return the Lane B block (what / history / propose) plus any draft worth posting. Read-only, never posts or pushes. Used headless by the review-desk dashboard's Analyze button, or from chat on a single PR.
 ---
 
-# PR analyze — one PR, the pr-run Lane B chunk
+# PR analyze — one PR, the pr-loop Lane B chunk
 
 Read-only. This skill produces the decision block; acting on it is a separate,
 explicitly authorized step. **Never** post, push, merge, edit, assign or
@@ -24,18 +24,18 @@ gh pr checks <n> --repo <owner/repo>
 
 ## 2 · Verify
 
-The full playbook is the pr-run skill's sections **"Verifying before you
+The full playbook is the pr-loop skill's sections **"Verifying before you
 propose"**, **"Distrust tests until you read the fixture"** and **"Blast
 radius lives outside the repo"** — read them from
-`${CLAUDE_PLUGIN_ROOT}/skills/pr-run/SKILL.md` (or the sibling
-`../pr-run/SKILL.md` relative to this file) and run the moves that apply.
+`${CLAUDE_PLUGIN_ROOT}/skills/pr-loop/SKILL.md` (or the sibling
+`../pr-loop/SKILL.md` relative to this file) and run the moves that apply.
 The core discipline: the description is a claim, not evidence — take each
 sentence the correctness rests on and go read the function that would have
 to make it true.
 
 ## 3 · The block
 
-Compress to the pr-run Lane B format. `propose` is ONE concrete action, not a
+Compress to the pr-loop Lane B format. `propose` is ONE concrete action, not a
 menu — if it cannot be one line, the analysis is not finished.
 
 ## 4 · Output

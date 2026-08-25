@@ -1,6 +1,6 @@
 ---
 name: issue-analyze
-description: Analyze ONE issue in a fresh context — verify the root cause in the actual code (DEFECT), walk the reuse ladder (REQUEST), find the proving line (QUESTION/DOCS) — and return a typed verdict with the minimal change and a verification plan. Read-only, never branches or comments. Run as a step of issue-run in a virgin chat/agent, from the review-desk button, or standalone on a single issue.
+description: Analyze ONE issue in a fresh context — verify the root cause in the actual code (DEFECT), walk the reuse ladder (REQUEST), find the proving line (QUESTION/DOCS) — and return a typed verdict with the minimal change and a verification plan. Read-only, never branches or comments. Run as a step of issue-loop in a virgin chat/agent, from the review-desk button, or standalone on a single issue.
 ---
 
 # Issue analyze — one issue, fresh eyes
@@ -58,6 +58,6 @@ other keys):
 `finding` is user-facing (the desk shows it): write it in Italian. Anything
 meant to be posted on the issue stays in English.
 
-When run for a caller (issue-run, the desk), the final message is one JSON
+When run for a caller (issue-loop, the desk), the final message is one JSON
 object with those five fields plus `finding`; when run for a human in chat,
 report in prose and persist the same entry.

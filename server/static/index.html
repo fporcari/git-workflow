@@ -73,6 +73,13 @@ th .dir{color:var(--rust)}
 tbody tr{cursor:pointer;outline:none}
 tbody tr:hover td{background:#f7f5f0}
 tbody tr.selected td{background:#eeeae1}
+tbody tr.picked td{background:color-mix(in srgb,var(--rust) 10%,var(--panel))}
+tbody tr.picked td:first-child{box-shadow:inset 3px 0 var(--rust)}
+.pickBar{display:none;padding:7px 18px;border-bottom:1px solid var(--line);font-size:11.5px;
+         align-items:center;gap:10px;flex-wrap:wrap;background:color-mix(in srgb,var(--rust) 6%,var(--panel))}
+.pickBar.on{display:flex}
+.pickBar b{font:600 11px var(--mono)}
+.pickBar .grow{margin-left:auto;display:flex;gap:6px}
 tbody tr.selected td:first-child{box-shadow:inset 3px 0 var(--rust)}
 /* the row the chat is on right now: a moving edge, not a colour swap, so it
    reads as work in progress and never competes with the selection */
@@ -194,6 +201,7 @@ h2{margin:0 0 7px}
   </section>
 
   <div class="workingBar" id="workingBar"></div>
+  <div class="pickBar" id="pickBar"></div>
   <div class="banner err" id="errBox"></div>
   <div class="banner warn" id="watcherBox"></div>
   <div class="banner info" id="noteBox"></div>
@@ -222,7 +230,7 @@ const $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const MARK={ready:"✓",attention:"!",waiting:"○",decision:"◆"};
 const STATE_LABEL={ready:"mergeable",attention:"mossa tua",waiting:"in attesa",decision:"decisione tua"};
-const AUTORUN_TIP="Cosa può fare pr-run da solo: A1 merge (tua PR approvata e CLEAN) · A2 edit banale chiesto dal reviewer · A3 riallineo del branch · asks te lo porta in chat · yours decisione solo tua · - tocca ad altri";
+const AUTORUN_TIP="Cosa può fare pr-loop da solo: A1 merge (tua PR approvata e CLEAN) · A2 edit banale chiesto dal reviewer · A3 riallineo del branch · asks te lo porta in chat · yours decisione solo tua · - tocca ad altri";
 
 let meta={},DESK="pr",prs=[],issues=[],chase={},grid=null,shortlist=null,session=null;
 let loaded=false,view="todo",query="",stateFilter=null,watcherAlive=false;
@@ -231,7 +239,11 @@ let selected=null,tab="quadro",sort={key:"created",dir:-1},acting={},truncated=n
 let deskEtag=null,fetching=false,lastGenerated=null,timings={};
 const triageRunning={pr:false,issue:false};
 let flows={};   // triage/run outstanding, from the server's ledger
-let workingOn=null;  // the row the chat is on right now
+let workingOn=null;  // the rows the chat is on right now
+let picked=new Set();   // the rows chosen by hand for the next loop
+let askBatch=false;     // ▶ pressed on a multi-row pick: one at a time, or in parallel?
+const MAX_BATCH=4;      // one AskUserQuestion box holds four proposals, no more
+const onNow=n=>!!workingOn&&(workingOn.ns||[workingOn.n]).includes(n);
 
 /* ---------- helpers ---------- */
 function ageDays(d){return Math.max(0,Math.round((Date.now()-new Date(d))/864e5));}
@@ -303,9 +315,9 @@ function applyState(st){
   else if(w.chat&&!w.alive)
     banner("watcherBox","<b>Chat non in ascolto.</b> I bottoni che parlano alla chat sono disattivati — rilancia il desk dalla chat.",true);
   else banner("watcherBox","",false);
-  const wasOn=workingOn&&workingOn.n;
+  const wasOn=workingOn&&(workingOn.ns||[workingOn.n]).join(",");
   workingOn=st.working||null;
-  if(workingOn&&workingOn.n!==wasOn)followWorking=true;
+  if(workingOn&&(workingOn.ns||[workingOn.n]).join(",")!==wasOn)followWorking=true;
   const feed=st.feed||[];
   const box=$("feedBox");
   box.classList.toggle("on",feed.length>0);
@@ -328,6 +340,28 @@ async function pollState(){
 function rows(){return DESK==="issue"?visibleIssues():visiblePrs();}
 function selectFirst(){const r=rows();selected=r.length?r[0].n:null;tab="quadro";}
 function select(n){if(selected!==n){selected=n;tab="quadro";}render();}
+function nowMsg(n){
+  return (workingOn&&(workingOn.items||{})[String(n)])||(workingOn&&workingOn.msg)||"in corso";
+}
+/* A plain click moves the cursor and NEVER drops the picks: reading a row's
+   detail must not cost the four he chose. cmd/ctrl toggles one, shift takes
+   the stretch from the cursor. */
+function rowClick(n,ev){
+  if(ev&&(ev.metaKey||ev.ctrlKey)){togglePick(n);return;}
+  if(ev&&ev.shiftKey&&selected!==null){pickRange(selected,n);return;}
+  select(n);
+}
+function togglePick(n){
+  picked.has(n)?picked.delete(n):picked.add(n);
+  askBatch=false;render();
+}
+function pickRange(from,to){
+  const list=rows(),a=list.findIndex(r=>r.n===from),b=list.findIndex(r=>r.n===to);
+  if(a<0||b<0)return togglePick(to);
+  for(let i=Math.min(a,b);i<=Math.max(a,b);i++)picked.add(list[i].n);
+  askBatch=false;render();
+}
+function clearPicks(){picked.clear();askBatch=false;render();}
 function selectedRow(){
   const list=DESK==="issue"?issues:prs;
   return list.find(r=>r.n===selected)||null;
@@ -377,7 +411,7 @@ function setSort(key){
 /* ---------- header / tabs ---------- */
 const VIEWS=()=>DESK==="issue"?[
   {id:"shortlist",label:"Shortlist",count:shortlist?shortlist.rows.length:"—",tip:"Il batch di issue-triage: le più recenti non analizzate, con tipo e cross-check di branch e PR"},
-  {id:"free",label:"Unassigned",count:issues.filter(r=>!r.assignees.length).length,tip:"Le candidate per issue-run: nessuno le ha ancora prese"},
+  {id:"free",label:"Unassigned",count:issues.filter(r=>!r.assignees.length).length,tip:"Le candidate per issue-loop: nessuno le ha ancora prese"},
   {id:"all",label:"Tutte",count:loaded?issues.length:"—",tip:"Tutte le issue aperte del repo"},
 ]:[
   {id:"todo",label:"Da fare",count:prs.filter(r=>r.state!=="waiting").length,tip:"Le PR dove la prossima mossa è tua"},
@@ -400,28 +434,67 @@ function renderTabs(){
   tri.disabled=!watcherAlive||triOut||!loaded;
   tri.classList.toggle("locked",!!triOut);
   const run=$("btnRun");
-  const runFlow=onIssue?"issue-run":"pr-run";
+  const runFlow=onIssue?"issue-loop":"pr-loop";
   const runOut=flows[runFlow]&&flows[runFlow].status==="queued";
-  run.textContent=(runOut?"→ in chat · ":"▶ ")+runFlow;
-  run.title=onIssue
-    ?"issue-run lavora le issue in chat una alla volta: prende la più urgente, la analizza a contesto pulito, te la propone in quattro righe, e su un tuo ok fixa in un worktree e apre la PR. Poi la prossima, finché non dici basta."
-    :"pr-run svuota la coda in chat: prima le mosse che non chiedono permesso (merge delle tue PR approvate, risposte banali, riallineo dei branch), poi il resto una PR alla volta, finché non dici basta.";
+  const nPicked=picked.size;
+  run.textContent=(runOut?"→ in chat · ":"▶ ")+runFlow+(nPicked?` · ${nPicked} scelte`:"");
+  run.title=nPicked
+    ?`Lancia ${runFlow} SOLO su ${[...picked].map(n=>"#"+n).join(" ")}, in quest'ordine, e poi si ferma. Il resto della coda non lo tocca.`
+    :onIssue
+    ?"issue-loop lavora le issue in chat una alla volta: prende la più urgente, la analizza a contesto pulito, te la propone in quattro righe, e su un tuo ok fixa in un worktree e apre la PR. Poi la prossima, finché non dici basta. Scegli delle righe con cmd-clic per lanciarlo solo su quelle."
+    :"pr-loop svuota la coda in chat: prima le mosse che non chiedono permesso (merge delle tue PR approvate, risposte banali, riallineo dei branch), poi il resto una PR alla volta, finché non dici basta. Scegli delle righe con cmd-clic per lanciarlo solo su quelle.";
   run.disabled=!watcherAlive||runOut;
   run.classList.toggle("locked",!!runOut);
+  renderPick(runFlow,runOut);
   document.querySelectorAll(".metric").forEach(m=>m.classList.toggle("on",stateFilter===m.dataset.filter));
+}
+/* The picks, and the one question the desk asks: several rows chosen and ▶
+   pressed can mean two different runs — one at a time, or all of them in
+   parallel worktrees. Guessing it would be guessing how much he has already
+   decided, so the strip asks instead. */
+function renderPick(runFlow,runOut){
+  const bar=$("pickBar"),n=picked.size;
+  bar.classList.toggle("on",n>0);
+  if(!n)return;
+  const ns=[...picked],label=ns.map(x=>"#"+x).join(" ");
+  if(askBatch&&n>1){
+    const size=Math.min(n,MAX_BATCH);
+    bar.innerHTML=`<b>${n} scelte</b><span>${esc(label)} — una alla volta, o tutte insieme?</span>
+      <span class="grow">
+        <button class="btn" id="pOne" title="Le propone una per volta, nell'ordine in cui le hai scelte: leggi, rispondi, passa alla prossima.">Una alla volta</button>
+        <button class="btn primary" id="pBatch" title="Ti propone ${size} in un colpo e le esegue in parallelo, ogni fix nel suo worktree.${n>MAX_BATCH?` Le altre ${n-size} dopo, nello stesso giro.`:""}">Batch da ${size}</button>
+        <button class="btn" id="pCancel">annulla</button></span>`;
+    $("pOne").onclick=()=>{askBatch=false;runPicked(runFlow,1);};
+    $("pBatch").onclick=()=>{askBatch=false;runPicked(runFlow,size);};
+    $("pCancel").onclick=()=>{askBatch=false;render();};
+    return;
+  }
+  bar.innerHTML=`<b>${n} scelt${n===1?"a":"e"}</b><span>${esc(label)}</span>
+    <span style="color:var(--muted)">cmd-clic per aggiungerne, shift-clic per un tratto</span>
+    <span class="grow">
+      <button class="btn" id="pRun" ${watcherAlive&&!runOut?"":"disabled"}
+        title="Lancia ${esc(runFlow)} solo su queste, e poi si ferma.">▶ ${esc(runFlow)} su queste</button>
+      <button class="btn" id="pClear">svuota</button></span>`;
+  $("pClear").onclick=clearPicks;
+  const go=$("pRun");
+  if(go)go.onclick=()=>{if(picked.size>1){askBatch=true;render();}else runPicked(runFlow,1);};
 }
 let followWorking=false;
 function renderWorking(){
   const bar=$("workingBar");
   bar.classList.toggle("on",!!workingOn);
   if(!workingOn)return;
-  const row=(DESK==="issue"?issues:prs).find(r=>r.n===workingOn.n);
-  bar.innerHTML=`<span class="spin"></span><b>#${workingOn.n}</b>
-    <span>${esc(workingOn.msg||"in lavorazione nella chat")}</span>
+  const ns=workingOn.ns||[workingOn.n];
+  const list=(DESK==="issue"?issues:prs);
+  const row=list.find(r=>r.n===ns[0]);
+  const many=ns.length>1;
+  bar.innerHTML=`<span class="spin"></span><b>${ns.map(n=>"#"+n).join(" ")}</b>
+    <span>${esc(many?`${ns.length} in parallelo — ${workingOn.msg||"in lavorazione nella chat"}`
+                    :nowMsg(ns[0]))}</span>
     <span style="color:var(--muted)">dalle ${esc(workingOn.at||"")}</span>
-    ${row?`<button class="btn" id="goWorking" style="margin-left:auto">Vai alla riga</button>`:""}`;
+    ${row?`<button class="btn" id="goWorking" style="margin-left:auto">${many?"Vai alla prima":"Vai alla riga"}</button>`:""}`;
   const go=$("goWorking");
-  if(go)go.onclick=()=>{stateFilter=null;query="";$("q").value="";view="all";select(workingOn.n);scrollToWorking();};
+  if(go)go.onclick=()=>{stateFilter=null;query="";$("q").value="";view="all";select(ns[0]);scrollToWorking();};
 }
 function scrollToWorking(){
   const tr=document.querySelector("tr.working")||document.querySelector("tr.selected");
@@ -459,10 +532,10 @@ function renderTable(){
     head.innerHTML=`<tr><th class="markCol"></th>${th("n","#")}${th("title","issue")}${th("type","tipo",'title="DEFECT bug reale · REQUEST nuova funzione · QUESTION domanda · DOCS documentazione"')}${th("author","autore")}<th>label</th>${th("assignees","assignees")}${th("comments","commenti",'class="num"')}${th("created","età",'class="num"')}</tr>`;
     tb.innerHTML=list.map(r=>{
       const note=shortlist&&shortlist.rows.find(x=>x.n===r.n);
-      return `<tr data-n="${r.n}" class="${r.assignees.length?"waiting":"attention"}${selected===r.n?" selected":""}${workingOn&&workingOn.n===r.n?" working":""}">
+      return `<tr data-n="${r.n}" class="${r.assignees.length?"waiting":"attention"}${selected===r.n?" selected":""}${picked.has(r.n)?" picked":""}${onNow(r.n)?" working":""}">
         <td class="mark"><span title="${r.assignees.length?"presa":"libera"}">${r.assignees.length?"○":"!"}</span></td>
         <td class="mono">#${r.n}</td>
-        <td class="prTitle"><span>${esc(r.title)}</span>${r.skill||note?'<small class="dot" title="analisi disponibile">●</small>':""}${workingOn&&workingOn.n===r.n?'<span class="nowChip"><i></i>ora</span>':""}</td>
+        <td class="prTitle"><span>${esc(r.title)}</span>${r.skill||note?'<small class="dot" title="analisi disponibile">●</small>':""}${onNow(r.n)?'<span class="nowChip"><i></i>ora</span>':""}</td>
         <td><span class="tag ${esc(r.type)}">${esc(r.type)}</span></td>
         <td><span class="avatar">${esc((r.author||"??").slice(0,2).toUpperCase())}</span>${esc(r.author)}</td>
         <td class="next">${(r.labels||[]).map(l=>`<span class="tag">${esc(l)}</span>`).join(" ")||"—"}</td>
@@ -471,9 +544,9 @@ function renderTable(){
         <td class="num mono">${ageDays(r.created)}g</td></tr>`;}).join("");
   }else{
     head.innerHTML=`<tr><th class="markCol"></th>${th("title","pull request")}${th("author","autore")}${th("decision","review")}${th("merge","merge")}${th("unresolved","unresolved",'class="num" title="Thread di review non risolti"')}<th>base</th>${th("todo","prossima mossa")}${th("autorun","autorun",`title="${esc(AUTORUN_TIP)}"`)}</tr>`;
-    tb.innerHTML=list.map(r=>`<tr data-n="${r.n}" class="${r.state}${selected===r.n?" selected":""}${workingOn&&workingOn.n===r.n?" working":""}">
+    tb.innerHTML=list.map(r=>`<tr data-n="${r.n}" class="${r.state}${selected===r.n?" selected":""}${picked.has(r.n)?" picked":""}${onNow(r.n)?" working":""}">
       <td class="mark"><span title="${STATE_LABEL[r.state]}">${MARK[r.state]}</span></td>
-      <td class="prTitle"><b>#${r.n}</b><span>${esc(r.title)}</span>${r.skill?'<small class="dot" title="analisi disponibile">●</small>':""}${workingOn&&workingOn.n===r.n?'<span class="nowChip"><i></i>ora</span>':""}<small>${ageDays(r.created)}g</small></td>
+      <td class="prTitle"><b>#${r.n}</b><span>${esc(r.title)}</span>${r.skill?'<small class="dot" title="analisi disponibile">●</small>':""}${onNow(r.n)?'<span class="nowChip"><i></i>ora</span>':""}<small>${ageDays(r.created)}g</small></td>
       <td><span class="avatar">${esc((r.author||"??").slice(0,2).toUpperCase())}</span>${esc(r.author)}</td>
       <td><span class="status ${r.state}">${esc(r.decision||(r.draft?"draft":"no review"))}</span></td>
       <td><span class="check ${r.merge||"pending"}">●</span> <span class="mono">${esc(r.merge||"…")}</span></td>
@@ -483,7 +556,7 @@ function renderTable(){
       <td class="mono" title="${esc(AUTORUN_TIP)}">${esc(r.autorun)}</td></tr>`).join("");
   }
   head.querySelectorAll("[data-sort]").forEach(el=>el.onclick=()=>setSort(el.dataset.sort));
-  tb.querySelectorAll("tr[data-n]").forEach(tr=>tr.onclick=()=>select(+tr.dataset.n));
+  tb.querySelectorAll("tr[data-n]").forEach(tr=>tr.onclick=ev=>rowClick(+tr.dataset.n,ev));
   $("empty").style.display=list.length?"none":"flex";
   $("empty").innerHTML=`<b>Niente in questa vista</b><span>Prova un altro tab, azzera il filtro o rileggi il provider con ⟳.</span>`;
 }
@@ -565,9 +638,9 @@ function actionButton(id,kind,label,tip,row,primary){
 }
 function actBadge(r){
   const out=[];
-  if(workingOn&&workingOn.n===r.n)
+  if(onNow(r.n))
     out.push(`<div class="actionText" style="color:var(--amber);border-style:solid;border-color:var(--amber)">
-      <span class="nowChip"><i></i>ora</span> la chat sta lavorando questa: ${esc(workingOn.msg||"in corso")} (dalle ${esc(workingOn.at||"")})</div>`);
+      <span class="nowChip"><i></i>ora</span> la chat sta lavorando questa: ${esc(nowMsg(r.n))} (dalle ${esc(workingOn.at||"")})</div>`);
   for(const [kind,q] of Object.entries(requests(r))){
     const name=REQ_LABEL[kind]||kind;
     if(q.status==="queued")
@@ -584,8 +657,8 @@ function actBadge(r){
   return out.join("");
 }
 function renderPrActions(r){
-  const exec=r.autorun==="A1"?{label:"▶ Merge",tip:"Ordina il merge alla chat collegata: pr-run riverifica i 5 gate freschi (autore, approvazioni sull'ultimo head, CLEAN su base protetta) e solo allora fa squash + delete branch."}
-           :r.autorun==="A3"?{label:"▶ Merge base",tip:"Ordina il riallineo alla chat collegata: merge della base nel branch (mai rebase), regole A3 di pr-run."}:null;
+  const exec=r.autorun==="A1"?{label:"▶ Merge",tip:"Ordina il merge alla chat collegata: pr-loop riverifica i 5 gate freschi (autore, approvazioni sull'ultimo head, CLEAN su base protetta) e solo allora fa squash + delete branch."}
+           :r.autorun==="A3"?{label:"▶ Merge base",tip:"Ordina il riallineo alla chat collegata: merge della base nel branch (mai rebase), regole A3 di pr-loop."}:null;
   $("detailActions").innerHTML=`
     ${exec?actionButton("aExec","order",exec.label,exec.tip,r,true):""}
     ${actionButton("aAnalyze","analyze","▶ Analizza",
@@ -661,13 +734,13 @@ function renderPrTab(r){
       <article class="wideArticle"><h2>Review draft</h2>
         ${text?`<div class="draft"><span>DA PR-ANALYZE</span><p>${esc(text)}</p></div>
           <div class="draftActions"><button class="btn" id="bCopy">Copia testo</button>
-            <button class="btn primary" id="bSend" ${watcherAlive?"":"disabled"} title="Registra l'ordine: la chat collegata posta questa bozza sulla PR seguendo le regole di pr-run.">▶ Manda in chat</button></div>`
+            <button class="btn primary" id="bSend" ${watcherAlive?"":"disabled"} title="Registra l'ordine: la chat collegata posta questa bozza sulla PR seguendo le regole di pr-loop.">▶ Manda in chat</button></div>`
           :`<div class="tabEmpty">Nessuna bozza. La produce <b>▶ Analizza</b> quando la PR ne ha bisogno.</div>`}
         ${r.action?`<div class="draftActions"><button class="btn" id="bFallback" title="Ultima spiaggia: il testo pronto da incollare a mano">Copia ${r.action.kind==="command"?"comando":"prompt"}</button></div>`:""}
         ${actBadge(r)}</article>
       <aside><h2>Prima di mandare</h2><ul>
         <li>il diff è stato letto da pr-analyze</li><li>i thread aperti sono stati letti</li>
-        <li>il testo è visibile qui sopra</li><li>l'ordine passa comunque dai gate di pr-run</li></ul></aside>`;
+        <li>il testo è visibile qui sopra</li><li>l'ordine passa comunque dai gate di pr-loop</li></ul></aside>`;
     const c=$("bCopy");if(c)c.onclick=()=>copyText(c,text);
     const s=$("bSend");if(s)s.onclick=()=>doOrder(r,s,text);
     const f=$("bFallback");if(f)f.onclick=()=>copyText(f,r.action.text);
@@ -689,7 +762,7 @@ function renderIssueTab(r){
         <div><dt>Commenti</dt><dd>${r.comments}</dd></div>
         <div><dt>Età</dt><dd>${ageDays(r.created)} giorni</dd></div></dl>${actBadge(r)}</article>
       <article class="nextCard"><h2>Prossima mossa</h2>
-        <p>${r.assignees.length?esc("in mano a "+r.assignees.join(", ")):"da assegnare — candidata per issue-run"}</p>
+        <p>${r.assignees.length?esc("in mano a "+r.assignees.join(", ")):"da assegnare — candidata per issue-loop"}</p>
         <small>${r.assignees.length
           ?"Nel workflow Softwell non si lavora su una issue di qualcun altro: chiedi prima."
           :"Un'issue nuova la assegna l'Owner: chiedi, non prenderla — a meno che sia backlog."}</small></article>
@@ -742,18 +815,30 @@ const doAnalyze=(r,btn)=>handOver(r,btn,`/api/pr/${r.n}/analyze`,{},"analyze","p
 const doExplain=(r,btn)=>handOver(r,btn,`/api/pr/${r.n}/explain`,{},"explain","spiegazione");
 const doIssueWork=(r,btn)=>handOver(r,btn,`/api/issue/${r.n}/analyze`,{},
   "issue-analyze","sessione dedicata");
-async function doFlow(path,flow,note){
+async function doFlow(path,flow,note,extra){
   try{
-    const d=await post(path,{flow});
+    const d=await post(path,Object.assign({flow},extra||{}));
     flows[flow]=d.request||{status:"queued",at:""};
     localFeed(d.already?`${flow}: già in corso nella chat, non lo riaccodo`:note);
   }catch(e){banner("errBox",esc(e.message),true);}
   render();
 }
+/* Chosen rows mean: exactly these, in this order, and then stop. */
+function runPicked(flow,batch){
+  const ns=[...picked];
+  doFlow("/api/run",flow,
+    `${flow} avviato su ${ns.map(n=>"#"+n).join(" ")}${batch>1?` — batch da ${batch}, in parallelo`:" — una alla volta"}`,
+    {ns,batch});
+  picked.clear();
+}
 const doTriage=()=>doFlow("/api/triage",DESK==="issue"?"issue-triage":"pr-triage",
   "triage lanciato sul JSON già scaricato — nessuna nuova query al provider");
-const doRun=()=>doFlow("/api/run",DESK==="issue"?"issue-run":"pr-run",
-  "run avviato nella chat collegata");
+const doRun=()=>{
+  const flow=DESK==="issue"?"issue-loop":"pr-loop";
+  if(picked.size>1){askBatch=true;render();return;}
+  if(picked.size===1)return runPicked(flow,1);
+  doFlow("/api/run",flow,"run avviato nella chat collegata");
+};
 
 /* ---------- summary ---------- */
 function renderSummary(){

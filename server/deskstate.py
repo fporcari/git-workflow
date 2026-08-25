@@ -13,7 +13,7 @@ drafts, the orders, the verified grid — what a MODEL produced by reading
 diffs. That is expensive to lose and worth keeping across a relaunch, which
 is what --keep-state is for.
 
-The skills (pr-triage, pr-run, issue-triage) write what only a model can
+The skills (pr-triage, pr-loop, issue-triage) write what only a model can
 produce: the diff-level analysis, the review drafts, the chase blocks, the
 issue findings. The server merges it into the rows it serves, so the desk's
 Analysis/Draft tabs show the skills' actual work instead of placeholders.
@@ -127,16 +127,49 @@ REQUEST_STALE = 1800
 WORKING_STALE = 900          # a run that stopped saying anything
 
 
+def _mark(ns, msg, items=None):
+    return {"n": ns[0], "ns": list(ns), "items": items or {}, "msg": msg,
+            "epoch": time.time(), "at": time.strftime("%H:%M:%S")}
+
+
 def set_working(repo, n, msg=""):
     """Mark the PR (or issue) the chat is on RIGHT NOW.
 
-    pr-run walks the queue one PR at a time and the desk is the radar: the
-    user wants to see which row is under the needle without reading the feed
-    line by line.
+    pr-loop walks the queue and the desk is the radar: the user wants to see
+    which rows are under the needle without reading the feed line by line.
+
+    While a batch is live, marking one of ITS numbers refines that item and
+    leaves the set standing — otherwise every per-item progress line would
+    collapse a batch of four back to a single glowing row.
     """
+    n = int(n)
     state = load(repo)
-    state["working"] = {"n": n, "msg": msg, "epoch": time.time(),
-                        "at": time.strftime("%H:%M:%S")}
+    mark = state.get("working") or {}
+    if n in (mark.get("ns") or []):
+        mark.setdefault("items", {})[str(n)] = msg
+        mark["epoch"] = time.time()
+        mark["at"] = time.strftime("%H:%M:%S")
+    else:
+        mark = _mark([n], msg, {str(n): msg})
+    state["working"] = mark
+    save(repo, state)
+    return mark
+
+
+def set_working_batch(repo, ns, msg=""):
+    """Mark the several rows a batch is working in parallel.
+
+    One number would leave the other rows reading as idle while an agent is
+    in a worktree on each of them — a desk that shows less than it knows is
+    the one failure mode it exists to prevent. An empty batch is no batch:
+    it clears the marker rather than leaving a headless one behind.
+    """
+    ns = [int(n) for n in ns]
+    if not ns:
+        clear_working(repo)
+        return None
+    state = load(repo)
+    state["working"] = _mark(ns, msg)
     save(repo, state)
     return state["working"]
 
@@ -150,13 +183,19 @@ def clear_working(repo):
 def working(repo, state=None):
     """The live marker, or None. A marker nobody updated for a quarter of an
     hour is dropped: a highlight stuck on a row after the run died is worse
-    than no highlight, because it reads as work in progress."""
+    than no highlight, because it reads as work in progress.
+
+    Always carries BOTH `n` and `ns`, whichever shape was written: the UI and
+    the tests read one field, not two code paths."""
     state = state if state is not None else load(repo)
     mark = state.get("working")
     if not mark:
         return None
     if time.time() - mark.get("epoch", 0) > WORKING_STALE:
         return None
+    mark = dict(mark)
+    mark.setdefault("ns", [mark["n"]] if mark.get("n") is not None else [])
+    mark.setdefault("items", {})
     return mark
 
 
@@ -218,7 +257,7 @@ def annotate_requests(rows, state):
 
 
 def add_order(repo, n, propose, draft, instruction):
-    """Record the user's go-ahead on one PR. /pr-run reads pending orders as
+    """Record the user's go-ahead on one PR. /pr-loop reads pending orders as
     pre-authorized work: the click in the desk was the approval."""
     state = load(repo)
     orders = state.setdefault("orders", {})

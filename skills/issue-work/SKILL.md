@@ -31,7 +31,7 @@ If SINGLE-PHASE (any size): take it end to end.
   branch `fix|feat|docs/<n>-<slug>`; base = where recent merged fix PRs
   target, not the harness default.
 - The traps and the PR discipline are in
-  `${CLAUDE_PLUGIN_ROOT}/skills/issue-run/SKILL.md` step 3 — verbatim rules:
+  `${CLAUDE_PLUGIN_ROOT}/skills/issue-loop/SKILL.md` step 3 — verbatim rules:
   no forks/remotes, PYTHONPATH into the worktree, no git stash, narrowest
   check now, `Fixes #<n>` verified in `closingIssuesReferences`,
   `--assignee` the author, `--reviewer` from CODEOWNERS and confirmed.

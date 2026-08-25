@@ -154,13 +154,13 @@ pointed at is a move; "chase him, he holds 30" is not, and it is also unfair.
 tidy picture, and then the user driving every move by hand anyway. That is why
 the run is mandatory rather than suggested.
 
-**The veto window exists because `pr-run`'s Lane A merges and pushes without
+**The veto window exists because `pr-loop`'s Lane A merges and pushes without
 asking again.** Somebody who invoked what he thinks of as a read-only triage must
 see the unattended list once, before it runs.
 
 ## What this skill costs
 
-The data is 5-7 seconds. Everything else is context and, downstream, `pr-run`'s
+The data is 5-7 seconds. Everything else is context and, downstream, `pr-loop`'s
 real verification of each PR — worktree, linter, the new tests run against the
 base as well, cross-repo greps. A 17-minute run got through one PR of Lane B.
 That is the skill working as designed; the triage is not what makes it slow, and

@@ -666,6 +666,17 @@ class RowsExport(unittest.TestCase):
         self.assertTrue(exported["shortlist"])
         self.assertLessEqual(len(exported["shortlist"]), 10)
 
+    def test_the_shortlist_is_numbers_that_index_the_rows(self):
+        """It used to be written twice in the same literal — the rows and
+        then the numbers — so the payload silently carried whichever line
+        came last. The numbers win: every one of them is already a full row
+        under "issues", and repeating them doubled the export."""
+        desk = fresh_desk()
+        exported = json.loads(Path(desk.export_rows()).read_text())
+        self.assertTrue(all(isinstance(n, int) for n in exported["shortlist"]))
+        known = {r["n"] for r in exported["issues"]}
+        self.assertTrue(set(exported["shortlist"]) <= known)
+
 
 class HandOverExactlyOnce(unittest.TestCase):
     """A click hands work to the chat, which may take minutes. The lock lives
@@ -799,7 +810,7 @@ class ChatButtonsThroughTheLedger(unittest.TestCase):
                            ("/api/pr/1145/order", {"propose": "x"}),
                            ("/api/issue/1166/analyze", {}),
                            ("/api/triage", {"flow": "pr-triage"}),
-                           ("/api/run", {"flow": "pr-run"})):
+                           ("/api/run", {"flow": "pr-loop"})):
             inbox.truncate(REPO)
             state = deskstate.load(REPO)
             state.pop("requests", None)
@@ -807,6 +818,40 @@ class ChatButtonsThroughTheLedger(unittest.TestCase):
             self.post(path, body)
             self.post(path, body)
             self.assertEqual(len(self.events()), 1, path)
+
+    def test_chosen_rows_reach_the_chat_with_the_batch_size(self):
+        """Picking rows in the desk IS the answer to which ones: the loop
+        must receive them, in that order, and be told how many to propose
+        together."""
+        inbox.truncate(REPO)
+        state = deskstate.load(REPO)
+        state.pop("requests", None)
+        deskstate.save(REPO, state)
+        self.post("/api/run", {"flow": "pr-loop", "ns": [1145, 1128], "batch": 2})
+        event = self.events()[-1]
+        self.assertEqual(event["ns"], [1145, 1128])
+        self.assertEqual(event["batch"], 2)
+
+    def test_the_batch_is_clamped_where_the_answer_box_ends(self):
+        """The page is an input like any other: four is what one
+        AskUserQuestion box holds."""
+        inbox.truncate(REPO)
+        state = deskstate.load(REPO)
+        state.pop("requests", None)
+        deskstate.save(REPO, state)
+        self.post("/api/run", {"flow": "pr-loop", "ns": [1, 2, 3, 4, 5, 6],
+                               "batch": 99})
+        self.assertEqual(self.events()[-1]["batch"], prdesk.MAX_BATCH)
+
+    def test_a_whole_queue_run_names_no_rows(self):
+        inbox.truncate(REPO)
+        state = deskstate.load(REPO)
+        state.pop("requests", None)
+        deskstate.save(REPO, state)
+        self.post("/api/run", {"flow": "pr-loop"})
+        event = self.events()[-1]
+        self.assertEqual(event["ns"], [])
+        self.assertEqual(event["batch"], 1, "one at a time is the default")
 
     def test_a_closed_request_lets_the_button_work_again(self):
         self.post("/api/pr/1145/analyze")
@@ -850,7 +895,7 @@ class SummaryFromData(unittest.TestCase):
 
 
 class WorkingMarker(unittest.TestCase):
-    """pr-run walks the queue one PR at a time; the desk should show which
+    """pr-loop walks the queue one PR at a time; the desk should show which
     row is under the needle without the user reading the feed line by line."""
 
     def tearDown(self):
@@ -899,14 +944,57 @@ class WorkingMarker(unittest.TestCase):
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertIsNone(deskstate.working(REPO))
 
+    def test_a_batch_marks_every_row_it_is_working(self):
+        """N agents in N worktrees: a marker naming one of them leaves the
+        other rows reading as idle, which is the one thing the desk exists
+        to prevent."""
+        deskstate.set_working_batch(REPO, [1145, 1128, 1059], "3 in parallelo")
+        got = deskstate.working(REPO)
+        self.assertEqual(got["ns"], [1145, 1128, 1059])
+        self.assertEqual(got["n"], 1145, "the first stays readable as `n`")
+
+    def test_a_single_marker_still_reads_as_a_set_of_one(self):
+        """The UI and the tests read one field, not two code paths."""
+        deskstate.set_working(REPO, 1145, "leggo il diff")
+        self.assertEqual(deskstate.working(REPO)["ns"], [1145])
+
+    def test_progress_on_one_item_does_not_collapse_the_batch(self):
+        """Per-PR progress must reach the desk without dropping the other
+        rows back to idle — otherwise the loop cannot report as it goes."""
+        deskstate.set_working_batch(REPO, [1145, 1128, 1059], "3 in parallelo")
+        deskstate.set_working(REPO, 1128, "worktree pronto, giro i test")
+        got = deskstate.working(REPO)
+        self.assertEqual(got["ns"], [1145, 1128, 1059])
+        self.assertEqual(got["items"]["1128"], "worktree pronto, giro i test")
+
+    def test_a_number_outside_the_batch_replaces_it(self):
+        """Moving on to a PR the batch never held is a new marker, not a
+        fourth member of the old one."""
+        deskstate.set_working_batch(REPO, [1145, 1128], "2 in parallelo")
+        deskstate.set_working(REPO, 1059, "la prossima")
+        self.assertEqual(deskstate.working(REPO)["ns"], [1059])
+
+    def test_an_empty_batch_leaves_no_headless_marker(self):
+        deskstate.set_working(REPO, 1145, "…")
+        self.assertIsNone(deskstate.set_working_batch(REPO, []))
+        self.assertIsNone(deskstate.working(REPO))
+
+    def test_notify_marks_a_batch_from_the_command_line(self):
+        out = subprocess.run(
+            (sys.executable, str(ROOT / "notify.py"), "--repo", REPO,
+             "--batch", "1145,#1128", "--working", "fix in parallelo"),
+            capture_output=True, text=True, env=dict(os.environ, HOME=_HOME))
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(deskstate.working(REPO)["ns"], [1145, 1128])
+
     def test_closing_a_request_drops_the_highlight_too(self):
         """The run ends by closing its request; a marker left behind would
         keep glowing on a row nobody is touching."""
-        deskstate.request(REPO, "run:pr-run", "run", None, "pr-run")
+        deskstate.request(REPO, "run:pr-loop", "run", None, "pr-loop")
         deskstate.set_working(REPO, 1145, "…")
         out = subprocess.run(
             (sys.executable, str(ROOT / "notify.py"), "--repo", REPO,
-             "--done", "run:pr-run", "coda svuotata"),
+             "--done", "run:pr-loop", "coda svuotata"),
             capture_output=True, text=True, env=dict(os.environ, HOME=_HOME))
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertIsNone(deskstate.working(REPO))

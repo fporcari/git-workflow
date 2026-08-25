@@ -35,7 +35,7 @@ slowest thing it does and the desk has already paid for it. Pass
 Launch only the desk the user asked for when they name one.
 
 Without `--chat` a desk runs standalone: Analyze spawns a headless
-read-only `claude -p` and Go leaves orders for `/pr-run`; no startup triage.
+read-only `claude -p` and Go leaves orders for `/pr-loop`; no startup triage.
 
 Options: `--repo owner/repo` (default: the cwd's origin), `--provider
 github|forgejo|fixture` (forgejo needs `FORGEJO_URL`/`FORGEJO_TOKEN`;
@@ -77,7 +77,7 @@ then for each event in order:
 - **`{"kind": "order", "n": N}`** — the user clicked Go on the analysis
   block: that click is the authorization, do not re-ask. Read the order from
   the state file (`orders.<N>`: `propose`, `draft`, `instruction`) and
-  execute it under the pr-run rules (A2 discipline for answers, A1 gates
+  execute it under the pr-loop rules (A2 discipline for answers, A1 gates
   re-checked fresh before any merge, A3 for realigns; an empty or `vai`
   instruction means the proposal as it stands, any other text wins). Set the
   order's `status` to `done` with a one-line `report`, or `failed`/
@@ -118,13 +118,21 @@ then for each event in order:
   `shortlist` for issue-triage): the desk's Triage tab renders exactly that
   export. Skip the skill's closing handover question — the user drives from
   the dashboard.
-- **`{"kind": "run", "flow": "pr-run"|"issue-run"}`** — run that skill here
-  in chat, step by step. Two rules the desk depends on: (1) after every
-  action that changes the queue (a merge above all) update the grid export
-  so the settled PR **disappears from the dashboard** — pr-run's "Publish
-  to the review desk" section says how; (2) plain words everywhere the user
-  reads — never bare "Lane A/Lane B" in chat or feed: say *azioni
-  automatiche* and *le PR che richiedono te*.
+- **`{"kind": "run", "flow": "pr-loop"|"issue-loop", "ns": [...], "batch": N}`**
+  — run that skill here in chat, step by step. `ns` is the rows the user
+  picked by hand in the dashboard: it means *exactly those, in that order,
+  and then stop*, the same as the numbers typed as arguments. Do not re-ask
+  which ones — the picking was the answer. `batch` is how many to propose
+  together, 1..4, and he was asked for it at the moment he pressed ▶, so do
+  not re-ask that either. An empty `ns` is the whole queue.
+  Three rules the desk depends on: (1) after every action that changes the
+  queue (a merge above all) update the grid export so the settled PR
+  **disappears from the dashboard** — pr-loop's "Publish to the review desk"
+  section says how; (2) with a batch, mark every row it is working
+  (`notify.py --batch`), because a marker naming one of N leaves the others
+  reading as idle; (3) plain words everywhere the user reads — never bare
+  "Lane A/Lane B" in chat or feed: say *azioni automatiche* and *le PR che
+  richiedono te*.
 - **`{"kind": "shutdown"}`** — the user pressed the desk's stop button: the
   server has already stopped itself. Do NOT restart the watcher; confirm in
   one line that the desk is down.

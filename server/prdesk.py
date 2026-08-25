@@ -61,6 +61,10 @@ from verdicts import decorate, handoff, issue_handoff, issue_type
 
 STATIC = Path(__file__).resolve().parent / "static"
 
+# one AskUserQuestion box holds four options: a wider batch would cost the
+# loop its clickable answer for nothing
+MAX_BATCH = 4
+
 
 def detect_repo():
     out = subprocess.run(("git", "remote", "get-url", "origin"),
@@ -305,7 +309,8 @@ class Desk:
                    "queue": queue["rows"], "issues": issues["rows"],
                    "grid": queue["grid"], "chase": queue["chase"],
                    "gates": queue["gates"],
-                   "shortlist": issues["shortlist"],
+                   # the numbers only: every one of them is already a full row
+                   # under "issues", and repeating them doubled the payload
                    "shortlist": [r["n"] for r in (issues["shortlist"] or {}).get("rows", [])]}
         path = deskstate.runtime_path(self.repo, "rows.json")
         path.write_text(json.dumps(payload, indent=1))
@@ -460,10 +465,16 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, {"bye": True})
                 threading.Thread(target=self.server.shutdown, daemon=True).start()
             elif parts == ["api", "run"]:
-                flow = body.get("flow", "pr-run")
-                self._chat_only({"kind": "run", "flow": flow},
+                flow = body.get("flow", "pr-loop")
+                # rows chosen by hand: the loop works exactly those, in this
+                # order, and stops. Clamped here too — the page is an input.
+                ns = [int(n) for n in (body.get("ns") or [])]
+                batch = max(1, min(int(body.get("batch") or 1), MAX_BATCH))
+                label = "%s · %d scelte" % (flow, len(ns)) if ns else flow
+                self._chat_only({"kind": "run", "flow": flow,
+                                 "ns": ns, "batch": batch},
                                 "run needs the desk launched from a chat session",
-                                key=deskstate.request_key("run", flow), label=flow)
+                                key=deskstate.request_key("run", flow), label=label)
             elif parts == ["api", "ping"]:
                 self._chat_only({"kind": "ping", "token": body.get("token") or ""},
                                 "il ping ha senso solo in modalità chat")
