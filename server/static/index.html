@@ -192,15 +192,12 @@ function ageDays(d){return Math.max(0,Math.round((Date.now()-new Date(d))/864e5)
 function renderTabs(){
   const onIssues=view==="issues";
   const act=$("btnAction");
-  if(view==="grid"||view==="chase"){act.style.display="none";}
-  else{
-    act.style.display="";
-    act.textContent=onIssues?"▶ issue-run in chat":"▶ pr-run in chat";
-    act.dataset.tip=onIssues
-      ?"La skill issue-run lavora il batch in chat: un'analisi a contesto pulito per issue, la scelta di cosa lavorare (in chat), poi branch e PR per le scelte. Ogni passo arriva qui nel feed."
-      :"La skill pr-run svuota la coda in chat: merge delle tue PR approvate, risposte alle review banali, riallineo dei branch, e il resto una PR alla volta. Ogni passo arriva qui nel feed.";
-    act.disabled=!watcherAlive;
-  }
+  act.style.display="";
+  act.textContent=onIssues?"▶ issue-run in chat":"▶ pr-run in chat";
+  act.dataset.tip=onIssues
+    ?"La skill issue-run lavora il batch in chat: un'analisi a contesto pulito per issue, la scelta di cosa lavorare (in chat), poi branch e PR per le scelte. Ogni passo arriva qui nel feed."
+    :"La skill pr-run svuota la coda in chat: merge delle tue PR approvate, risposte alle review banali, riallineo dei branch, e il resto una PR alla volta. Ogni passo arriva qui nel feed.";
+  act.disabled=!watcherAlive;
   $("tabs").innerHTML=VIEWS().map(v=>`<button class="${view===v.id?"active":""} tipUnder" data-v="${v.id}" data-tip="${v.tip||""}">${v.label} <b>${v.count}</b></button>`).join("");
   $("tabs").querySelectorAll("button").forEach(b=>b.onclick=()=>{view=b.dataset.v;render();});
 }
