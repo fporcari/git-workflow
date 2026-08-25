@@ -19,6 +19,9 @@ prototype: the queue-with-states table, the summary strip, and the detail
 panel are his; this repo replaces the mocked data with live provider reads and
 wires the verdicts to the skills below.
 
+Prefer pictures? There is an [illustrated quick guide](docs/comic/README.md) —
+one page per skill — also bound as a [PDF](docs/comic/git-workflow-comic.pdf).
+
 ## Install
 
 Claude Code:
