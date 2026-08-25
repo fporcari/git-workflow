@@ -16,7 +16,8 @@ python3 -m unittest discover -s tests -t . "$@" 2>&1 | tail -5
 
 echo
 echo "== ui (real page, real server, fixture provider) =="
-python3 prdesk.py --provider fixture --port "$PORT" --repo genropy/genropy --no-prefetch 2>/dev/null &
+# no --no-prefetch: the UI tests exercise the real boot, gate fill included
+python3 prdesk.py --provider fixture --port "$PORT" --repo desk-tests/ui 2>/dev/null &
 DESK=$!
 trap 'kill $DESK 2>/dev/null || true' EXIT INT TERM
 for _ in $(seq 40); do

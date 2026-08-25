@@ -142,13 +142,22 @@ globalThis.window = globalThis;
 body.innerHTML = html.slice(html.indexOf("<main"), html.indexOf("<script>"));
 
 /* ---- 0. the real payload, fetched BEFORE the timers are stubbed
-        (node's own fetch schedules on setTimeout) ---- */
+        (node's own fetch schedules on setTimeout).
+   The gate of a base beyond the default fills in BEHIND the first paint —
+   that is the shipped behaviour, so poll for it the way the browser does
+   rather than pretending the first response is final. ---- */
 let snapshot;
 try {
-  snapshot = await (await fetch(`${ROOT}/api/desk`)).json();
+  for (let i = 0; i < 60; i++) {
+    snapshot = await (await fetch(`${ROOT}/api/desk`)).json();
+    const bases = new Set(snapshot.queue.rows.map(r => r.base).filter(Boolean));
+    const known = Object.keys(snapshot.queue.gates || {});
+    if (known.length >= bases.size) break;      // every base's gate has landed
+    await new Promise(r => setTimeout(r, 150));
+  }
 } catch (e) {
   console.log(`\ncannot reach a desk on ${ROOT} (${e.message}) — start one first:\n` +
-    `  python3 prdesk.py --provider fixture --repo genropy/genropy --port ${PORT} --no-prefetch\n`);
+    `  python3 prdesk.py --provider fixture --repo desk-tests/ui --port ${PORT}\n`);
   process.exit(2);
 }
 

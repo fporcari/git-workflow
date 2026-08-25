@@ -59,9 +59,14 @@ input.
 
 ## 3 · On wake: process the events
 
-Read the printed events, truncate the inbox
-(`: > ~/.local/state/git-workflow/<owner>__<repo>__inbox.jsonl`), then for
-each event in order:
+Read the printed events, truncate the inbox — **never by writing the path
+yourself**, it lives under the OS temp dir and only the plugin knows where:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/server/inbox.py --repo <owner/repo> --truncate
+```
+
+then for each event in order:
 
 - **`{"kind": "analyze", "n": N}`** — run the `pr-analyze` skill on PR #N
   right here (read-only; full playbook in `../pr-analyze/SKILL.md`). Write
@@ -154,8 +159,18 @@ the detail panel merges the state file live — analyses, drafts, order
 outcomes. Copying prompts is the last-resort link at the bottom of the
 panel.
 
-Rows come from a disk cache (fresh for two minutes, served stale while it
-revalidates), so a restart repaints instantly; ⟳ forces a fresh read. The
+Rows come from a session cache (fresh for two minutes, served stale while it
+revalidates) that **launching a desk clears**: starting the desk is a request
+for the truth now. What the cache buys is what happens while it is up — a
+browser reload, the UI's polling, a second tab, the sibling desk on the same
+repo (a desk starting within a minute of another spares what that one just
+fetched, instead of making both pay again). ⟳ forces a fresh read.
+
+The cache, the inbox, the watcher heartbeat and the rows export live in a
+private per-user dir under the OS temp dir, so nothing session-scoped is left
+in the user's home. Only the state file — the analyses, drafts, orders and
+verified grid a MODEL produced — stays in `~/.local/state/git-workflow/`,
+which is what `--keep-state` carries across a relaunch. The
 merge state is fetched as a second phase — it is by far the most expensive
 field on GitHub — so the merge column may read `…` for a beat on a cold
 start and fill itself in. A queue the provider had to truncate is stated in

@@ -12,14 +12,19 @@ tests/bench.py). So the desk stops paying it on the critical path:
   * concurrent misses on the same key collapse into one provider call
     (single-flight), instead of N identical 5s searches.
 
-Path: ~/.local/state/git-workflow/<owner>__<repo>__cache.json
+The cache is SESSION-SCOPED, not durable: launching a desk clears it (see
+reset()), because starting the desk is a request for the truth now. What it
+buys is everything that happens while the desk is up — a browser reload, the
+UI's polling, the two desks sharing one repo, a second tab.
+
+Path: <tempdir>/git-workflow-<uid>/<owner>__<repo>__cache.json
 """
 
 import json
 import threading
 import time
 
-from deskstate import STATE_DIR
+import deskstate
 
 FRESH = 120          # serve without touching the provider
 STALE = 3600         # serve, but refresh behind the caller
@@ -33,7 +38,7 @@ _file_guard = threading.Lock()
 
 
 def cache_path(repo):
-    return STATE_DIR / ("%s__cache.json" % repo.replace("/", "__"))
+    return deskstate.runtime_path(repo, "cache.json")
 
 
 def _read(repo):
@@ -47,7 +52,6 @@ def _read(repo):
 
 
 def _write(repo, blob):
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
     tmp = cache_path(repo).with_suffix(".tmp")
     tmp.write_text(json.dumps(blob))
     tmp.replace(cache_path(repo))
@@ -123,3 +127,28 @@ def clear(repo):
     path = cache_path(repo)
     if path.exists():
         path.unlink()
+
+
+def newest(repo):
+    """Seconds since the most recently written entry, or None if empty."""
+    blob = _read(repo)
+    if not blob:
+        return None
+    return time.time() - max(entry["at"] for entry in blob.values())
+
+
+def reset(repo, grace=60):
+    """Drop the cache at desk launch — but spare one a sibling desk has just
+    filled. The PR desk and the issue desk start back to back on the same
+    repo and share this file; wiping it seconds later would throw away the
+    first one's fetch and make both pay for it again.
+
+    Returns what it did, so the caller can say so.
+    """
+    age = newest(repo)
+    if age is None:
+        return "empty"
+    if age < grace:
+        return "spared"          # a sibling desk just fetched: reuse it
+    clear(repo)
+    return "cleared"

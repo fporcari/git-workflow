@@ -8,7 +8,7 @@ server/tests/run.sh              # server tests + UI tests
 server/tests/run.sh --bench      # plus the live benchmark (needs gh)
 ```
 
-- **`test_desk.py`** (55 tests, stdlib unittest) — the row contract the
+- **`test_desk.py`** (65 tests, stdlib unittest) — the row contract the
   skills read, the verdict engine, the merge gate, the five-block partition,
   the chase grouping, the issue cross-check, the cache's
   stale-while-revalidate and single-flight behaviour, every HTTP endpoint
@@ -45,3 +45,10 @@ Run a desk on the fixture by hand to poke at the UI:
 ```sh
 python3 server/prdesk.py --provider fixture --repo fixture/desk --port 8396
 ```
+
+Where the files go, and why the tests care: the cache, the inbox, the watcher
+heartbeat and the rows export live under the OS temp dir and are cleared when
+a desk launches — so the suite isolates BOTH `deskstate.RUNTIME_DIR` and
+`deskstate.STATE_DIR`. `LaunchClearsTheCache` uses a repo name of its own,
+because the desk's background warm threads outlive the test that started them
+and would otherwise write fresh entries into a shared cache.

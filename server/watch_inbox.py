@@ -13,7 +13,7 @@ import argparse
 import sys
 import time
 
-from deskstate import STATE_DIR, heartbeat_path
+from deskstate import heartbeat_path, runtime_dir
 from inbox import inbox_path
 
 
@@ -26,7 +26,7 @@ def main():
     args = parser.parse_args()
 
     path = inbox_path(args.repo)
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    runtime_dir()
     beat = heartbeat_path(args.repo)
     started = time.time()
     while True:

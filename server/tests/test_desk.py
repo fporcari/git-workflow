@@ -29,13 +29,14 @@ os.environ["HOME"] = _HOME
 import cache            # noqa: E402
 import deskstate        # noqa: E402
 import gate as gatelib  # noqa: E402
+import inbox            # noqa: E402
 import issuecheck       # noqa: E402
 import prdesk           # noqa: E402
 import verdicts         # noqa: E402
 from providers import get_provider  # noqa: E402
 
 deskstate.STATE_DIR = Path(_HOME) / ".local" / "state" / "git-workflow"
-cache.STATE_DIR = deskstate.STATE_DIR
+deskstate.RUNTIME_DIR = Path(_HOME) / "runtime"
 REPO = "genropy/genropy"
 
 
@@ -180,6 +181,91 @@ class Cache(unittest.TestCase):
     def test_survives_a_corrupt_file(self):
         cache.cache_path(REPO).write_text("{not json")
         self.assertIsNone(cache.peek(REPO, "k"))
+
+
+class WhereThingsLive(unittest.TestCase):
+    """Temp for what the machine can recreate; home for what a model made."""
+
+    def test_the_session_files_live_under_the_temp_dir(self):
+        for path in (cache.cache_path(REPO),
+                     inbox.inbox_path(REPO),
+                     deskstate.heartbeat_path(REPO),
+                     deskstate.runtime_path(REPO, "rows.json")):
+            self.assertTrue(str(path).startswith(str(deskstate.RUNTIME_DIR)), path)
+
+    def test_the_model_s_work_stays_in_the_state_dir(self):
+        self.assertTrue(str(deskstate.state_path(REPO)).startswith(
+            str(deskstate.STATE_DIR)))
+
+    def test_the_runtime_dir_is_private(self):
+        got = deskstate.runtime_dir()
+        self.assertTrue(got.is_dir())
+        self.assertEqual(oct(got.stat().st_mode)[-3:], "700")
+
+    def test_the_old_layout_is_swept_out_of_the_home_dir(self):
+        """A stale cache left in ~/.local/state reads like live state."""
+        deskstate.STATE_DIR.mkdir(parents=True, exist_ok=True)
+        stale = deskstate.STATE_DIR / "owner__repo__cache.json"
+        keep = deskstate.state_path("owner/repo")
+        stale.write_text("{}")
+        keep.write_text("{}")
+        self.assertEqual(deskstate.sweep_legacy(), 1)
+        self.assertFalse(stale.exists())
+        self.assertTrue(keep.exists(), "the model's work must survive the sweep")
+
+    def test_the_inbox_can_be_truncated_without_knowing_the_path(self):
+        inbox.push(REPO, {"kind": "ping"})
+        self.assertTrue(inbox.inbox_path(REPO).stat().st_size)
+        inbox.truncate(REPO)
+        self.assertFalse(inbox.inbox_path(REPO).stat().st_size)
+
+
+class LaunchClearsTheCache(unittest.TestCase):
+    """The cache is for what happens while the desk is up — a browser reload,
+    the polling, a second tab — not for surviving a relaunch. Launching the
+    desk means: read it again.
+
+    Its own repo name: the desk's background warm threads outlive the test
+    that started them and would write fresh entries into a shared cache.
+    """
+
+    REPO = REPO + "-launch"
+
+    def seed(self, age):
+        cache.clear(self.REPO)
+        cache.store(self.REPO, "queue", {"rows": []})
+        blob = json.loads(cache.cache_path(self.REPO).read_text())
+        blob["queue"]["at"] -= age
+        cache.cache_path(self.REPO).write_text(json.dumps(blob))
+
+    def test_a_launch_drops_the_previous_run(self):
+        self.seed(600)
+        self.assertEqual(cache.reset(self.REPO), "cleared")
+        self.assertIsNone(cache.peek(self.REPO, "queue"))
+
+    def test_a_sibling_desk_starting_seconds_later_spares_it(self):
+        """The PR desk and the issue desk start back to back on one repo and
+        share this file: the second must not throw away the first's fetch."""
+        self.seed(2)
+        self.assertEqual(cache.reset(self.REPO), "spared")
+        self.assertIsNotNone(cache.peek(self.REPO, "queue"))
+
+    def test_an_empty_cache_is_not_an_error(self):
+        cache.clear(self.REPO)
+        self.assertEqual(cache.reset(self.REPO), "empty")
+
+    def test_keep_cache_is_the_opt_out(self):
+        source = Path(ROOT / "prdesk.py").read_text()
+        self.assertIn("--keep-cache", source)
+        self.assertIn('cache_action = "kept" if args.keep_cache else cache.reset(repo)',
+                      source)
+
+    def test_a_reload_while_the_desk_is_up_still_hits(self):
+        cache.clear(REPO)
+        desk = fresh_desk()
+        desk.snapshot()
+        _, _, source = cache.get(REPO, "queue", lambda: self.fail("refetched"))
+        self.assertEqual(source, "hit")
 
 
 class Http(unittest.TestCase):

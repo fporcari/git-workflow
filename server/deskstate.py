@@ -1,5 +1,18 @@
 """Desk state — the file through which the skills talk to the dashboard.
 
+TWO DIRECTORIES, and the split is what each thing costs to lose.
+
+RUNTIME (a private dir under the OS temp dir, wiped by the OS): the provider
+cache, the button inbox, the watcher heartbeat, the rows export. Every one of
+them is either session-scoped by design or re-readable in seconds, so none of
+it belongs in the user's home, and a stale one left behind by a dead session
+is noise the OS should collect.
+
+STATE (~/.local/state/git-workflow/<owner>__<repo>.json): the analyses, the
+drafts, the orders, the verified grid — what a MODEL produced by reading
+diffs. That is expensive to lose and worth keeping across a relaunch, which
+is what --keep-state is for.
+
 The skills (pr-triage, pr-run, issue-triage) write what only a model can
 produce: the diff-level analysis, the review drafts, the chase blocks, the
 issue findings. The server merges it into the rows it serves, so the desk's
@@ -19,10 +32,25 @@ Schema (all keys optional):
 """
 
 import json
+import os
+import tempfile
 import time
 from pathlib import Path
 
 STATE_DIR = Path.home() / ".local" / "state" / "git-workflow"
+# per-user, so two accounts on one machine never share a queue
+RUNTIME_DIR = Path(tempfile.gettempdir()) / ("git-workflow-%s" % os.getuid())
+
+
+def runtime_dir():
+    """The temp dir for everything session-scoped. 0700: the inbox carries
+    the user's repo names and the cache his queue."""
+    RUNTIME_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+    return RUNTIME_DIR
+
+
+def runtime_path(repo, suffix):
+    return runtime_dir() / ("%s__%s" % (repo.replace("/", "__"), suffix))
 
 
 def state_path(repo):
@@ -30,7 +58,7 @@ def state_path(repo):
 
 
 def heartbeat_path(repo):
-    return STATE_DIR / ("%s__watcher.alive" % repo.replace("/", "__"))
+    return runtime_path(repo, "watcher.alive")
 
 
 def watcher_age(repo):
@@ -60,9 +88,34 @@ def reset(repo):
     path = state_path(repo)
     if path.exists():
         path.replace(path.with_suffix(".json.prev"))
-    inbox = STATE_DIR / ("%s__inbox.jsonl" % repo.replace("/", "__"))
+    inbox = runtime_path(repo, "inbox.jsonl")
     if inbox.exists() and inbox.stat().st_size and time.time() - inbox.stat().st_mtime > 60:
         inbox.write_text("")
+
+
+LEGACY_SUFFIXES = ("__cache.json", "__inbox.jsonl", "__watcher.alive",
+                   "__rows.json")
+
+
+def sweep_legacy():
+    """Remove the session files an older layout left in the user's home.
+
+    They used to sit next to the state file; they belong under the OS temp
+    dir. Left behind they are dead weight that reads like live state — a
+    stale cache in ~/.local/state is exactly the thing somebody debugs for
+    twenty minutes. Returns how many it removed.
+    """
+    if not STATE_DIR.exists():
+        return 0
+    gone = 0
+    for path in STATE_DIR.iterdir():
+        if path.is_file() and path.name.endswith(LEGACY_SUFFIXES):
+            try:
+                path.unlink()
+                gone += 1
+            except OSError:
+                pass
+    return gone
 
 
 def save(repo, state):

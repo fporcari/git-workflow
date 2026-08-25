@@ -13,8 +13,12 @@ Speed shape (the desk used to be slow for structural reasons, not slow code):
     downloaded (`/api/rows` writes it out for the skill to read).
   * ONE ROUND TRIP. `/api/desk` returns meta + queue + issues + state
     together, so first paint is a single request instead of four.
-  * DISK CACHE, stale-while-revalidate (cache.py), so a restart repaints
-    instantly and never blocks on GitHub.
+  * A SESSION CACHE, stale-while-revalidate (cache.py). Launching a desk
+    clears it — starting the desk is a request for the truth now, not for
+    yesterday's queue — and what it buys is everything that happens while
+    the desk is up: a browser reload, the UI's polling, a second tab, the
+    sibling desk on the same repo. The boot fetch is paid in the background
+    before the browser is even open.
   * MERGE STATE IS PHASE TWO. It is the one expensive field; the table
     paints without it and fills in when it lands.
   * HTTP/1.1 keep-alive + ETags, so the UI's polling costs one 304.
@@ -297,8 +301,7 @@ class Desk:
                    "gates": queue["gates"],
                    "shortlist": issues["shortlist"],
                    "shortlist": [r["n"] for r in (issues["shortlist"] or {}).get("rows", [])]}
-        path = deskstate.STATE_DIR / ("%s__rows.json" % self.repo.replace("/", "__"))
-        deskstate.STATE_DIR.mkdir(parents=True, exist_ok=True)
+        path = deskstate.runtime_path(self.repo, "rows.json")
         path.write_text(json.dumps(payload, indent=1))
         return path
 
@@ -492,14 +495,19 @@ def main():
                              "triage is a button on the downloaded rows)")
     parser.add_argument("--no-prefetch", action="store_true",
                         help="do not warm the provider cache at boot")
+    parser.add_argument("--keep-cache", action="store_true",
+                        help="reuse the previous run's provider cache instead "
+                             "of reading the provider again (offline work)")
     args = parser.parse_args()
 
     provider = get_provider(args.provider)
     repo = args.repo or detect_repo()
     me = args.me or provider.whoami()
     port = args.port or (8399 if args.desk == "pr" else 8398)
+    swept = deskstate.sweep_legacy()
     if not args.keep_state:
         deskstate.reset(repo)
+    cache_action = "kept" if args.keep_cache else cache.reset(repo)
 
     desk = Desk(provider, repo, me, str(Path.cwd()), chat=args.chat, kind=args.desk)
     Handler.desk = desk
@@ -509,8 +517,12 @@ def main():
     if args.chat and args.triage_at_boot:
         flow = "pr-triage" if args.desk == "pr" else "issue-triage"
         inbox.push(repo, {"kind": "triage", "flow": flow})
-    sys.stderr.write("%s desk on http://127.0.0.1:%s  repo=%s me=%s provider=%s\n"
-                     % (args.desk, port, repo, me, provider.name))
+    sys.stderr.write("%s desk on http://127.0.0.1:%s  repo=%s me=%s provider=%s "
+                     "cache=%s\n"
+                     % (args.desk, port, repo, me, provider.name, cache_action))
+    if swept:
+        sys.stderr.write("swept %d session file(s) the old layout left in "
+                         "~/.local/state\n" % swept)
     sys.stderr.flush()
     server.serve_forever()
 
