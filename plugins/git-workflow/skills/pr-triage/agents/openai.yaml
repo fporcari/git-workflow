@@ -2,5 +2,3 @@ interface:
   display_name: "PR Triage"
   short_description: "Show the repository pull request workload."
   default_prompt: "Use $pr-triage to show what needs my attention."
-policy:
-  allow_implicit_invocation: false

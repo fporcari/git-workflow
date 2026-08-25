@@ -2,5 +2,3 @@ interface:
   display_name: "Issue Desk"
   short_description: "Open the attached issue dashboard."
   default_prompt: "Use $issue-desk to open the issue dashboard."
-policy:
-  allow_implicit_invocation: false

@@ -2,5 +2,3 @@ interface:
   display_name: "Issue Triage"
   short_description: "Build a cross-checked issue shortlist."
   default_prompt: "Use $issue-triage to shortlist open issues."
-policy:
-  allow_implicit_invocation: false

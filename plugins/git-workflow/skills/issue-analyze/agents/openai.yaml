@@ -2,5 +2,3 @@ interface:
   display_name: "Issue Analyze"
   short_description: "Analyze one issue without changing the repository."
   default_prompt: "Use $issue-analyze on the issue I name."
-policy:
-  allow_implicit_invocation: false
