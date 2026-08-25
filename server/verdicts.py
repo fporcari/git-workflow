@@ -7,7 +7,11 @@ need a diff read is reported as `asks`, exactly as the skill prescribes.
 
 
 def _last_who(row):
+    """Who spoke last, ignoring approvals: an approval closes a conversation,
+    it never opens one (same rule as the pr-triage chase.jq)."""
     last = row.get("last")
+    if last and last.get("ch") == "approved":
+        return None
     return last.get("who") if last else None
 
 
@@ -45,8 +49,12 @@ def verdict(row, me):
             return ("answer the review", "attention", "asks")
         if unresolved:
             return ("resolve the threads", "attention", "asks")
-        if decision == "APPROVED" and not req and merge == "CLEAN":
-            return ("merge it", "ready", "A1")
+        if decision == "APPROVED" and not req:
+            if merge == "CLEAN":
+                return ("merge it", "ready", "A1")
+            if merge == "BLOCKED":
+                return ("approved but BLOCKED - check the gate", "decision", "asks")
+            return ("approved - merge state not computed", "decision", "asks")
         if not reviews and not req:
             return ("get a reviewer", "attention", "asks")
         if last_who == me or last_who is None:
