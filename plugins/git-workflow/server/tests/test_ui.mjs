@@ -506,6 +506,29 @@ ok("when the loop ends nothing is left glowing",
    !document.getElementById("workingBar").classList.contains("on") &&
    !document.getElementById("tbody").innerHTML.includes("nowChip"));
 
+/* ---- 7h. Chase is people, not PRs ---- */
+const tabsNow = () => document.getElementById("tabs").querySelectorAll("button");
+tabsNow().find(b => b.dataset.v === "chase").click();
+ok("Chase shows one card per person",
+   document.getElementById("chaseWrap").querySelectorAll("[data-copy]").length ===
+     Object.keys(snapshot.queue.chase).length);
+ok("each card carries the message to paste, whole",
+   document.getElementById("chaseWrap").querySelectorAll("[data-copy]")
+     .every(b => (b.attrs["data-copy"] || "").includes("#")));
+ok("the login is not upper-cased: it is a case-sensitive handle",
+   /\.chaseCard h2\{[^}]*text-transform:none/.test(html));
+ok("a card says how many and since when",
+   document.getElementById("chaseWrap").innerHTML.includes("chaseCount"));
+ok("no PR detail panel under the chase blocks — the unit here is a person",
+   document.getElementById("detail").innerHTML === "" &&
+   document.getElementById("detail").style.display === "none");
+ok("no PR tabs leak into this view",
+   !document.getElementById("detail").innerHTML.includes("detailTabs"));
+tabsNow().find(b => b.dataset.v === "todo").click();
+ok("leaving Chase brings the detail panel back",
+   document.getElementById("detail").innerHTML.includes("detailGrid") &&
+   document.getElementById("detail").style.display !== "none");
+
 /* ---- 8. the issue desk uses the same panel ---- */
 page.applyDesk({ ...snapshot, meta: { ...snapshot.meta, desk: "issue" } });
 page.render();

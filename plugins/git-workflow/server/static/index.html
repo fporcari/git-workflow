@@ -142,6 +142,10 @@ tr.ready .mark{color:var(--green)}tr.waiting .mark{color:var(--muted)}
 .chaseWrap{display:none;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px;padding:12px 14px}
 .chaseWrap.on{display:grid}
 .chaseCard{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--bg)}
+/* a login is case-sensitive: the shared h2 uppercase would show `genro` as
+   `@GENRO`, which is wrong the moment somebody reads it as the handle */
+.chaseCard h2{text-transform:none;letter-spacing:0;font:600 12px var(--mono);color:var(--ink)}
+.chaseCount{font:10px var(--mono);color:var(--muted);font-weight:400}
 .chaseCard pre{margin:6px 0 8px;white-space:pre-wrap;font:11px var(--mono);color:var(--muted)}
 .chaseNote{grid-column:1/-1;color:var(--muted);font-size:11.5px}
 
@@ -636,13 +640,30 @@ function renderBlocks(){
     view="all";stateFilter=null;select(+el.dataset.n);});
 }
 
+/* One card per person, and nothing else: a message to paste, not a task.
+   Whoever is on this tab has already decided what to do — chase — and only
+   needs the text. */
 function renderChase(){
   const names=Object.keys(chase),wrap=$("chaseWrap");
-  wrap.innerHTML=(names.length?`<div class="chaseNote">${grid
-      ?`Blocchi verificati da ${esc(DESK==="issue"?"issue-triage":"pr-triage")}${session?` — ${esc(session)}`:""}.`
-      :"Raggruppamento grezzo dai soli campi del provider. Quelli verificati arrivano lanciando il triage."}</div>`:"")
-    +(names.map(w=>`<div class="chaseCard"><h2>@${esc(w)}</h2><pre>${esc(chase[w])}</pre><button class="btn" data-copy="${esc(chase[w])}">Copia messaggio</button></div>`).join("")
-      ||`<div class="chaseNote">Nessuno da sollecitare.</div>`);
+  if(!names.length){
+    wrap.innerHTML=`<div class="chaseNote">${loaded
+      ?"Nessuno da sollecitare: nessuna PR è ferma su qualcun altro."
+      :"Ancora niente: la coda non è caricata."}</div>`;
+    return;
+  }
+  const stamp=grid&&!gridComputed
+    ? `Blocchi verificati da ${esc(DESK==="issue"?"issue-triage":"pr-triage")}${session?` — ${esc(session)}`:""}.`
+    : "Raggruppati dai campi del provider: chi è l'ultimo a dover parlare, e da quando.";
+  wrap.innerHTML=`<div class="chaseNote">${stamp} Un messaggio per persona, pronto da incollare.</div>`
+    + names.map(w=>{
+        const text=chase[w];
+        const lines=text.split("\n").length-1;      // the header line is not a PR
+        const oldest=(text.match(/dal (\d{4}-\d{2}-\d{2})/)||[])[1];
+        return `<div class="chaseCard">
+          <h2>@${esc(w)} <span class="chaseCount">${lines} PR${oldest?` · dal ${esc(oldest)}`:""}</span></h2>
+          <pre>${esc(text)}</pre>
+          <button class="btn" data-copy="${esc(text)}">Copia messaggio</button></div>`;
+      }).join("");
   wrap.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>copyText(b,b.dataset.copy));
 }
 
@@ -652,7 +673,14 @@ const PR_TABS=r=>[["quadro","Quadro"],["analisi","Analisi"],
 const ISSUE_TABS=()=>[["quadro","Quadro"],["analisi","Analisi"]];
 
 function renderDetail(){
-  const box=$("detail"),r=selectedRow();
+  const box=$("detail");
+  if(view==="chase"){
+    // the unit here is a PERSON, not a PR. A PR's analysis under a column of
+    // chase messages answers a question nobody asked on this tab.
+    box.innerHTML="";box.style.display="none";return;
+  }
+  box.style.display="";
+  const r=selectedRow();
   if(!r){
     box.innerHTML=`<div class="empty">${loaded
       ?"<b>Nessuna riga selezionata</b><span>Clicca una riga, o usa <span class=\"kbd\">↑</span> <span class=\"kbd\">↓</span>.</span>"
