@@ -1,10 +1,10 @@
 ---
-description: Show the issue situa — the 10 most recent open issues not yet analyzed, ranked by impact, classified by type, with existing branches and PRs cross-checked — read-only, exported to the review desk. Working them (analysis agents, selection, branches, PRs) is /issue-run, which this command offers at the end. Explicit invocation ONLY. Re-run to advance to the next batch.
+description: Show the issue shortlist — the 10 most recent open issues not yet analyzed, ranked by impact, classified by type, with existing branches and PRs cross-checked — read-only, exported to the review desk. Working them (analysis agents, selection, branches, PRs) is /issue-run, which this command offers at the end. Explicit invocation ONLY. Re-run to advance to the next batch.
 argument-hint: optional — "batch=N" to change the 10, "mine" to restrict to issues assigned to me
 allowed-tools: Bash, Read, Grep, Glob, AskUserQuestion, ToolSearch, mcp__ccd_session_mgmt__set_session_title
 ---
 
-# Issue triage — the situa — $ARGUMENTS
+# Issue triage — the shortlist — $ARGUMENTS
 
 Read-only: no branches, no comments, no PRs, no assignments. Acting on the
 batch is `/issue-run`.
@@ -22,12 +22,32 @@ batch is `/issue-run`.
 
 ## Step 1 — Collect, cross-check, rank, classify
 
-**If a desk handed you a `rows` path**, the open issues are already
-downloaded — `jq '.issues' <rows path>` gives the same rows (`n`, `title`,
-`created`, `author`, `labels`, `assignees`, `comments`, `url`) without the
-`gh issue list` call. The one thing it does not carry is who commented, so
-filter by "not analyzed" on the desk's own `skill` notes, or fetch the
-comment authors only for the shortlist you keep.
+**If a desk handed you a `rows` path**, Step 1 is already done for you.
+Every issue row carries `type` (from labels and title) and a `cross` block:
+
+    branches     the remote branches naming this issue (matched on the
+                 NUMBER, never on a prefix)
+    open_prs     the PRs that close it, from the queue's own links
+    seen_by_me   whether the user has already commented on it
+    mine         whether it is assigned to him
+    note         what that combination means, in one line
+
+and `shortlist` holds the ten the desk already filtered down to: never
+looked at, nobody on them, no PR, newest first. That is ~14k tokens of issue
+rows turned into ten you actually have to read.
+
+**Do not recompute it.** What is left for you is the part that needs
+judgement and cannot be looked up:
+
+1. **rank the shortlist by impact** — read the body, not the label
+   (1. evidence of real damage; 2. blocks someone else; 3. the rest;
+   4. DOCS last);
+2. for any issue whose `cross.note` says *lavoro fermo* (a branch, no PR, no
+   assignee), answer the two questions only a reading can answer: is the
+   content already on the base (`git cherry` is not evidence after a squash
+   — verify a symbol or file the branch introduces), and was there a CLOSED
+   PR on it, and why was it closed. What survives both is finished work
+   nobody is reviewing: the most valuable find of the run.
 
 ```bash
 ME=$(gh api user --jq .login)
@@ -50,7 +70,7 @@ Rank by impact: 1) evidence of real damage (traceback, crash, data loss);
 2) blocks someone else; 3) everything else; 4) DOCS last. Read the body, not
 the label. Classify each as DEFECT / REQUEST / QUESTION / DOCS.
 
-## Step 2 — The situa
+## Step 2 — The shortlist
 
 One table, impact order: `# · date · author · type · title · assignee ·
 existing branch/PR · one-line note`. Below it, in prose: the finished-work
@@ -59,10 +79,10 @@ would pick up.
 
 Export to the review desk state
 (`~/.local/state/git-workflow/<owner>__<repo>.json`, preserve other keys):
-the situa table under `situa` and each batch issue under `issues.<n>`:
+the shortlist table under `shortlist` and each batch issue under `issues.<n>`:
 
 ```json
-{"situa": {"generated": "<ISO timestamp>",
+{"shortlist": {"generated": "<ISO timestamp>",
            "rows": [{"n": 1156, "date": "2026-08-25", "author": "dgpaci",
                       "type": "DEFECT", "title": "...",
                       "assignee": "", "note": "<una riga, in italiano>"}]},
@@ -71,7 +91,7 @@ the situa table under `situa` and each batch issue under `issues.<n>`:
 ```
 
 issue-analyze fills phase and size later. The desk's Triage tab shows
-`situa` in its ISSUE block — it stays empty until this command has run.
+`shortlist` in its ISSUE block — it stays empty until this command has run.
 
 **Triggered from the desk** (a `{"kind": "triage", "flow": "issue-triage"}`
 inbox event): run through Step 2 and the export, skip the Step 3 handover
@@ -81,4 +101,4 @@ question — the user drives from the dashboard.
 
 One question only: work the batch now with `/issue-run`, and which issues to
 leave alone? On a yes, invoke `issue-run` in the same session with the batch
-and the exclusions. On a no, stop — the situa was the deliverable.
+and the exclusions. On a no, stop — the shortlist was the deliverable.

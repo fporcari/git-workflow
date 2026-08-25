@@ -95,12 +95,21 @@ each event in order:
   roundtrip. Answer immediately and cheaply, nothing else:
   `python3 ${CLAUDE_PLUGIN_ROOT}/server/notify.py --repo <owner/repo> --pong T "pong — chat collegata e in ascolto"`,
   then restart the watcher. No analysis, no chat prose beyond one line.
+- **`{"kind": "explain", "n": N}`** — the user wants ONE line on what PR #N
+  is for, in Italian, because the computed grid shows the raw title and
+  nothing else. Read the PR's description and the issue it closes (no diff),
+  write `prs.<N>.what` in the desk state file, and say the same line in chat.
+  One sentence. This event exists so the desk never pays for 52 titles
+  rewritten at once.
 - **`{"kind": "triage", "flow": ..., "rows": "<path>"}`** — run that
   skill here, report-only, **reading `rows` instead of querying the
-  provider** (it holds `{repo, me, generated, queue: [...], issues: [...]}`
-  with the same row shape the skill's own fetch produces), and export its
-  output to the desk state as the skill's own export section specifies (`grid`+`chase` for pr-triage,
-  `situa` for issue-triage): the desk's Triage tab renders exactly that
+  provider**. That file holds `{repo, me, generated, queue, issues, grid,
+  chase, gates, shortlist}` — the rows AND the deterministic work the desk
+  has already done (the §5 blocks, the §6 chase, the §3 gate, the issue
+  cross-check and its ten-issue shortlist). Add only what a model can add
+  (the `asks` rows, the impact ranking, §8's findings), then export the
+  result to the desk state as the skill's own export section specifies (`grid`+`chase` for pr-triage,
+  `shortlist` for issue-triage): the desk's Triage tab renders exactly that
   export. Skip the skill's closing handover question — the user drives from
   the dashboard.
 - **`{"kind": "run", "flow": "pr-run"|"issue-run"}`** — run that skill here
@@ -130,9 +139,17 @@ the user says so or the preview server is stopped; a watcher exit code 3
 
 ## What the desk shows
 
-Verdicts are the pr-triage vocabulary computed from provider fields
-(anything needing a diff read shows `asks`); the Chase tab groups people to
-chase (raw field grouping until pr-triage exports its verified §6 blocks);
+**The desk computes; the model judges.** The verdicts (§7), the five blocks
+(§5), the chase blocks (§6), the merge gate of every base (§3) and the issue
+cross-check are all computed by the server from fields and cheap API reads —
+pressing ↻ used to spend ~28k tokens of input and a whole turn to re-derive
+them. The grid the desk shows is labelled with its provenance: *calcolata dal
+desk* until a triage exports a verified one, *verificata dal modello* after.
+What the model is called for is what only it can do: the rows marked `asks`,
+one-line explanations on request, the impact ranking, and pr-analyze's diff
+read.
+
+Verdicts are the pr-triage vocabulary; the Chase tab groups people to chase;
 the detail panel merges the state file live — analyses, drafts, order
 outcomes. Copying prompts is the last-resort link at the bottom of the
 panel.

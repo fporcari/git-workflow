@@ -174,7 +174,7 @@ h2{margin:0 0 7px}
     <button class="metric hot" data-filter="attention" title="La prossima mossa è tua: review da fare, risposte, riallineamenti"><b id="mAttention">—</b><span>mosse tue</span></button>
     <button class="metric amber" data-filter="decision" title="Scelte che può fare solo tu: draft da chiudere, decisioni di design"><b id="mDecision">—</b><span>decisioni tue</span></button>
     <button class="metric" data-filter="waiting" title="Ferme in attesa di qualcun altro"><b id="mWaiting">—</b><span>in attesa</span></button>
-    <button class="metric green" data-filter="ready" title="Approvate, CLEAN, zero richieste pendenti: pronte al merge"><b id="mReady">—</b><span>mergiabili</span></button>
+    <button class="metric green" data-filter="ready" title="Approvate, CLEAN, zero richieste pendenti: pronte al merge"><b id="mReady">—</b><span>mergeable</span></button>
   </section>
 
   <div class="banner err" id="errBox"></div>
@@ -204,12 +204,12 @@ h2{margin:0 0 7px}
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const MARK={ready:"✓",attention:"!",waiting:"○",decision:"◆"};
-const STATE_LABEL={ready:"mergiabile",attention:"mossa tua",waiting:"in attesa",decision:"decisione tua"};
+const STATE_LABEL={ready:"mergeable",attention:"mossa tua",waiting:"in attesa",decision:"decisione tua"};
 const AUTORUN_TIP="Cosa può fare pr-run da solo: A1 merge (tua PR approvata e CLEAN) · A2 edit banale chiesto dal reviewer · A3 riallineo del branch · asks te lo porta in chat · yours decisione solo tua · - tocca ad altri";
 
-let meta={},DESK="pr",prs=[],issues=[],chase={},grid=null,situa=null,session=null;
+let meta={},DESK="pr",prs=[],issues=[],chase={},grid=null,shortlist=null,session=null;
 let loaded=false,view="todo",query="",stateFilter=null,watcherAlive=false;
-let issuesTruncated=null;
+let issuesTruncated=null,gridComputed=true,shortlistComputed=true,gates={};
 let selected=null,tab="quadro",sort={key:"created",dir:-1},acting={},truncated=null,pendingMerge=false;
 let deskEtag=null,fetching=false,lastGenerated=null,timings={};
 const triageRunning={pr:false,issue:false};
@@ -255,6 +255,13 @@ function applyDesk(d){
   session=d.queue.session;lastGenerated=d.generated;
   truncated=d.queue.truncated?d.queue.total:null;
   issuesTruncated=d.issues.truncated?d.issues.total:null;
+  gridComputed=d.queue.grid_computed!==false;
+  shortlistComputed=d.issues.shortlist_computed!==false;
+  gates=d.queue.gates||{};
+  // the snapshot carries the grid the desk computed; a model's export, when
+  // there is one, arrives here already substituted by the server
+  grid=d.queue.grid||grid;
+  shortlist=d.issues.shortlist||shortlist;
   pendingMerge=!!d.queue.mergestate_pending;
   applyState(d.state);
   loaded=true;
@@ -263,7 +270,11 @@ function applyDesk(d){
 }
 function applyState(st){
   if(!st)return;
-  grid=st.grid;situa=st.situa;session=st.session||session;
+  // only override with what the state file holds: /api/state carries the
+  // model's export, and null there must not wipe the computed grid
+  if(st.grid)grid=st.grid;
+  if(st.shortlist)shortlist=st.shortlist;
+  session=st.session||session;
   if(Object.keys(st.chase||{}).length)chase=st.chase;
   const w=st.watcher||{};
   watcherAlive=!!w.alive||!!(w.chat&&w.busy);
@@ -277,7 +288,7 @@ function applyState(st){
   box.classList.toggle("on",feed.length>0);
   if(feed.length)box.innerHTML=feed.slice(-8).reverse().map(f=>`<div><b>${esc(f.at)}</b>${f.pr?`<b>#${f.pr}</b> `:""}${esc(f.msg)}</div>`).join("");
   if(grid)triageRunning.pr=false;
-  if(situa)triageRunning.issue=false;
+  if(shortlist)triageRunning.issue=false;
 }
 let stateEtag=null;
 async function pollState(){
@@ -321,7 +332,7 @@ function visiblePrs(){
 function visibleIssues(){
   let list=issues.filter(r=>matches(r,[r.n,r.title,r.author,(r.labels||[]).join(" "),r.type]));
   if(view==="free")list=list.filter(r=>!r.assignees.length);
-  if(view==="situa"&&situa){const keep=new Set(situa.rows.map(x=>x.n));list=list.filter(r=>keep.has(r.n));}
+  if(view==="shortlist"&&shortlist){const keep=new Set(shortlist.rows.map(x=>x.n));list=list.filter(r=>keep.has(r.n));}
   return sortRows(list);
 }
 const SORTERS={
@@ -342,14 +353,15 @@ function setSort(key){
 
 /* ---------- header / tabs ---------- */
 const VIEWS=()=>DESK==="issue"?[
-  {id:"situa",label:"Situa",count:situa?situa.rows.length:"—",tip:"Il batch di issue-triage: le più recenti non analizzate, con tipo e cross-check di branch e PR"},
-  {id:"free",label:"Senza assegnatario",count:issues.filter(r=>!r.assignees.length).length,tip:"Le candidate per issue-run: nessuno le ha ancora prese"},
+  {id:"shortlist",label:"Shortlist",count:shortlist?shortlist.rows.length:"—",tip:"Il batch di issue-triage: le più recenti non analizzate, con tipo e cross-check di branch e PR"},
+  {id:"free",label:"Unassigned",count:issues.filter(r=>!r.assignees.length).length,tip:"Le candidate per issue-run: nessuno le ha ancora prese"},
   {id:"all",label:"Tutte",count:loaded?issues.length:"—",tip:"Tutte le issue aperte del repo"},
 ]:[
   {id:"todo",label:"Da fare",count:prs.filter(r=>r.state!=="waiting").length,tip:"Le PR dove la prossima mossa è tua"},
   {id:"waiting",label:"In attesa",count:prs.filter(r=>r.state==="waiting").length,tip:"Ferme in attesa di altri"},
   {id:"all",label:"Tutte",count:loaded?prs.length:"—",tip:"Tutte le PR aperte in cui sei coinvolto"},
-  {id:"chase",label:"Solleciti",count:Object.keys(chase).length,tip:"Un messaggio pronto per ogni persona da sollecitare"},
+  {id:"blocks",label:"Blocks",count:grid?grid.blocks.filter(b=>b.rows.length).length:"—",tip:"I cinque blocchi di pr-triage §5, dal più economico: una partizione dei verdetti, calcolata qui"},
+  {id:"chase",label:"Chase",count:Object.keys(chase).length,tip:"Un messaggio pronto per ogni persona da sollecitare"},
 ];
 function renderTabs(){
   $("tabs").innerHTML=VIEWS().map(v=>`<button class="${view===v.id?"active":""}" data-v="${v.id}" title="${esc(v.tip)}">${v.label} <b>${v.count}</b></button>`).join("");
@@ -385,10 +397,12 @@ function th(key,label,extra){
   return `<th data-sort="${key}" ${extra||""}>${label} ${arrow}</th>`;
 }
 function renderTable(){
-  const tb=$("tbody"),head=$("thead"),onChase=view==="chase";
-  $("tableWrap").style.display=onChase?"none":"";
-  $("chaseWrap").classList.toggle("on",onChase);
+  const tb=$("tbody"),head=$("thead");
+  const onChase=view==="chase",onBlocks=view==="blocks";
+  $("tableWrap").style.display=(onChase||onBlocks)?"none":"";
+  $("chaseWrap").classList.toggle("on",onChase||onBlocks);
   if(onChase){renderChase();return;}
+  if(onBlocks){renderBlocks();return;}
   if(!loaded){
     head.innerHTML="";
     tb.innerHTML=`<tr><td colspan="9" class="skel">${"<div></div>".repeat(6)}</td></tr>`;
@@ -396,9 +410,9 @@ function renderTable(){
   }
   const list=rows();
   if(DESK==="issue"){
-    head.innerHTML=`<tr><th class="markCol"></th>${th("n","#")}${th("title","issue")}${th("type","tipo",'title="DEFECT bug reale · REQUEST nuova funzione · QUESTION domanda · DOCS documentazione"')}${th("author","autore")}<th>label</th>${th("assignees","assegnatari")}${th("comments","commenti",'class="num"')}${th("created","età",'class="num"')}</tr>`;
+    head.innerHTML=`<tr><th class="markCol"></th>${th("n","#")}${th("title","issue")}${th("type","tipo",'title="DEFECT bug reale · REQUEST nuova funzione · QUESTION domanda · DOCS documentazione"')}${th("author","autore")}<th>label</th>${th("assignees","assignees")}${th("comments","commenti",'class="num"')}${th("created","età",'class="num"')}</tr>`;
     tb.innerHTML=list.map(r=>{
-      const note=situa&&situa.rows.find(x=>x.n===r.n);
+      const note=shortlist&&shortlist.rows.find(x=>x.n===r.n);
       return `<tr data-n="${r.n}" class="${r.assignees.length?"waiting":"attention"}${selected===r.n?" selected":""}">
         <td class="mark"><span title="${r.assignees.length?"presa":"libera"}">${r.assignees.length?"○":"!"}</span></td>
         <td class="mono">#${r.n}</td>
@@ -410,7 +424,7 @@ function renderTable(){
         <td class="num">${r.comments||"—"}</td>
         <td class="num mono">${ageDays(r.created)}g</td></tr>`;}).join("");
   }else{
-    head.innerHTML=`<tr><th class="markCol"></th>${th("title","pull request")}${th("author","autore")}${th("decision","review")}${th("merge","merge")}${th("unresolved","aperti",'class="num" title="Thread di review non risolti"')}<th>base</th>${th("todo","prossima mossa")}${th("autorun","autorun",`title="${esc(AUTORUN_TIP)}"`)}</tr>`;
+    head.innerHTML=`<tr><th class="markCol"></th>${th("title","pull request")}${th("author","autore")}${th("decision","review")}${th("merge","merge")}${th("unresolved","unresolved",'class="num" title="Thread di review non risolti"')}<th>base</th>${th("todo","prossima mossa")}${th("autorun","autorun",`title="${esc(AUTORUN_TIP)}"`)}</tr>`;
     tb.innerHTML=list.map(r=>`<tr data-n="${r.n}" class="${r.state}${selected===r.n?" selected":""}">
       <td class="mark"><span title="${STATE_LABEL[r.state]}">${MARK[r.state]}</span></td>
       <td class="prTitle"><b>#${r.n}</b><span>${esc(r.title)}</span>${r.skill?'<small class="dot" title="analisi disponibile">●</small>':""}<small>${ageDays(r.created)}g</small></td>
@@ -427,6 +441,22 @@ function renderTable(){
   $("empty").style.display=list.length?"none":"flex";
   $("empty").innerHTML=`<b>Niente in questa vista</b><span>Prova un altro tab, azzera il filtro o rileggi il provider con ⟳.</span>`;
 }
+function renderBlocks(){
+  const wrap=$("chaseWrap");
+  if(!grid){wrap.innerHTML=`<div class="chaseNote">Nessuna griglia ancora.</div>`;return;}
+  wrap.innerHTML=grid.blocks.map(b=>{
+    if(!b.rows.length)
+      return `<div class="chaseCard"><h2>${esc(b.title)}</h2><p style="color:var(--muted);margin:6px 0 0">vuoto</p></div>`;
+    return `<div class="chaseCard"><h2>${esc(b.title)} (${b.rows.length})</h2>
+      ${b.rows.slice(0,14).map(r=>`<div class="signal" data-n="${r.n}" style="cursor:pointer">
+        <b class="mono">#${r.n}</b><span>${esc((r.what||"").slice(0,54))}</span>
+        <span class="mono">${esc(r.autorun||"")}</span></div>`).join("")}
+      ${b.rows.length>14?`<p style="color:var(--muted);margin:6px 0 0">…e altre ${b.rows.length-14}</p>`:""}
+      </div>`;}).join("");
+  wrap.querySelectorAll("[data-n]").forEach(el=>el.onclick=()=>{
+    view="all";stateFilter=null;select(+el.dataset.n);});
+}
+
 function renderChase(){
   const names=Object.keys(chase),wrap=$("chaseWrap");
   wrap.innerHTML=(names.length?`<div class="chaseNote">${grid
@@ -439,7 +469,7 @@ function renderChase(){
 
 /* ---------- detail panel ---------- */
 const PR_TABS=r=>[["quadro","Quadro"],["analisi","Analisi"],
-                  ["thread",`Thread${r.unresolved?" "+r.unresolved:""}`],["bozza","Bozza"]];
+                  ["thread",`Thread${r.unresolved?" "+r.unresolved:""}`],["bozza","Draft"]];
 const ISSUE_TABS=()=>[["quadro","Quadro"],["analisi","Analisi"]];
 
 function renderDetail(){
@@ -481,15 +511,17 @@ function actBadge(r){
 }
 function renderPrActions(r){
   const exec=r.autorun==="A1"?{label:"▶ Merge",tip:"Ordina il merge alla chat collegata: pr-run riverifica i 5 gate freschi (autore, approvazioni sull'ultimo head, CLEAN su base protetta) e solo allora fa squash + delete branch."}
-           :r.autorun==="A3"?{label:"▶ Riallinea",tip:"Ordina il riallineo alla chat collegata: merge della base nel branch (mai rebase), regole A3 di pr-run."}:null;
+           :r.autorun==="A3"?{label:"▶ Merge base",tip:"Ordina il riallineo alla chat collegata: merge della base nel branch (mai rebase), regole A3 di pr-run."}:null;
   const done=r.order&&r.order.status!=="pending";
   $("detailActions").innerHTML=`
     ${exec&&!r.order?`<button class="btn primary" id="aExec" ${watcherAlive?"":"disabled"} title="${esc(exec.tip)}">${exec.label}</button>`:""}
     ${r.order?`<span class="btn ${done?"done":"working"}" title="Ordine registrato: lo esegue la chat collegata senza altre conferme">${done?"✓ "+esc(r.order.status):"⏳ ordine inviato"}</span>`:""}
-    <button class="btn ${exec&&!r.order?"":"primary"}" id="aAnalyze" ${watcherAlive?"":"disabled"} title="pr-analyze legge tutto il diff, verifica i claim della descrizione e i thread, e produce cosa/storia/proposta con l'eventuale bozza. Read-only.">▶ Analizza</button>
+    <button class="btn" id="aExplain" ${watcherAlive?"":"disabled"} title="Chiede al modello una riga sola: cosa risolve questa PR, in italiano. Costa una frase invece dei ${prs.length} titoli che il triage riscriveva tutti insieme.">▶ Spiega</button>
+    <button class="btn ${exec&&!r.order?"":"primary"}" id="aAnalyze" ${watcherAlive?"":"disabled"} title="pr-analyze legge tutto il diff, verifica i claim della descrizione e i thread, e produce cosa/storia/proposta con l'eventuale draft. Read-only.">▶ Analizza</button>
     <a class="btn" href="${r.url}" target="_blank" rel="noreferrer">GitHub ↗</a>`;
   const ex=$("aExec");if(ex)ex.onclick=()=>doOrder(r,ex);
   const an=$("aAnalyze");if(an)an.onclick=()=>doAnalyze(r,an);
+  const ex2=$("aExplain");if(ex2)ex2.onclick=()=>doExplain(r,ex2);
 }
 function renderIssueActions(r){
   $("detailActions").innerHTML=`
@@ -506,17 +538,22 @@ function renderPrTab(r){
     g.innerHTML=`
       <article><h2>Quadro</h2>
         <dl>
-          <div><dt>Decisione review</dt><dd>${esc(r.decision||"—")}</dd></div>
-          <div><dt>Richieste a</dt><dd>${esc(r.req.join(", ")||"nessuno")}</dd></div>
-          <div><dt>Stato merge</dt><dd>${esc(r.merge||"in arrivo…")}</dd></div>
-          <div><dt>Thread</dt><dd>${r.unresolved}/${r.threads} aperti</dd></div>
+          <div><dt>Review decision</dt><dd>${esc(r.decision||"—")}</dd></div>
+          <div><dt>Review richiesta a</dt><dd>${esc(r.req.join(", ")||"nessuno")}</dd></div>
+          <div><dt>Merge state</dt><dd>${esc(r.merge||"in arrivo…")}</dd></div>
+          <div><dt>Base</dt><dd>${esc(r.base)}</dd></div>
+          <div><dt>Thread</dt><dd>${r.unresolved}/${r.threads} unresolved</dd></div>
           <div><dt>Ultimo a parlare</dt><dd>${r.last?esc(`${r.last.who} · ${r.last.ch} · ${r.last.t.slice(0,10)}`):"—"}</dd></div>
           <div><dt>Chiude</dt><dd>${(r.closes||[]).map(c=>"#"+c.issue).join(" ")||"nessuna issue"}</dd></div>
-        </dl>${actBadge(r)}</article>
+        </dl>
+        ${(r.gate||[]).length?`<h2 style="margin-top:11px">Gate di ${esc(r.base)}</h2>
+          <ul>${r.gate.map(g=>`<li>${esc(g)}</li>`).join("")}</ul>`:""}
+        ${actBadge(r)}</article>
       <article class="nextCard"><h2>Prossima mossa</h2><p>${esc(r.todo)}</p>
+        ${sk.what?`<p style="font-weight:400;font-size:12px">${esc(sk.what)}</p>`:""}
         <small>autorun <b>${esc(r.autorun)}</b> — ${esc(AUTORUN_TIP)}</small>${
         r.closes&&r.closes.some(c=>!c.assignees.length)
-          ? `<div class="actionText">Issue collegata senza assegnatario (${r.closes.filter(c=>!c.assignees.length).map(c=>"#"+c.issue).join(" ")}): nel workflow Softwell legge come da fare a tutti.</div>`:""}</article>
+          ? `<div class="actionText">Issue collegata senza assignee (${r.closes.filter(c=>!c.assignees.length).map(c=>"#"+c.issue).join(" ")}): nel workflow Softwell legge come da fare a tutti.</div>`:""}</article>
       <aside><h2>Review</h2>${reviews}</aside>`;
   }else if(tab==="analisi"){
     g.innerHTML=`
@@ -530,17 +567,17 @@ function renderPrTab(r){
         <div class="signal"><b>autorun</b><span>${esc(r.autorun)}</span></div></aside>`;
   }else if(tab==="thread"){
     g.innerHTML=`
-      <article class="wideArticle"><h2>Thread di review</h2>
+      <article class="wideArticle"><h2>Review threads</h2>
         ${r.threads?`<div class="thread"><span>${r.unresolved}</span><div><b>${r.unresolved?"non risolti":"tutti risolti"}</b>
             <p>${r.threads} thread in totale su questa PR${r.unresolved?`, ${r.unresolved} ancora aperti.`:"."}</p></div></div>
           ${(r.reviews||[]).map(v=>`<div class="thread"><span>${esc((v.who||"?")[0].toUpperCase())}</span><div><b>${esc(v.who)}</b><p>${esc(v.state)} il ${esc(v.on)}</p></div></div>`).join("")}`
           :`<div class="tabEmpty">Nessun thread di review su questa PR.</div>`}</article>
-      <aside><h2>Regola merge</h2><p>Tutti i thread devono essere risolti prima del merge, anche quando una risposta è già presente.</p>
+      <aside><h2>Regola del merge</h2><p>Tutti i thread devono essere risolti prima del merge, anche quando una risposta è già presente.</p>
         <p>Il conteggio viene dai campi del provider; il contenuto lo legge <b>▶ Analizza</b>.</p></aside>`;
   }else{
     const text=sk.draft||"";
     g.innerHTML=`
-      <article class="wideArticle"><h2>Bozza di risposta</h2>
+      <article class="wideArticle"><h2>Review draft</h2>
         ${text?`<div class="draft"><span>DA PR-ANALYZE</span><p>${esc(text)}</p></div>
           <div class="draftActions"><button class="btn" id="bCopy">Copia testo</button>
             <button class="btn primary" id="bSend" ${watcherAlive?"":"disabled"} title="Registra l'ordine: la chat collegata posta questa bozza sulla PR seguendo le regole di pr-run.">▶ Manda in chat</button></div>`
@@ -557,13 +594,13 @@ function renderPrTab(r){
 }
 function renderIssueTab(r){
   const g=$("detailGrid"),sk=r.skill||{};
-  const note=situa&&situa.rows.find(x=>x.n===r.n);
+  const note=shortlist&&shortlist.rows.find(x=>x.n===r.n);
   if(tab==="quadro"){
     g.innerHTML=`
       <article><h2>Quadro</h2>
         <dl><div><dt>Tipo</dt><dd>${esc(r.type)}</dd></div>
         <div><dt>Label</dt><dd>${esc(r.labels.join(", ")||"nessuna")}</dd></div>
-        <div><dt>Assegnatari</dt><dd>${esc(r.assignees.join(", ")||"nessuno")}</dd></div>
+        <div><dt>Assignees</dt><dd>${esc(r.assignees.join(", ")||"nessuno")}</dd></div>
         <div><dt>Commenti</dt><dd>${r.comments}</dd></div>
         <div><dt>Età</dt><dd>${ageDays(r.created)} giorni</dd></div></dl>${actBadge(r)}</article>
       <article class="nextCard"><h2>Prossima mossa</h2>
@@ -571,9 +608,17 @@ function renderIssueTab(r){
         <small>${r.assignees.length
           ?"Nel workflow Softwell non si lavora su una issue di qualcun altro: chiedi prima."
           :"Un'issue nuova la assegna l'Owner: chiedi, non prenderla — a meno che sia backlog."}</small></article>
-      <aside><h2>Cross-check dal triage</h2>${note
-        ?`<div class="evidence"><code>${esc(note.note||"—")}</code><span>${esc(note.assignee||"nessun assegnatario")}</span></div>`
-        :`<div class="tabEmpty">Lancia ↻ issue-triage per branch e PR già esistenti su questa issue.</div>`}</aside>`;
+      <aside><h2>Cross-check</h2>${(() => {
+        const c=r.cross;
+        if(!c)return `<div class="tabEmpty">Cross-check non disponibile.</div>`;
+        const line=(label,value)=>`<div class="signal"><b>${label}</b><span>${esc(value)}</span></div>`;
+        return line("branch", c.branches.length?c.branches.join(" "):"nessuno")
+          + line("PR aperte", c.open_prs.length?c.open_prs.map(p=>"#"+p).join(" "):"nessuna")
+          + line("già vista da te", c.seen_by_me?"sì, hai commentato":"no")
+          + line("assegnata a te", c.mine?"sì":"no")
+          + `<div class="evidence" style="margin-top:8px"><code>${esc(c.note||"")}</code>
+             <span>${note?"nel batch del triage":"dal cross-check del desk"}</span></div>`;
+      })()}</aside>`;
   }else{
     g.innerHTML=`
       <article class="wideArticle"><h2>Analisi</h2>
@@ -610,6 +655,15 @@ async function doAnalyze(r,btn){
     await post(`/api/pr/${r.n}/analyze`);
     markActing("p",r.n,"pr-analyze");
     localFeed(`pr-analyze su #${r.n} inviata alla chat collegata`);
+  }catch(e){acting["p"+r.n]={status:"error",error:e.message};}
+  render();
+}
+async function doExplain(r,btn){
+  btn.disabled=true;btn.classList.add("working");
+  try{
+    await post(`/api/pr/${r.n}/explain`);
+    markActing("p",r.n,"spiegazione di una riga");
+    localFeed(`spiegazione richiesta alla chat per #${r.n}`);
   }catch(e){acting["p"+r.n]={status:"error",error:e.message};}
   render();
 }
@@ -652,11 +706,11 @@ function renderSummary(){
     const free=issues.filter(r=>!r.assignees.length).length;
     ["mAttention","mDecision","mWaiting","mReady"].forEach((id,i)=>{
       $(id).textContent=[free,issues.filter(r=>r.type==="DEFECT").length,
-                         issues.length-free,situa?situa.rows.length:"—"][i];});
+                         issues.length-free,shortlist?shortlist.rows.length:"—"][i];});
     document.querySelectorAll(".metric span").forEach((el,i)=>{
-      el.textContent=["senza assegnatario","difetti","assegnate","in situa"][i];});
+      el.textContent=["unassigned","defect","assigned","in shortlist"][i];});
     $("cIssues").textContent=issues.length;$("cPrs").textContent="—";
-    $("leadTitle").textContent=free?`${free} issue senza assegnatario`:"tutte le issue hanno un assegnatario";
+    $("leadTitle").textContent=free?`${free} issue senza assignee`:"tutte le issue hanno un assignee";
     $("leadSub").textContent=`${issues.length} aperte · provider ${meta.provider||"—"}`;
   }else{
     const c={ready:0,attention:0,waiting:0,decision:0};
@@ -669,6 +723,10 @@ function renderSummary(){
     $("leadSub").textContent=`${prs.length} aperte in cui sei coinvolto · ${issues.length} issue · provider ${meta.provider||"—"}`;
   }
   const notes=[];
+  const src=DESK==="issue"?shortlistComputed:gridComputed;
+  notes.push(src
+    ? `<b>Griglia calcolata dal desk</b> — verdetti, blocchi e ${DESK==="issue"?"cross-check":"solleciti"} dai campi e dal gate del branch, senza spendere un turno di modello. ↻ chiede al modello quello che solo lui può dire.`
+    : `<b>Griglia verificata dal modello</b>${session?` — ${esc(session)}`:""}.`);
   if(truncated)notes.push(`<b>Coda troncata:</b> il provider dichiara ${truncated} PR e la pagina ne porta ${prs.length}. Le mancanti non sono in tabella.`);
   if(issuesTruncated)notes.push(`<b>Issue troncate:</b> il repo ne ha ${issuesTruncated} aperte e il desk ne porta ${issues.length}. Le più vecchie non sono in tabella.`);
   if(pendingMerge)notes.push("Lo stato di merge è la lettura più costosa del provider: arriva un attimo dopo, la tabella si riempie da sola.");

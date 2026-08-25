@@ -8,12 +8,13 @@ server/tests/run.sh              # server tests + UI tests
 server/tests/run.sh --bench      # plus the live benchmark (needs gh)
 ```
 
-- **`test_desk.py`** (28 tests, stdlib unittest) — the row contract the
-  skills read, the verdict engine, the cache's stale-while-revalidate and
-  single-flight behaviour, every HTTP endpoint including the 304 path, and
-  the guarantee that a cold snapshot pays its three cache misses in
-  parallel rather than one after the other.
-- **`test_ui.mjs`** (25 checks, plain node) — drives the **real**
+- **`test_desk.py`** (55 tests, stdlib unittest) — the row contract the
+  skills read, the verdict engine, the merge gate, the five-block partition,
+  the chase grouping, the issue cross-check, the cache's
+  stale-while-revalidate and single-flight behaviour, every HTTP endpoint
+  including the 304 path, and the guarantee that a cold snapshot pays its
+  cache misses in parallel rather than one after the other.
+- **`test_ui.mjs`** (44 checks, plain node) — drives the **real**
   `static/index.html` against a **real** desk process on the fixture
   provider, through a small DOM shim. It is the page's own render path that
   runs, so it catches a render that throws, a missing field, a button wired
@@ -23,7 +24,21 @@ server/tests/run.sh --bench      # plus the live benchmark (needs gh)
   nested connections is what costs, and that `mergeStateStatus` alone costs
   more than the whole rest of the query. Those numbers are the reason
   `providers/github.py` is shaped the way it is.
-- **`capture.py owner/repo`** — record a fresh fixture.
+- **`capture.py owner/repo`** — record a fresh fixture: the rows, the merge
+  states, the gate of every base, the remote branches and the issue
+  relations, so nothing in the suite reaches the network. Run it from the
+  target repo's checkout, so `git ls-remote` sees its branches.
+
+Two properties the suite exists to hold:
+
+- **the desk computes, the model judges.** The verdicts, the five blocks, the
+  chase blocks, the gate and the issue cross-check are all asserted here as
+  code, because they used to cost a model turn each time the user pressed ↻.
+  `Blocks.test_every_row_lands_in_exactly_one_block` is the partition;
+  `Gate.*` is why an approved CLEAN PR is not always yours to merge.
+- **no prose is ever parsed back out.** `Chase` reads `waiting_on`, a field,
+  never the verdict's sentence. The test that used to pin the sentence broke
+  the moment the wording changed — which is the point.
 
 Run a desk on the fixture by hand to poke at the UI:
 

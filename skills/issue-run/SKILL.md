@@ -3,7 +3,7 @@ name: issue-run
 description: Work the triaged issue batch step by step — one issue-analyze per candidate in a fresh agent, the selection box, then branch + PR fan-out for the picked ones — notifying the review desk at every step. Explicit invocation ONLY, or as the continuation issue-triage offers, or on a desk button; never trigger it on your own.
 ---
 
-# Issue run — from the situa to the PRs
+# Issue run — from the shortlist to the PRs
 
 Conversation in Italian; everything persisted (commits, PRs, code, comments)
 in English. **NO AI/tool attribution anywhere** — contractual obligation.

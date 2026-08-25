@@ -1,8 +1,22 @@
-"""Field-only verdict engine, ported from the pr-triage skill (section 7).
+"""Verdict engine, ported from the pr-triage skill (sections 5-7).
 
 Works on the normalized row shape every provider returns; never reads diffs.
-Verdicts computed here are the honest field-level subset: anything that would
-need a diff read is reported as `asks`, exactly as the skill prescribes.
+Anything that would need a diff read is reported as `asks`, exactly as the
+skill prescribes — that is the boundary, and it is where a model earns its
+tokens.
+
+Everything on THIS side of the boundary is deterministic and belongs here
+rather than in a model turn: the todo/state/autorun vocabulary (§7 — 0.07 ms
+for 52 PRs), the partition into the five blocks (§5 — a pure function of
+those three), and the per-person chase grouping (§6). The desk used to ask
+the attached chat to reproduce all of it on every refresh: ~28k tokens of
+input, and a whole turn of latency, to re-derive a mapping.
+
+Pass a `gate` (see gate.py) and the verdicts stop being conservative where an
+API read settles the question — above all WHO MAY LAND. On a base whose
+protection restricts pushes, an approved CLEAN PR of the user's own is not
+his merge, and a verdict engine that has not read the gate says
+`A1 → merge it` there and is wrong.
 """
 
 
@@ -15,8 +29,24 @@ def _last_who(row):
     return last.get("who") if last else None
 
 
-def verdict(row, me):
-    """Return (todo, state, autorun) for one normalized PR row."""
+def _landing(gate):
+    """The verdict for an otherwise-mergeable PR the user may not land."""
+    if not gate or gate.get("landers") is None or gate.get("can_land"):
+        return None
+    who = ", ".join(gate["landers"]) or "nessuno"
+    if gate.get("bypass"):
+        return ("approvata \u2014 il merge su %s \u00e8 di %s, tu passi solo "
+                "come admin" % (gate["branch"], who), "decision", "asks")
+    return ("approvata \u2014 il merge su %s \u00e8 di %s"
+            % (gate["branch"], who), "waiting", "-")
+
+
+def verdict(row, me, gate=None):
+    """Return (todo, state, autorun) for one normalized PR row.
+
+    `gate` is the protection of THIS row's base branch, or None for the
+    field-only reading.
+    """
     author = row.get("author")
     mine = author == me
     draft = row.get("draft")
@@ -49,12 +79,21 @@ def verdict(row, me):
         if decision == "CHANGES_REQUESTED" and not answered:
             return ("answer the review", "attention", "asks")
         if unresolved and not answered:
-            return ("resolve the threads", "attention", "asks")
+            hard = gate and gate.get("conversation_resolution")
+            return ("resolve the threads" + (" (bloccano il merge)" if hard else ""),
+                    "attention", "asks")
         if decision == "APPROVED" and not req:
             if merge == "CLEAN":
-                return ("merge it", "ready", "A1")
+                return _landing(gate) or ("merge it", "ready", "A1")
             if merge == "BLOCKED":
-                return ("approved but BLOCKED - check the gate", "decision", "asks")
+                if gate and unresolved and gate.get("conversation_resolution"):
+                    return ("approvata ma i thread aperti bloccano il merge",
+                            "attention", "asks")
+                if gate and not gate.get("protected"):
+                    return ("approvata \u2014 base non protetta, BLOCKED \u00e8 "
+                            "altro", "decision", "asks")
+                return _landing(gate) or ("approved but BLOCKED - check the gate",
+                                          "decision", "asks")
             return ("approved - merge state not computed", "decision", "asks")
         if not reviews and not req:
             return ("get a reviewer", "attention", "asks")
@@ -95,13 +134,99 @@ def issue_type(labels, title):
     return "UNCLASSIFIED"
 
 
-def decorate(rows, me):
+def decorate(rows, me, gates=None):
+    """Annotate every row. `gates` maps a base branch to its gate dict."""
     for row in rows:
-        todo, state, autorun = verdict(row, me)
+        gate = (gates or {}).get(row.get("base"))
+        todo, state, autorun = verdict(row, me, gate)
         row["todo"] = todo
         row["state"] = state
         row["autorun"] = autorun
+        row["waiting_on"] = waiting_on(row, me, gate) if state == "waiting" else None
     return rows
+
+
+# ---------------------------------------------------------------------------
+# §5 — the five blocks. A pure function of (autorun, state, todo); the model
+# used to be asked to reproduce this partition on every refresh.
+
+BLOCK_TITLES = ("Da mergiare subito", "Azione banale", "Review da fare",
+                "Solo tue", "In attesa di altri")
+REVIEW_TODOS = ("review it", "re-review it")
+
+
+def block_of(row):
+    if row.get("autorun") == "A1":
+        return "Da mergiare subito"
+    if row.get("autorun") in ("A2", "A3"):
+        return "Azione banale"
+    if row.get("todo") in REVIEW_TODOS:
+        return "Review da fare"
+    if row.get("state") == "waiting":
+        return "In attesa di altri"
+    # a decision, or an `attention` that is nobody else's move: his call
+    return "Solo tue"
+
+
+def blocks(rows):
+    """The §5 output, computed. Same shape the skill exports, so the desk
+    renders one thing whether the grid came from here or from a model."""
+    grouped = {title: [] for title in BLOCK_TITLES}
+    for row in rows:
+        grouped[block_of(row)].append({
+            "n": row["n"], "date": row.get("created"), "author": row.get("author"),
+            "what": row.get("title"), "todo": row.get("todo"),
+            "autorun": row.get("autorun"), "base": row.get("base"),
+        })
+    return [{"title": title, "rows": grouped[title]} for title in BLOCK_TITLES]
+
+
+# ---------------------------------------------------------------------------
+# §6 — the chase blocks, per person, oldest first, ready to paste.
+
+def waiting_on(row, me, gate=None):
+    """Who owes the next move on a waiting row — from the FIELDS, never by
+    re-reading the verdict's prose. Parsing the sentence back out worked
+    until the wording changed, which is exactly the kind of coupling that
+    breaks silently."""
+    if row.get("draft"):
+        return None if row.get("author") == me else row.get("author")
+    if row.get("author") != me:
+        return row.get("author")
+    # the user's own PR: whoever was asked, or whoever requested the changes,
+    # or — when the gate says so — whoever may actually land it
+    if row.get("req"):
+        return row["req"][0]
+    if row.get("decision") == "CHANGES_REQUESTED":
+        for review in row.get("reviews") or []:
+            if review.get("state") == "CHANGES_REQUESTED":
+                return review.get("who")
+    if gate and gate.get("landers") and not gate.get("can_land"):
+        return gate["landers"][0]
+    return None
+
+
+def chase(rows):
+    per = {}
+    for row in rows:
+        if row.get("state") != "waiting":
+            continue
+        who = row.get("waiting_on")
+        if who:
+            per.setdefault(who, []).append(row)
+    out = {}
+    for who, items in sorted(per.items(), key=lambda kv: -len(kv[1])):
+        items.sort(key=lambda r: r.get("created") or "")
+        lines = ["#%s (%s) %s" % (r["n"], r.get("created"), r.get("title"))
+                 for r in items]
+        out[who] = ("@%s \u2014 %s PR ferme su di te, la pi\u00f9 vecchia dal %s:\n%s"
+                    % (who, len(items), items[0].get("created"), "\n".join(lines)))
+    return out
+
+
+def fallback_chase(rows):
+    """The name the desk and the skills already import."""
+    return chase(rows)
 
 
 def handoff(row, repo, merge_command):
@@ -132,16 +257,3 @@ def issue_handoff(row, repo):
             "text": "/issue-triage — nella selezione prendi la #%s di %s (%s, %s): "
                     "analizzala e proponimi la mossa."
                     % (row["n"], repo, row["type"], row["title"])}
-
-
-def fallback_chase(rows):
-    """Group the waiting rows per person — the raw, field-only version of
-    pr-triage's block 4. The verified blocks come from the skill's export."""
-    per = {}
-    for row in rows:
-        todo = row.get("todo", "")
-        if row.get("state") == "waiting" and todo.startswith("waiting on "):
-            who = todo.split("waiting on ", 1)[1].split(" ")[0]
-            per.setdefault(who, []).append("#%s" % row["n"])
-    return {who: "@%s — %s PR ferme: %s" % (who, len(ns), " ".join(ns))
-            for who, ns in sorted(per.items(), key=lambda kv: -len(kv[1]))}

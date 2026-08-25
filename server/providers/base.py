@@ -49,3 +49,26 @@ class Provider:
         """The exact CLI command that merges the PR — handed to the user,
         never executed by the desk."""
         raise NotImplementedError
+
+    def default_branch(self, repo):
+        """The branch a PR targets unless told otherwise — the one base whose
+        gate is worth reading before the queue has even arrived."""
+        return "main"
+
+    def gates(self, repo, me, bases):
+        """The merge gate of each base branch (see gate.py for the shape).
+        An empty dict means this service exposes no protection to read, and
+        the verdicts fall back to their field-only reading."""
+        return {}
+
+    def remote_branches(self, cwd):
+        """Every branch on the remote — how the desk knows somebody already
+        started an issue. Repo-local, so the default is git itself."""
+        import issuecheck
+        return issuecheck.remote_branches(cwd)
+
+    def issue_relations(self, repo, me):
+        """Which open issues the user has already commented on, and which
+        are assigned to him — two cheap searches that decide what a model
+        has to read. `complete` is False when a page cap cut them short."""
+        return {"commented": [], "assigned": [], "complete": True}

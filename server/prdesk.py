@@ -18,6 +18,15 @@ Speed shape (the desk used to be slow for structural reasons, not slow code):
   * MERGE STATE IS PHASE TWO. It is the one expensive field; the table
     paints without it and fills in when it lands.
   * HTTP/1.1 keep-alive + ETags, so the UI's polling costs one 304.
+  * THE GRID AND THE SITUA ARE COMPUTED HERE, not asked of a model. The
+    five blocks of pr-triage §5 are a pure function of the verdicts; the
+    chase blocks of §6 are a grouping; the issue cross-check is three cheap
+    reads. Asking the attached chat for them cost ~28k tokens of input and a
+    whole turn, per refresh. The model is now called only for what it alone
+    can do: read a diff, rank by impact, judge a conflict.
+  * THE MERGE GATE IS READ, not guessed (gate.py). Where a base restricts
+    who may push, "approved + CLEAN + mine" is not the user's merge — the
+    old field-only verdict said `A1 → merge it` there and was wrong.
 
     python3 prdesk.py [--repo owner/repo] [--provider github|forgejo|fixture]
                       [--port 8399] [--me login] [--chat] [--triage-at-boot]
@@ -38,10 +47,13 @@ from urllib.parse import urlparse, parse_qs
 
 import cache
 import deskstate
+import gate as gatelib
 import inbox
+import issuecheck
 import jobs
+import verdicts
 from providers import get_provider
-from verdicts import decorate, fallback_chase, handoff, issue_handoff, issue_type
+from verdicts import decorate, handoff, issue_handoff, issue_type
 
 STATIC = Path(__file__).resolve().parent / "static"
 
@@ -65,6 +77,7 @@ class Desk:
         self.chat = chat
         self.kind = kind
         self.timings = {}
+        self._default = None
 
     # ---- provider reads, all through the disk cache -------------------
 
@@ -74,7 +87,9 @@ class Desk:
         t0 = time.time()
         data, age, source = cache.get(self.repo, key, loader, refresh)
         entry = {"ms": round((time.time() - t0) * 1000),
-                 "age": round(age), "source": source}
+                 "age": round(age), "source": source,
+                 "stamp": time.strftime("%Y-%m-%dT%H:%M:%S",
+                                        time.localtime(time.time() - age))}
         # the priming pass pays the cost; the assembling read that follows is
         # a cache hit and must not overwrite what the round actually cost
         if entry["ms"] >= self.timings.get(key, {}).get("ms", -1):
@@ -91,26 +106,92 @@ class Desk:
     def _raw_issues(self, refresh=False):
         return self._timed("issues", lambda: self.provider.issues(self.repo), refresh)
 
+    def _gate(self, branch, refresh=False):
+        """One base branch's gate, cached under its own key.
+
+        Per branch, not per queue: the gate of a base is the same fact no
+        matter which PRs happen to target it today, and keying it per branch
+        is what lets the default branch be warm before the queue has even
+        landed. A base whose gate is not in yet simply has no notes for a
+        beat — the verdict falls back to its field-only reading and corrects
+        itself, exactly as the merge state does."""
+        return self._timed("gate:%s" % branch,
+                           lambda: self.provider.gates(
+                               self.repo, self.me, [branch]).get(branch), refresh)
+
+    def _gates(self, bases, refresh=False):
+        """Whatever is already known, warming the rest behind the caller."""
+        gates = {}
+        for branch in sorted({b for b in bases if b}):
+            hit = cache.peek(self.repo, "gate:%s" % branch)
+            if hit and not refresh:
+                if hit[1]:
+                    gates[branch] = hit[1]
+                continue
+            cache.warm(self.repo, "gate:%s" % branch,
+                       lambda b=branch: self.provider.gates(
+                           self.repo, self.me, [b]).get(b))
+        return gates
+
+    def _relations(self, refresh=False):
+        """Who commented where, and every remote branch — neither needs the
+        queue, so both belong in the first wave."""
+        return self._timed(
+            "relations",
+            lambda: {"relations": self.provider.issue_relations(self.repo, self.me),
+                     "branches": self.provider.remote_branches(self.cwd)},
+            refresh)
+
+    def _crosscheck(self, queue_rows, refresh=False):
+        got = self._relations(refresh)
+        return issuecheck.collect(got["relations"], got["branches"], queue_rows)
+
     def prime(self, refresh=False):
-        """Pay every cache miss CONCURRENTLY. Assembling a snapshot reads
-        three keys; done one after the other, three cold misses add up to
-        more than the old desk's parallel fetch. GitHub answers them in
-        parallel just fine — it is only concurrency PER SEARCH QUERY that it
-        throttles."""
-        with ThreadPoolExecutor(max_workers=3) as pool:
-            futures = [pool.submit(self._raw_queue, refresh),
-                       pool.submit(self._mergestates, refresh),
-                       pool.submit(self._raw_issues, refresh)]
-            for future in futures:
-                future.result()
+        """Pay every cache miss CONCURRENTLY, in two waves.
+
+        Assembling a snapshot reads five keys; done one after the other the
+        cold misses add up to more than the old desk's parallel fetch. GitHub
+        answers concurrent requests fine — it is only concurrency PER SEARCH
+        QUERY that it throttles.
+
+        Everything here is INDEPENDENT — nothing waits on the queue. Two
+        serial waves would add up (measured: 4.9s + 5.2s = 10.2s), so the one
+        thing that genuinely needs the queue, the gate of a base nobody has
+        seen before, is left to fill in behind the paint like the merge state
+        does. The default branch is primed here because it is almost always
+        the only base that matters.
+        """
+        jobs = [lambda: self._raw_queue(refresh),
+                lambda: self._raw_issues(refresh),
+                lambda: self._mergestates(refresh),
+                lambda: self._relations(refresh),
+                lambda: self._gate(self.default_branch(), refresh)]
+        with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
+            for future in [pool.submit(job) for job in jobs]:
+                try:
+                    future.result()
+                except Exception:
+                    pass          # a gate or a cross-check that fails is a
+                                  # missing annotation, never a blank desk
+
+    def default_branch(self):
+        if self._default is None:
+            try:
+                self._default = self.provider.default_branch(self.repo)
+            except Exception:
+                self._default = "main"
+        return self._default
 
     def prefetch(self):
-        """Warm every key behind the browser, at boot. Merge state last: it
-        is the slow one and the table is useful without it."""
-        cache.warm(self.repo, "queue", lambda: self.provider.queue(self.repo, self.me))
-        cache.warm(self.repo, "issues", lambda: self.provider.issues(self.repo))
-        cache.warm(self.repo, "mergestates",
-                   lambda: self.provider.mergestates(self.repo, self.me))
+        """Warm every key behind the browser, at boot, in one background
+        thread that runs the same two waves prime() does."""
+        threading.Thread(target=self._prefetch_quietly, daemon=True).start()
+
+    def _prefetch_quietly(self):
+        try:
+            self.prime()
+        except Exception:
+            pass
 
     # ---- assembled views ---------------------------------------------
 
@@ -121,8 +202,10 @@ class Desk:
         for row in rows:
             if row.get("merge") is None:
                 row["merge"] = states.get(str(row["n"]))
-        decorate(rows, self.me)
+        gates = self._gates([row.get("base") for row in rows], refresh) or {}
+        decorate(rows, self.me, gates)
         for row in rows:
+            row["gate"] = gatelib.notes(gates.get(row.get("base")))
             row["action"] = handoff(row, self.repo,
                                     self.provider.merge_command(self.repo, row["n"]))
         state = deskstate.load(self.repo)
@@ -130,15 +213,24 @@ class Desk:
         orders = state.get("orders") or {}
         for row in rows:
             row["order"] = orders.get(str(row["n"]))
-        chase = state.get("chase") or fallback_chase(rows)
+        # computed by default; a model's export wins when there is one, and
+        # the UI says which of the two it is showing
+        # stamped from the cache entry, not the wall clock: a grid that
+        # restamps itself every second would defeat the UI's ETag
+        stamp = self.timings.get("queue", {}).get("stamp") or ""
+        grid = state.get("grid") or {"computed": True, "generated": stamp,
+                                     "blocks": verdicts.blocks(rows)}
+        chase = state.get("chase") or verdicts.chase(rows)
         return {"rows": rows, "total": raw.get("total", len(rows)),
                 "truncated": raw.get("truncated", False),
                 "mergestate_pending": not states,
                 "chase": chase,
                 "chase_verified": bool(state.get("chase")),
                 "session": state.get("session"),
-                "grid": state.get("grid"),
-                "situa": state.get("situa")}
+                "gates": gates,
+                "grid": grid,
+                "grid_computed": not state.get("grid"),
+                "shortlist": state.get("shortlist")}
 
     def issues(self, refresh=False):
         raw = self._raw_issues(refresh)
@@ -146,9 +238,24 @@ class Desk:
         for row in rows:
             row["type"] = issue_type(row["labels"], row["title"])
             row["action"] = issue_handoff(row, self.repo)
-        deskstate.annotate_issues(rows, deskstate.load(self.repo))
+        state = deskstate.load(self.repo)
+        deskstate.annotate_issues(rows, state)
+        try:
+            check = self._crosscheck(self._raw_queue(False)["rows"], refresh)
+            issuecheck.annotate(rows, check)
+            computed = issuecheck.shortlist_export(rows)
+        except Exception as exc:
+            for row in rows:
+                row.setdefault("cross", {"branches": [], "open_prs": [],
+                                         "seen_by_me": None, "mine": None,
+                                         "note": "cross-check non disponibile: %s"
+                                                 % str(exc)[:80]})
+            computed = None
+        shortlist = state.get("shortlist") or computed
         return {"rows": rows, "total": raw.get("total", len(rows)),
-                "truncated": raw.get("truncated", False)}
+                "truncated": raw.get("truncated", False),
+                "shortlist": shortlist,
+                "shortlist_computed": not state.get("shortlist")}
 
     def live_state(self):
         st = deskstate.load(self.repo)
@@ -156,7 +263,7 @@ class Desk:
         sp = deskstate.state_path(self.repo)
         busy = sp.exists() and (time.time() - sp.stat().st_mtime) < 180
         return {"feed": (st.get("feed") or [])[-50:],
-                "grid": st.get("grid"), "situa": st.get("situa"),
+                "grid": st.get("grid"), "shortlist": st.get("shortlist"),
                 "chase": st.get("chase") or {},
                 "session": st.get("session"), "pong": st.get("pong"),
                 "watcher": {"alive": self.chat and age is not None and age < 10,
@@ -177,11 +284,19 @@ class Desk:
                 "generated": time.strftime("%H:%M:%S")}
 
     def export_rows(self):
-        """Write the downloaded queue where the triage skill can read it, so
-        the triage costs no provider round trip of its own."""
+        """Write what the desk already knows where the triage skill can read
+        it: the rows, the verdicts, the computed grid, the gate, and the
+        issue shortlist. The skill's job shrinks to what only a model can do
+        — which is the whole point of computing the rest here."""
+        queue = self.queue()
+        issues = self.issues()
         payload = {"repo": self.repo, "me": self.me,
                    "generated": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                   "queue": self.queue()["rows"], "issues": self.issues()["rows"]}
+                   "queue": queue["rows"], "issues": issues["rows"],
+                   "grid": queue["grid"], "chase": queue["chase"],
+                   "gates": queue["gates"],
+                   "shortlist": issues["shortlist"],
+                   "shortlist": [r["n"] for r in (issues["shortlist"] or {}).get("rows", [])]}
         path = deskstate.STATE_DIR / ("%s__rows.json" % self.repo.replace("/", "__"))
         deskstate.STATE_DIR.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload, indent=1))
@@ -294,6 +409,12 @@ class Handler(BaseHTTPRequestHandler):
             parts = url.path.strip("/").split("/")
             if len(parts) == 4 and parts[:2] == ["api", "pr"] and parts[3] == "analyze":
                 self._analyze_pr(int(parts[2]))
+            elif len(parts) == 4 and parts[:2] == ["api", "pr"] and parts[3] == "explain":
+                # the one line the computed grid cannot write: what this PR is
+                # FOR, in the user's language. One row, one sentence — instead
+                # of the whole queue's titles rewritten every refresh.
+                self._chat_only({"kind": "explain", "n": int(parts[2])},
+                                "explain needs the desk launched from a chat session")
             elif len(parts) == 4 and parts[:2] == ["api", "pr"] and parts[3] == "order":
                 n = int(parts[2])
                 order = deskstate.add_order(self.desk.repo, n, body.get("propose", ""),

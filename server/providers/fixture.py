@@ -54,3 +54,19 @@ class FixtureProvider(Provider):
 
     def merge_command(self, repo, n):
         return "gh pr merge %s --repo %s --squash --delete-branch" % (n, repo)
+
+    def default_branch(self, repo):
+        return self.data.get("default_branch") or "main"
+
+    def gates(self, repo, me, bases):
+        self._sleep()
+        recorded = self.data.get("gates") or {}
+        return {b: recorded[b] for b in bases if b in recorded}
+
+    def remote_branches(self, cwd):
+        return self.data.get("branches") or []
+
+    def issue_relations(self, repo, me):
+        self._sleep()
+        return self.data.get("issue_relations") or {
+            "commented": [], "assigned": [], "complete": True}

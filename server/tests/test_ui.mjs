@@ -236,6 +236,51 @@ page.render();
 ok("a truncated issue list is reported too",
    document.getElementById("noteBox").innerHTML.includes("228"));
 
+/* ---- 7b. the work the desk now computes, and says it computed ---- */
+page.applyDesk(snapshot);
+page.render();
+ok("the grid provenance is stated, never left ambiguous",
+   document.getElementById("noteBox").innerHTML.includes("calcolata dal desk"));
+ok("the payload carries the computed grid", !!snapshot.queue.grid);
+ok("the grid has the five blocks of pr-triage §5",
+   (snapshot.queue.grid.blocks || []).length === 5);
+ok("every PR lands in exactly one block", (() => {
+  const placed = snapshot.queue.grid.blocks.flatMap(b => b.rows.map(r => r.n));
+  return placed.length === snapshot.queue.rows.length &&
+         new Set(placed).size === placed.length;
+})());
+
+const blocksTab = document.getElementById("tabs").querySelectorAll("button")
+  .find(b => b.dataset.v === "blocks");
+ok("a Blocks tab shows what the desk computed", !!blocksTab);
+blocksTab.click();
+ok("the blocks render as their own cards",
+   document.getElementById("chaseWrap").innerHTML.includes("Da mergiare subito"));
+ok("a block row is clickable through to the detail panel",
+   document.getElementById("chaseWrap").querySelectorAll("[data-n]").length > 0);
+
+page.view = "todo";
+page.render();
+const quadro = document.getElementById("detailGrid");
+ok("the detail panel shows the gate of the row's base",
+   quadro.innerHTML.includes("Gate di"), quadro.innerHTML.slice(0, 120));
+ok("the gate says who may land",
+   /riservato a|non protetta|codeowner/.test(quadro.innerHTML),
+   quadro.innerHTML.slice(quadro.innerHTML.indexOf("Gate di"),
+                          quadro.innerHTML.indexOf("Gate di") + 160));
+ok("an explain button asks the model for one row, not the whole queue",
+   document.getElementById("detailActions").innerHTML.includes("aExplain"));
+
+ok("chase blocks carry the dates the message needs",
+   Object.values(snapshot.queue.chase).some(t => /\(\d{4}-\d{2}-\d{2}\)/.test(t)));
+
+/* ---- 7c. no invented Italian for a term whose home is English ---- */
+const BANNED = ["Situa", "situa", "Solleciti", "mergiabili", "assegnatari"];
+const uiText = html.slice(html.indexOf("<body"));
+for (const word of BANNED)
+  ok(`the UI does not say "${word}"`, !uiText.includes(word),
+     uiText.slice(Math.max(0, uiText.indexOf(word) - 40), uiText.indexOf(word) + 40));
+
 /* ---- 8. the issue desk uses the same panel ---- */
 page.applyDesk({ ...snapshot, meta: { ...snapshot.meta, desk: "issue" } });
 page.render();
@@ -243,6 +288,10 @@ ok("issue desk renders its own detail panel",
    document.getElementById("detail").innerHTML.includes("issue #"));
 ok("issue desk has its own tabs",
    document.getElementById("detail").innerHTML.includes('data-t="analisi"'));
+ok("issue desk shows the cross-check the desk computed",
+   document.getElementById("detailGrid").innerHTML.includes("Cross-check"));
+ok("the issue shortlist is computed, and labelled as computed",
+   !!snapshot.issues.shortlist && snapshot.issues.shortlist_computed !== false);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

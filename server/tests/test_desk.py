@@ -28,6 +28,8 @@ os.environ["HOME"] = _HOME
 
 import cache            # noqa: E402
 import deskstate        # noqa: E402
+import gate as gatelib  # noqa: E402
+import issuecheck       # noqa: E402
 import prdesk           # noqa: E402
 import verdicts         # noqa: E402
 from providers import get_provider  # noqa: E402
@@ -324,3 +326,227 @@ class BootDoesNotTriage(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class Gate(unittest.TestCase):
+    """The reads that make a verdict honest. Where a base restricts who may
+    push, the field-only verdict said `A1 -> merge it` on the user's own
+    approved CLEAN PRs and was wrong."""
+
+    APPROVED = {"n": 1, "author": "me", "draft": False, "merge": "CLEAN",
+                "decision": "APPROVED", "req": [],
+                "reviews": [{"who": "x", "state": "APPROVED"}],
+                "unresolved": 0, "last": None, "base": "develop",
+                "title": "t", "created": "2026-08-01"}
+
+    def gate(self, **kw):
+        base = {"branch": "develop", "protected": True, "landers": None,
+                "can_land": True, "bypass": False,
+                "conversation_resolution": False}
+        return dict(base, **kw)
+
+    def test_without_a_gate_nothing_changes(self):
+        self.assertEqual(verdicts.verdict(self.APPROVED, "me")[2], "A1")
+
+    def test_a_restricted_base_is_not_my_merge(self):
+        got = verdicts.verdict(self.APPROVED, "me",
+                               self.gate(landers=["lander"], can_land=False))
+        self.assertNotEqual(got[2], "A1")
+        self.assertEqual(got[1], "waiting")
+        self.assertIn("lander", got[0])
+
+    def test_an_admin_bypass_is_a_decision_not_an_autorun(self):
+        got = verdicts.verdict(self.APPROVED, "me",
+                               self.gate(landers=["lander"], can_land=False, bypass=True))
+        self.assertEqual((got[1], got[2]), ("decision", "asks"))
+        self.assertIn("admin", got[0])
+
+    def test_being_on_the_list_keeps_the_autorun(self):
+        got = verdicts.verdict(self.APPROVED, "me",
+                               self.gate(landers=["me", "lander"], can_land=True))
+        self.assertEqual(got[2], "A1")
+
+    def test_conversation_resolution_is_named_as_a_block(self):
+        row = dict(self.APPROVED, unresolved=2, merge="BLOCKED",
+                   last={"who": "x", "ch": "inline", "t": "2026-08-02"})
+        with_gate = verdicts.verdict(row, "me", self.gate(conversation_resolution=True))
+        self.assertIn("bloccano il merge", with_gate[0])
+        self.assertNotIn("bloccano", verdicts.verdict(row, "me")[0])
+
+    def test_codeowners_parsing(self):
+        owners, per_path = gatelib.parse_codeowners(
+            "# comment\n*  @alice @bob\n")
+        self.assertEqual(owners, ["alice", "bob"])
+        self.assertFalse(per_path)
+        owners, per_path = gatelib.parse_codeowners(
+            "*.py @alice\ndocs/ @carol\n")
+        self.assertEqual(owners, ["alice", "carol"])
+        self.assertTrue(per_path, "per-path rules need a diff read to resolve")
+
+    def test_notes_say_what_the_gate_means(self):
+        notes = gatelib.notes(self.gate(landers=["lander"], can_land=False,
+                                        codeowners_required=True,
+                                        codeowners_path=None,
+                                        conversation_resolution=True,
+                                        dismiss_stale=True))
+        joined = " ".join(notes)
+        self.assertIn("lander", joined)
+        self.assertIn("CODEOWNERS", joined)
+        self.assertIn("azzera le approvazioni", joined)
+
+    def test_an_unprotected_base_says_clean_means_nothing(self):
+        notes = gatelib.notes({"branch": "feat/x", "protected": False})
+        self.assertIn("non protetta", " ".join(notes))
+
+    def test_the_desk_attaches_the_gate_to_every_row(self):
+        rows = fresh_desk().queue()["rows"]
+        self.assertTrue(rows)
+        self.assertTrue(all("gate" in row for row in rows))
+
+
+class Blocks(unittest.TestCase):
+    """pr-triage §5 is a pure function of the verdicts. It used to cost a
+    model turn and ~28k tokens of input, per refresh."""
+
+    def test_every_row_lands_in_exactly_one_block(self):
+        rows = fresh_desk().queue()["rows"]
+        blocks = verdicts.blocks(rows)
+        placed = [r["n"] for b in blocks for r in b["rows"]]
+        self.assertEqual(sorted(placed), sorted(r["n"] for r in rows))
+        self.assertEqual(len(placed), len(set(placed)), "a row in two blocks")
+
+    def test_the_five_titles_are_always_present_and_in_order(self):
+        blocks = verdicts.blocks(fresh_desk().queue()["rows"])
+        self.assertEqual([b["title"] for b in blocks], list(verdicts.BLOCK_TITLES))
+
+    def test_an_a1_goes_first_and_a_waiting_row_goes_last(self):
+        rows = [{"n": 1, "autorun": "A1", "state": "ready", "todo": "merge it"},
+                {"n": 2, "autorun": "-", "state": "waiting", "todo": "waiting on x"}]
+        self.assertEqual(verdicts.block_of(rows[0]), "Da mergiare subito")
+        self.assertEqual(verdicts.block_of(rows[1]), "In attesa di altri")
+
+    def test_the_desk_computes_the_grid_and_says_so(self):
+        queue = fresh_desk().queue()
+        self.assertTrue(queue["grid_computed"])
+        self.assertTrue(queue["grid"]["computed"])
+        self.assertEqual(len(queue["grid"]["blocks"]), 5)
+
+    def test_a_model_export_wins_over_the_computed_grid(self):
+        desk = fresh_desk()
+        state = deskstate.load(REPO)
+        state["grid"] = {"generated": "x", "blocks": [{"title": "T", "rows": []}]}
+        deskstate.save(REPO, state)
+        try:
+            queue = desk.queue()
+            self.assertFalse(queue["grid_computed"])
+            self.assertEqual(queue["grid"]["blocks"][0]["title"], "T")
+        finally:
+            state.pop("grid")
+            deskstate.save(REPO, state)
+
+    def test_the_grid_stamp_does_not_move_between_requests(self):
+        """A grid restamped from the wall clock defeats the UI's ETag."""
+        desk = fresh_desk()
+        first = desk.queue()["grid"]["generated"]
+        time.sleep(1.05)
+        self.assertEqual(desk.queue()["grid"]["generated"], first)
+
+
+class Chase(unittest.TestCase):
+    def test_grouped_per_person_oldest_first_with_the_dates(self):
+        rows = [{"n": 2, "state": "waiting", "waiting_on": "genro",
+                 "created": "2026-05-01", "title": "b"},
+                {"n": 1, "state": "waiting", "waiting_on": "genro",
+                 "created": "2026-01-01", "title": "a"}]
+        got = verdicts.chase(rows)
+        self.assertIn("genro", got)
+        self.assertIn("2026-01-01", got["genro"].splitlines()[0])
+        self.assertTrue(got["genro"].splitlines()[1].startswith("#1 (2026-01-01)"))
+
+    def test_the_person_who_may_land_becomes_the_chase(self):
+        """Read from the fields and the gate, never by parsing the verdict's
+        own prose back out — that coupling breaks when the wording changes."""
+        row = {"n": 3, "author": "me", "draft": False, "created": "2026-02-02",
+               "title": "c", "req": [], "reviews": [], "decision": "APPROVED",
+               "merge": "CLEAN", "unresolved": 0, "last": None, "base": "develop"}
+        gate = {"branch": "develop", "protected": True, "landers": ["lander"],
+                "can_land": False, "bypass": False, "conversation_resolution": False}
+        rows = verdicts.decorate([row], "me", {"develop": gate})
+        self.assertEqual(rows[0]["waiting_on"], "lander")
+        self.assertIn("lander", verdicts.chase(rows))
+
+    def test_a_chase_never_names_the_user_himself(self):
+        row = {"n": 4, "author": "me", "draft": False, "created": "2026-03-03",
+               "title": "d", "req": [], "reviews": [], "decision": None,
+               "merge": "CLEAN", "unresolved": 0, "last": None, "base": "develop"}
+        rows = verdicts.decorate([row], "me")
+        self.assertNotIn("me", verdicts.chase(rows))
+
+
+class IssueCrossCheck(unittest.TestCase):
+    def test_a_branch_matches_on_the_number_not_on_a_prefix(self):
+        branches = ["fix/812-empty-grid", "812-something", "feature/1812-other",
+                    "fix/81-old", "wip/812_alt"]
+        got = issuecheck.branches_for(812, branches)
+        self.assertIn("fix/812-empty-grid", got)
+        self.assertIn("812-something", got)
+        self.assertIn("wip/812_alt", got)
+        self.assertNotIn("feature/1812-other", got, "prefix drift")
+        self.assertNotIn("fix/81-old", got)
+
+    def test_collect_is_json_safe(self):
+        """A set in here kills the cache write silently, and the whole
+        cross-check then runs once per caller."""
+        got = issuecheck.collect({"commented": [1], "assigned": [2]},
+                                 ["fix/1-x"],
+                                 [{"n": 9, "closes": [{"issue": 1, "assignees": []}]}])
+        json.dumps(got)                     # must not raise
+        self.assertEqual(got["open_prs"], {"1": [9]})
+
+    def test_the_shortlist_drops_what_needs_no_model(self):
+        rows = [
+            {"n": 1, "assignees": [], "created": "2026-08-01",
+             "cross": {"open_prs": [], "seen_by_me": False}},
+            {"n": 2, "assignees": ["x"], "created": "2026-08-02",
+             "cross": {"open_prs": [], "seen_by_me": False}},
+            {"n": 3, "assignees": [], "created": "2026-08-03",
+             "cross": {"open_prs": [7], "seen_by_me": False}},
+            {"n": 4, "assignees": [], "created": "2026-08-04",
+             "cross": {"open_prs": [], "seen_by_me": True}},
+        ]
+        self.assertEqual([r["n"] for r in issuecheck.shortlist(rows)], [1])
+
+    def test_orphan_work_is_named_as_the_find_it_is(self):
+        row = {"n": 812, "assignees": [], "title": "t"}
+        issuecheck.annotate([row], {"commented": [], "assigned_to_me": [],
+                                    "branches": ["feature/812-empty-grid"],
+                                    "open_prs": {}})
+        self.assertIn("lavoro fermo", row["cross"]["note"])
+
+    def test_the_desk_computes_the_shortlist_and_says_so(self):
+        got = fresh_desk().issues()
+        self.assertTrue(got["shortlist_computed"])
+        self.assertTrue(got["shortlist"]["rows"])
+        self.assertTrue(all("cross" in row for row in got["rows"]))
+
+    def test_the_cross_check_is_loaded_once_per_snapshot(self):
+        desk = fresh_desk()
+        calls = []
+        original = desk.provider.issue_relations
+        desk.provider.issue_relations = lambda *a: (calls.append(1), original(*a))[1]
+        desk.snapshot()
+        self.assertEqual(len(calls), 1, "the cache write is dropping the entry")
+
+
+class RowsExport(unittest.TestCase):
+    """What /api/rows hands the triage skill: everything the desk already
+    knows, so the skill's job is only what a model can do."""
+
+    def test_the_export_carries_the_computed_work(self):
+        desk = fresh_desk()
+        exported = json.loads(Path(desk.export_rows()).read_text())
+        for key in ("queue", "issues", "grid", "chase", "gates", "shortlist"):
+            self.assertIn(key, exported, key)
+        self.assertEqual(len(exported["grid"]["blocks"]), 5)
+        self.assertTrue(exported["shortlist"])
+        self.assertLessEqual(len(exported["shortlist"]), 10)

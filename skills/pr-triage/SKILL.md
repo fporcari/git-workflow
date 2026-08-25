@@ -36,7 +36,33 @@ title alone.
 ## 2 · Read the queue
 
 **If a desk handed you a `rows` path** (the `triage` event carries it), the
-queue is already downloaded — use it and skip the calls below:
+queue is already downloaded AND the deterministic work is already done. That
+file holds:
+
+| key | what it already is |
+|---|---|
+| `queue` | the rows, with `todo`/`state`/`autorun` computed (§7) |
+| `grid` | the five blocks of §5, already partitioned |
+| `chase` | the §6 blocks, per person, oldest first, with the dates |
+| `gates` | the §3 gate of every base: who may land, approvals, conversation resolution, CODEOWNERS |
+| `shortlist` | the ten issues worth reading |
+
+**Do not recompute any of it.** Reproducing that grid used to cost ~28k
+tokens of input and a whole turn, to re-derive a mapping the desk computes in
+0.07 ms. Your job on a desk-driven triage is only what the fields cannot
+answer:
+
+1. the rows the computed grid marks `asks` — those need the diff or the
+   review read (§4's DIRTY/UNSTABLE rules, and the CODEOWNERS per-path
+   question when `gates.<base>.per_path` is true);
+2. **what each PR is FOR**, one line, in the user's language — the desk shows
+   the raw title and asks for this per row (the `explain` event), so write it
+   only for the rows you were asked about;
+3. §8's three repo-level findings, which are patterns nobody can look up.
+
+Then export what you added, merged into the grid you were given — the desk
+shows a model-verified grid in place of its computed one, and says which of
+the two the user is looking at.
 
 ```bash
 jq '.queue' <rows path> > /tmp/rows.json
@@ -92,6 +118,18 @@ jq -r '.[]|"\(.n)\t\(.created)\t\(.author)\tdraft=\(.draft)\t\(.merge)/\(.decisi
 - Ask who to skip; parked PRs are often known. Say which ones you excluded.
 
 ## 3 · Read the gate — once, before any verdict
+
+**A desk hands you this already read**, in `gates.<base>` of the rows file:
+`landers` (who may actually land — `null` means unrestricted), `can_land`,
+`bypass` (an admin walking past `enforce_admins: false`), `approvals`,
+`codeowners_required`, `codeowners_path`, `owners`, `per_path`,
+`dismiss_stale`, `conversation_resolution`. Read it from there; the three
+calls below are for a standalone run.
+
+This is not academic: on a repo where one person cuts the releases, the
+release bases carry a push restriction, and an approved CLEAN PR of the
+user's own is **not his merge** — the field-only verdict says `A1 → merge it`
+there and is wrong. Read `landers` before writing an `A1`.
 
 ```bash
 gh api repos/<owner/repo>/branches/<default-branch>/protection

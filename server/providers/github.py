@@ -25,7 +25,10 @@ that is the only search phase two needs.
 
 import json
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+import gate as gatelib
 
 from .base import Provider
 
@@ -106,6 +109,31 @@ class GitHubProvider(Provider):
 
     def merge_command(self, repo, n):
         return "gh pr merge %s --repo %s --squash --delete-branch" % (n, repo)
+
+    def default_branch(self, repo):
+        return _gh("repo", "view", repo, "--json", "defaultBranchRef",
+                   "--jq", ".defaultBranchRef.name").strip() or "main"
+
+    def gates(self, repo, me, bases):
+        return gatelib.read_all(repo, me, bases)
+
+    ISSUE_REL = ("query($q:String!){search(type:ISSUE,first:100,query:$q){"
+                 "pageInfo{hasNextPage} nodes{...on Issue{number}}}}")
+
+    def _issue_numbers(self, repo, qualifier):
+        raw = _gh("api", "graphql", "-f", "query=%s" % self.ISSUE_REL,
+                  "-f", "q=repo:%s is:issue is:open %s" % (repo, qualifier))
+        search = json.loads(raw)["data"]["search"]
+        return ([n["number"] for n in search["nodes"] if n],
+                not search["pageInfo"]["hasNextPage"])
+
+    def issue_relations(self, repo, me):
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            seen = pool.submit(self._issue_numbers, repo, "commenter:%s" % me)
+            mine = pool.submit(self._issue_numbers, repo, "assignee:%s" % me)
+            commented, complete = seen.result()
+            assigned, _ = mine.result()
+        return {"commented": commented, "assigned": assigned, "complete": complete}
 
     ISSUE_PAGES = 4          # 400 issues; beyond that the desk says so
 
