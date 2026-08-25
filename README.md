@@ -1,7 +1,15 @@
 # git-workflow
 
 A Claude Code plugin for working a repository's pull requests and issues as a
-queue: three battle-tested skills plus a local, read-only dashboard server.
+queue: nine skills, one command, and a local dashboard server with no
+dependencies outside the Python standard library.
+
+The shape of the whole thing is one idea: **the desk computes, the model
+judges.** Anything derivable from the provider's own fields — the triage grid,
+the merge gate, the chase blocks, the issue cross-check — is computed in
+Python in milliseconds and pinned by tests. A model turn is spent only on what
+needs reading a diff or an issue body.
+
 Built for GitHub today, provider-abstracted so a migration to
 [Forgejo](https://forgejo.org/) only means implementing one class against the
 same normalized row shape (a first REST implementation ships in the box).
@@ -11,17 +19,6 @@ prototype: the queue-with-states table, the summary strip, and the detail
 panel are his; this repo replaces the mocked data with live provider reads and
 wires the verdicts to the skills below.
 
-## What is in the box
-
-| piece | kind | what it does |
-|---|---|---|
-| `pr-triage` | skill | read-only triage of every open PR the user is involved in — five blocks by the kind of work each needs, verdicts read from the provider fields, chase messages ready to paste |
-| `pr-loop` | skill | loops the queue: merges the user's fully-approved PRs, answers small named review requests, realigns DIRTY branches, then presents the rest for a go-ahead — one at a time, or `batch=N` proposed together and executed in parallel worktrees |
-| `issue-triage` | command | triages the most recent open issues, ranks by impact, analyzes read-only, lets the user pick which get a branch and a PR |
-| `issue-loop` | skill | the same loop over the open issues: analyze one in a fresh agent, propose it in four lines, and on a go-ahead fix it in a worktree and open the PR |
-| `review-desk` | skill | starts the dashboard server below |
-| `server/` | code | zero-dependency Python stdlib server rendering the queue and the issues with the pr-triage verdicts computed from the fields |
-
 ## Install
 
 ```bash
@@ -29,19 +26,120 @@ claude plugin marketplace add fporcari/git-workflow
 claude plugin install git-workflow@fporcari
 ```
 
+## Quickstart
+
+From the checkout of the repo you want to work. Pick the line that matches
+what you actually want.
+
+**"What is on my plate?"** — read-only, no side effects, a few seconds:
+
+```
+/pr-triage
+```
+
+Every open PR you are involved in, split into five blocks by the kind of work
+each needs, plus copy-pasteable messages for the people you are waiting on.
+Then it offers to act on it.
+
+**"Just deal with it."** — the loop, one PR at a time:
+
+```
+/pr-loop
+```
+
+First the moves that need no permission (merging your own fully-approved PRs,
+answering a review request that named its own fix, realigning your `DIRTY`
+branches), then everything else presented four lines at a time for a
+go-ahead. `basta` ends it, and what was not reached is listed in queue order.
+
+**"These three, and I have already decided."**
+
+```
+/pr-loop 1145,1128,1059 batch=3
+```
+
+Exactly those, in that order, then stop — proposed together in one answer and
+executed in parallel, each fix in its own worktree.
+
+**The same three lines on the issue side**: `/issue-triage`, `/issue-loop`,
+`/issue-loop 1156,1149 batch=2`.
+
+**"Show me, don't tell me."** — the dashboards, attached to this chat:
+
+```
+/pr-desk
+```
+
+or `/issue-desk`, or `/review-desk` for both. Each opens in the browser, reads
+the provider itself and paints in seconds; its buttons hand work back to this
+chat.
+
+## What is in the box
+
+### Read the queue — no side effects
+
+| skill | what it does |
+|---|---|
+| **`pr-triage`** | Every open PR you are involved in, split into five blocks by the kind of work each needs: mergeable now, trivial action, reviews you owe, people to chase (grouped per person, ready to paste), and the calls only you can make. Each row carries number, date, author, what it is, what is to be done, and whether `pr-loop` would handle it unattended — read from the provider's fields, never by reading diffs. Hands over to `pr-loop`. |
+| **`issue-triage`** (command) | The ten most recent open issues nobody has looked at yet, ranked by impact and classified DEFECT / REQUEST / QUESTION / DOCS, with existing branches and PRs cross-checked. Its most valuable find is finished work sitting on a branch with no PR. Takes `batch=N` and `mine`. |
+
+### Work the queue — the loops
+
+Both are **explicit-invocation only**, and both take the same mandate:
+`1145,1128` names the working set (exactly those, in that order, then stop),
+`batch=N` proposes N together instead of one, clamped to 4.
+
+| skill | what it does |
+|---|---|
+| **`pr-loop`** | Drives the queue until nothing is left that only you can do. Lane A acts without asking — merges your fully-approved PRs, answers small *named* review requests, realigns `DIRTY` branches by merging the base in — and iterates until a full pass changes nothing, because its own merges change the queue. Lane B is everything else, presented as `what` / `history` / `propose`, waiting for a word. Canonical home of the rule for what may run in parallel. |
+| **`issue-loop`** | The same loop over the open issues: take the most urgent, analyze that one in a fresh context, propose it in four lines, and on a go-ahead assign it, fix it in a worktree and open the PR. Canonical home of the worktree traps — the shared stash stack, `PYTHONPATH`, a per-agent scratch `GENRO_GNRFOLDER`, which test count is worth believing. |
+
+With `batch=N` an approved batch is never handed straight to N agents: the
+loop builds a conflict graph first — same file, stacked PRs, the same issue, a
+merge or a realign sharing a base — and runs the connected components in
+parallel while the members of one component run in sequence. Unknown means
+sequential. Failures are reported per item; nothing ever says a group
+succeeded.
+
+### Analyze exactly one
+
+| skill | what it does |
+|---|---|
+| **`pr-analyze`** | One PR, read properly: the whole diff, the description's claims checked against the code that would have to make them true, the threads. Returns the loop's `what`/`history`/`propose` block plus any draft worth posting. Read-only — never posts, never pushes. Used headless by the desk's Analizza button. |
+| **`issue-analyze`** | One issue, in a virgin context: verify the root cause in the actual code (DEFECT), walk the reuse ladder (REQUEST), find the proving line (QUESTION/DOCS). Returns a typed verdict with the minimal change and a verification plan. Read-only — never branches, never comments. |
+| **`issue-work`** | The mandate of a session spawned for a single issue: analyze it fresh, then either fix it in a worktree and open the PR when it is one coherent change, or lay out the phases it really needs. |
+
+### The dashboards
+
+| skill | what it does |
+|---|---|
+| **`pr-desk`** | The PR queue as a dashboard (port 8399), attached to this chat. Computes the triage grid, the merge gate and the chase blocks itself; its buttons — merge orders, `pr-analyze`, `pr-loop`, `pr-triage` on the rows already downloaded — come back to the chat as events. |
+| **`issue-desk`** | The same for the open issues (port 8398): the cross-check and the shortlist computed without a model, buttons for dedicated work sessions, `issue-analyze` and `issue-loop`. |
+| **`review-desk`** | Launches both at once, and is the reference for how an attached chat processes desk events. Canonical home of the desk protocol: the live-row marker, the request ledger, and the exact `notify.py` flags. |
+
+`server/` is the code under all three: a zero-dependency Python stdlib server
+that reads the provider, computes the verdicts, and serves one page.
+
 ## The dashboard
 
+The skills launch it; you can also run it by hand:
+
 ```bash
-python3 server/prdesk.py                      # repo from the cwd's origin
-python3 server/prdesk.py --repo owner/repo --port 8399
+python3 server/prdesk.py                             # repo from the cwd's origin
+python3 server/prdesk.py --repo owner/repo --desk issue --port 8398
 ```
 
 Open http://127.0.0.1:8399. Tabs: Queue (needs a move from you), Mergeable,
 Waiting, All PRs, Issues. Clicking a row opens the detail panel: state of
-play, next move with the `/pr-loop` autorun class, reviews, linked issues.
+play, next move with the `pr-loop` autorun class, reviews, linked issues.
 
-Read-only by design: the dashboard renders state; acting on it belongs to the
-skills, which log every action they take on the PR itself.
+Options: `--repo`, `--provider github|forgejo|fixture`, `--me`, `--port`,
+`--chat` (buttons hand work to the attached chat instead of running headless),
+`--keep-state`, `--keep-cache`, `--no-prefetch`, `--triage-at-boot`.
+
+**It does not triage at startup.** It fetches the provider itself and paints
+in seconds; the triage is a button, and pressing it hands the chat the rows
+already downloaded rather than making the skill re-query.
 
 **Choosing what the loop works.** cmd-click (shift-click for a stretch) picks
 rows; ▶ then runs `pr-loop`/`issue-loop` on **exactly those, in that order,
@@ -50,22 +148,7 @@ guess — one at a time, or all of them in parallel worktrees — because that i
 the difference between thinking about them and having already decided. The
 same mandate is typed directly at the skill: `/pr-loop 1145,1128 batch=2`.
 
-## Providers
-
-The server, the verdict engine and the UI speak one normalized row shape
-(documented in `server/providers/base.py`). Providers translate a hosting
-service into it:
-
-- **github** (default) — shells out to the authenticated `gh` CLI, reusing the
-  exact GraphQL document of the pr-triage skill.
-- **forgejo** — REST against the Forgejo/Gitea API v1; set `FORGEJO_URL` and
-  `FORGEJO_TOKEN`. Written against the published API, not yet exercised
-  against a live Forgejo instance: expect to adjust field mappings when the
-  migration starts. Known gap: the API does not expose review-thread
-  resolution, so `unresolved` is always 0 there.
-
-Migrating the *skills* to Forgejo is a separate, later step: they currently
-speak `gh` directly. The provider layer is where their data reads will land.
+Acting belongs to the skills, which log every action on the PR itself.
 
 ## Verdicts
 
@@ -73,5 +156,37 @@ speak `gh` directly. The provider layer is where their data reads will land.
 verdict vocabulary (`merge it`, `answer the review`, `realign with the base`,
 `waiting on <login>`, …) — restricted to what the fields can honestly answer:
 anything that would need a diff read is reported as `asks` and left to
-`/pr-loop`. The `autorun` column mirrors what `/pr-loop` does unattended (A1
-merge, A3 realign) versus what it brings to the user one PR at a time.
+`pr-loop`. The `autorun` column mirrors what `pr-loop` does unattended (A1
+merge, A3 realign) versus what it brings to you for a go-ahead.
+
+## Providers
+
+The server, the verdict engine and the UI speak one normalized row shape
+(documented in `server/providers/base.py`). Providers translate a hosting
+service into it:
+
+- **github** (default) — shells out to the authenticated `gh` CLI, reusing the
+  exact GraphQL documents in `server/gql/`.
+- **forgejo** — REST against the Forgejo/Gitea API v1; set `FORGEJO_URL` and
+  `FORGEJO_TOKEN`. Written against the published API, not yet exercised
+  against a live Forgejo instance: expect to adjust field mappings when the
+  migration starts. Known gap: the API does not expose review-thread
+  resolution, so `unresolved` is always 0 there.
+- **fixture** — a recorded payload replayed with no network. What the test
+  suite runs on.
+
+Migrating the *skills* to Forgejo is a separate, later step: they currently
+speak `gh` directly. The provider layer is where their data reads will land.
+
+## Tests
+
+```bash
+server/tests/run.sh
+```
+
+No network, no GitHub, no rate limit: a few seconds on the fixture provider.
+100 Python tests over the row contract, the verdict engine, the merge gate,
+the five-block partition, the issue cross-check and the cache; plus 71 checks
+that drive the **real** `static/index.html` against a **real** desk process
+through a small DOM shim, so it is the page's own render path that runs.
+`server/tests/README.md` says what each file is for.
