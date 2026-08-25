@@ -238,6 +238,15 @@ async function startAnalysis(n){
     pollQueueUntil(n,row=>(row.skill?.next||null)!==prev,()=>{delete analyses[n];});
   }catch(e){analyses[n]={status:"error",error:e.message};render();}
 }
+async function sendOrder(r){
+  const resp=await fetch(`/api/pr/${r.n}/order`,{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({propose:r.todo,draft:(r.skill&&r.skill.draft)||null,instruction:""})});
+  const d=await resp.json();
+  if(d.error){$("errBox").style.display="block";$("errBox").textContent=d.error;return;}
+  r.order=d.order;render();
+  pollQueueUntil(r.n,row=>row.order&&row.order.status!=="pending",()=>{});
+}
+
 function pollQueueUntil(n,test,onDone){
   const t=setInterval(async()=>{
     try{
@@ -446,6 +455,7 @@ function renderDialog(){
       <div><dt>Thread</dt><dd>${r.unresolved}/${r.threads} aperti</dd></div>
       <div><dt>Ultimo a parlare</dt><dd>${r.last?esc(`${r.last.who} · ${r.last.ch} · ${r.last.t.slice(0,10)}`):"—"}</dd></div></dl>
       <div style="margin-top:10px"><h2>Review</h2>${reviews}</div>
+      ${r.order?`<div class="actionText">Ordine ${esc(r.order.status)}: ${esc(r.order.propose)}${r.order.report?` — ${esc(r.order.report)}`:""}${r.order.status==="pending"?" · lo esegue la chat collegata (Lane 0), senza altre conferme.":""}</div>`:""}
       ${a?.status==="queued"?`<div class="actionText">📨 pr-analyze in lavorazione nella chat collegata — segui il feed; l'esito comparirà qui.</div>`:""}
       ${a?.status==="error"?`<div class="actionText">Errore: ${esc(a.error)}</div>`:""}
       ${r.skill?`<div style="margin-top:10px"><h2>Analisi della skill <span class="skillStamp">${esc(session||"")}</span></h2>
@@ -453,12 +463,15 @@ function renderDialog(){
         ${r.skill.next?`<p><b>Proposta:</b> ${esc(r.skill.next)}</p>`:""}
         ${r.skill.draft?`<div class="draft"><span>BOZZA REVIEW</span><p>${esc(r.skill.draft)}</p></div>`:""}
       </div>`:""}`;
+    const execLabel=r.autorun==="A1"?"▶ merge in chat":(r.autorun==="A3"?"▶ riallinea in chat":null);
     $("dlgActions").innerHTML=`
-      <button class="btn primary" id="dlgAnalyze" ${watcherAlive?"":"disabled"} data-tip="La skill pr-analyze legge tutto il diff, verifica i claim della descrizione e i thread, e produce il blocco cosa/storia/proposta con l'eventuale bozza di risposta. Read-only.">▶ pr-analyze in chat</button>
+      ${(!r.order&&execLabel)?`<button class="btn primary" id="dlgExec" ${watcherAlive?"":"disabled"} data-tip="${r.autorun==="A1"?"Ordina il merge alla chat collegata: pr-run riverifica i 5 gate freschi (autore, approvazioni sull'ultimo head, CLEAN su base protetta) e solo allora esegue squash + delete branch.":"Ordina il riallineo alla chat collegata: merge della base nel branch (mai rebase), con le regole A3 di pr-run."}">${execLabel}</button>`:``}
+      <button class="btn ${execLabel?"":"primary"}" id="dlgAnalyze" ${watcherAlive?"":"disabled"} data-tip="La skill pr-analyze legge tutto il diff, verifica i claim della descrizione e i thread, e produce il blocco cosa/storia/proposta con l'eventuale bozza di risposta. Read-only.">▶ pr-analyze in chat</button>
       ${r.skill?.draft?`<button class="btn" id="dlgDraft">Copia bozza</button>`:""}
       <a class="btn" href="${r.url}" target="_blank" rel="noreferrer">Apri nel browser ↗</a>
       ${r.action?`<button class="btn" id="dlgCopy" style="color:var(--muted)">copia ${r.action.kind==="command"?"comando":"prompt"} (ultima spiaggia)</button>`:""}
       <button class="btn" id="dlgX">Chiudi</button>`;
+    const ex=$("dlgExec");if(ex)ex.onclick=()=>sendOrder(r);
     const an=$("dlgAnalyze");if(an)an.onclick=()=>startAnalysis(r.n);
     const dr=$("dlgDraft");if(dr)dr.onclick=()=>copyText(dr,r.skill.draft);
     const cp=$("dlgCopy");if(cp)cp.onclick=()=>copyText(cp,r.action.text);
