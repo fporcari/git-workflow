@@ -162,6 +162,11 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     inbox.push(self.desk.repo, {"kind": "issue-analyze", "n": int(parts[2])})
                     self._send(202, {"queued": True})
+            elif parts == ["api", "shutdown"]:
+                if self.desk.chat:
+                    inbox.push(self.desk.repo, {"kind": "shutdown"})
+                self._send(200, {"bye": True})
+                threading.Thread(target=self.server.shutdown, daemon=True).start()
             elif parts == ["api", "run"]:
                 if not self.desk.chat:
                     self._send(409, {"error": "run needs the desk launched from a chat session"})

@@ -103,7 +103,7 @@ h2{margin:0 0 7px}.detailGrid p{margin:0 0 12px}
 <main class="shell">
   <header class="topbar">
     <div class="brand"><span class="brandMark">GW</span><strong>review desk</strong><span class="repo" id="repoLabel">…</span></div>
-    <div class="topStats"><span><b id="cPrs">0</b> open PRs</span><span><b id="cIssues">0</b> open issues</span><button class="sync" id="refresh"><i></i><span id="syncLabel">updated —</span></button></div>
+    <div class="topStats"><span><b id="cPrs">0</b> open PRs</span><span><b id="cIssues">0</b> open issues</span><button class="sync" id="refresh"><i></i><span id="syncLabel">updated —</span></button><button class="btn" id="btnStop" title="Ferma il server del desk (e avvisa la chat collegata)">⏻ stop</button></div>
   </header>
 
   <section class="summary">
@@ -430,6 +430,11 @@ $("q").oninput=e=>{query=e.target.value;render();};
 $("refresh").onclick=()=>load(true);
 $("btnTriage").onclick=()=>{view="grid";render();};
 $("btnRun").onclick=startRun;
+$("btnStop").onclick=async()=>{
+  if(!confirm("Fermare il server del review desk?"))return;
+  try{await fetch("/api/shutdown",{method:"POST"});}catch(e){}
+  document.body.innerHTML='<div style="padding:40px;font:14px system-ui">Server fermato. Rilancialo dalla chat con la skill review-desk.</div>';
+};
 load(false);
 </script>
 </body>

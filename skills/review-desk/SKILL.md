@@ -66,6 +66,9 @@ each event in order:
   design); it persists the verdict to the desk state itself.
 - **`{"kind": "run", "flow": "pr-run"|"issue-run"}`** — run that skill here
   in chat, step by step.
+- **`{"kind": "shutdown"}`** — the user pressed the desk's stop button: the
+  server has already stopped itself. Do NOT restart the watcher; confirm in
+  one line that the desk is down.
 
 While working any event, post progress so the desk shows it live:
 
