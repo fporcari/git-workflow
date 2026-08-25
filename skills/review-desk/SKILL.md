@@ -96,7 +96,12 @@ each event in order:
   export. Skip the skill's closing handover question — the user drives from
   the dashboard.
 - **`{"kind": "run", "flow": "pr-run"|"issue-run"}`** — run that skill here
-  in chat, step by step.
+  in chat, step by step. Two rules the desk depends on: (1) after every
+  action that changes the queue (a merge above all) update the grid export
+  so the settled PR **disappears from the dashboard** — pr-run's "Publish
+  to the review desk" section says how; (2) plain words everywhere the user
+  reads — never bare "Lane A/Lane B" in chat or feed: say *azioni
+  automatiche* and *le PR che richiedono te*.
 - **`{"kind": "shutdown"}`** — the user pressed the desk's stop button: the
   server has already stopped itself. Do NOT restart the watcher; confirm in
   one line that the desk is down.

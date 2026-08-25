@@ -515,8 +515,22 @@ left alone and why.
 
 ## Publish to the review desk
 
-Update `~/.local/state/git-workflow/<owner>__<repo>.json` (schema in the
-pr-triage skill, section 10) so the dashboard reflects the run: drop the
-entries of PRs Lane A settled, refresh `analysis`/`next` for what moved, and
-put the full text of any review you drafted but did not send in that PR's
-`draft` key — the desk shows it under BOZZA REVIEW with a copy button.
+**The desk must react to what the run does.** After every action that
+changes the queue — a merge, an answered review, a realign — and again at
+the end of the run:
+
+- remove the settled PR's rows from `grid.blocks` in
+  `~/.local/state/git-workflow/<owner>__<repo>.json` (a merged PR must
+  disappear from the dashboard, not sit there looking pending), or re-run
+  the queue read and re-export the whole grid per pr-triage §10;
+- refresh `analysis`/`next` for what moved, and put the full text of any
+  review drafted but not sent in that PR's `draft` key;
+- one feed line per action (`notify.py`), in plain words.
+
+## How to talk about the lanes
+
+"Lane A" and "Lane B" are this file's internal names — the user should
+never have to decode them. In chat, in feed notifications and in reports
+say what they are: *azioni automatiche* (i merge delle tue PR approvate, le
+risposte banali, i riallinei — fatte da solo) and *le PR che richiedono te,
+una alla volta*. Use the lane names only when the user uses them first.
