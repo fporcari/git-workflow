@@ -206,6 +206,13 @@ nothing was dropped.
 
 ## 6 · The chasing blocks
 
+**Only the PRs the user opened himself.** A chase asks somebody to move on work
+he is waiting for; another author's PR stalled on that author is that author's
+queue, and handing it out reads as running his backlog for him. `chase.jq`
+enforces it at its first `select` (`.author==$me`) and so does the desk's engine
+— the rule is written here because it lives in two implementations, which is
+exactly how it once drifted out of one of them.
+
 One fenced block per person, numbers on one line, ready to paste:
 
 ```

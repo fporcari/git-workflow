@@ -223,10 +223,15 @@ def waiting_on(row, me, gate=None):
     return None
 
 
-def chase(rows):
+def chase(rows, me):
+    """Only the user's OWN PRs, the same rule chase.jq applies at its first
+    select. Somebody else's PR waiting on its author is that author's business:
+    a block telling him to move his own queue is not a chase, it is a list of
+    work nobody asked us to hand out. `me` is required rather than defaulted so
+    a caller that forgets it fails instead of silently chasing the world."""
     per = {}
     for row in rows:
-        if row.get("state") != "waiting":
+        if row.get("state") != "waiting" or row.get("author") != me:
             continue
         who = row.get("waiting_on")
         if who:
@@ -239,11 +244,6 @@ def chase(rows):
         out[who] = ("@%s \u2014 %s PR ferme su di te, la pi\u00f9 vecchia dal %s:\n%s"
                     % (who, len(items), items[0].get("created"), "\n".join(lines)))
     return out
-
-
-def fallback_chase(rows):
-    """The name the desk and the skills already import."""
-    return chase(rows)
 
 
 def handoff(row, repo, merge_command):

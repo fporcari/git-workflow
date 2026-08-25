@@ -704,13 +704,22 @@ class Blocks(unittest.TestCase):
 class Chase(unittest.TestCase):
     def test_grouped_per_person_oldest_first_with_the_dates(self):
         rows = [{"n": 2, "state": "waiting", "waiting_on": "genro",
-                 "created": "2026-05-01", "title": "b"},
+                 "author": "me", "created": "2026-05-01", "title": "b"},
                 {"n": 1, "state": "waiting", "waiting_on": "genro",
-                 "created": "2026-01-01", "title": "a"}]
-        got = verdicts.chase(rows)
+                 "author": "me", "created": "2026-01-01", "title": "a"}]
+        got = verdicts.chase(rows, "me")
         self.assertIn("genro", got)
         self.assertIn("2026-01-01", got["genro"].splitlines()[0])
         self.assertTrue(got["genro"].splitlines()[1].startswith("#1 (2026-01-01)"))
+
+    def test_somebody_elses_pr_never_enters_a_block(self):
+        """A chase list is about HIS PRs. Another author's PR waiting on its
+        author is that author's queue, not something to hand out."""
+        rows = [{"n": 5, "state": "waiting", "waiting_on": "dgpaci",
+                 "author": "dgpaci", "created": "2026-04-04", "title": "his"},
+                {"n": 6, "state": "waiting", "waiting_on": "genro",
+                 "author": "dgpaci", "created": "2026-04-05", "title": "his too"}]
+        self.assertEqual(verdicts.chase(rows, "me"), {})
 
     def test_the_person_who_may_land_becomes_the_chase(self):
         """Read from the fields and the gate, never by parsing the verdict's
@@ -724,14 +733,14 @@ class Chase(unittest.TestCase):
                 "conversation_resolution": False}
         rows = verdicts.decorate([row], "me", {"develop": gate})
         self.assertEqual(rows[0]["waiting_on"], "lander")
-        self.assertIn("lander", verdicts.chase(rows))
+        self.assertIn("lander", verdicts.chase(rows, "me"))
 
     def test_a_chase_never_names_the_user_himself(self):
         row = {"n": 4, "author": "me", "draft": False, "created": "2026-03-03",
                "title": "d", "req": [], "reviews": [], "decision": None,
                "merge": "CLEAN", "unresolved": 0, "last": None, "base": "develop"}
         rows = verdicts.decorate([row], "me")
-        self.assertNotIn("me", verdicts.chase(rows))
+        self.assertNotIn("me", verdicts.chase(rows, "me"))
 
 
 class IssueCrossCheck(unittest.TestCase):

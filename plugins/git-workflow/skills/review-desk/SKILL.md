@@ -242,7 +242,9 @@ What the model is called for is what only it can do: the rows marked `asks`,
 one-line explanations on request, the impact ranking, and pr-analyze's diff
 read.
 
-Verdicts are the pr-triage vocabulary; the Chase tab groups people to chase;
+Verdicts are the pr-triage vocabulary; the Chase tab groups the people to chase
+over the user's OWN PRs only, per pr-triage §6 — somebody else's stalled PR is
+that author's queue, not a block to hand out;
 the detail panel merges the state file live — analyses, drafts, order
 outcomes. Copying prompts is the last-resort link at the bottom of the
 panel.

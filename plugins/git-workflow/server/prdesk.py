@@ -231,7 +231,7 @@ class Desk:
         stamp = self.timings.get("queue", {}).get("stamp") or ""
         grid = state.get("grid") or {"computed": True, "generated": stamp,
                                      "blocks": verdicts.blocks(rows)}
-        chase = state.get("chase") or verdicts.chase(rows)
+        chase = state.get("chase") or verdicts.chase(rows, self.me)
         return {"rows": rows, "total": raw.get("total", len(rows)),
                 "truncated": raw.get("truncated", False),
                 "mergestate_pending": not states,
