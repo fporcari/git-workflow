@@ -66,6 +66,10 @@ each event in order:
 - **`{"kind": "issue-analyze", "n": N}`** — spawn one fresh read-only agent
   following `../issue-analyze/SKILL.md` on issue #N (virgin context by
   design); it persists the verdict to the desk state itself.
+- **`{"kind": "ping", "token": T}`** — the desk's test mode checking the
+  roundtrip. Answer immediately and cheaply, nothing else:
+  `python3 ${CLAUDE_PLUGIN_ROOT}/server/notify.py --repo <owner/repo> --pong T "pong — chat collegata e in ascolto"`,
+  then restart the watcher. No analysis, no chat prose beyond one line.
 - **`{"kind": "triage", "flow": "pr-triage"|"issue-triage"}`** — run that
   skill here, report-only, and export its output to the desk state as the
   skill's own export section specifies (`grid`+`chase` for pr-triage,

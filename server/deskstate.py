@@ -19,6 +19,7 @@ Schema (all keys optional):
 """
 
 import json
+import time
 from pathlib import Path
 
 STATE_DIR = Path.home() / ".local" / "state" / "git-workflow"
@@ -26,6 +27,18 @@ STATE_DIR = Path.home() / ".local" / "state" / "git-workflow"
 
 def state_path(repo):
     return STATE_DIR / ("%s.json" % repo.replace("/", "__"))
+
+
+def heartbeat_path(repo):
+    return STATE_DIR / ("%s__watcher.alive" % repo.replace("/", "__"))
+
+
+def watcher_age(repo):
+    """Seconds since the inbox watcher last polled, or None if never."""
+    path = heartbeat_path(repo)
+    if not path.exists():
+        return None
+    return time.time() - path.stat().st_mtime
 
 
 def load(repo):

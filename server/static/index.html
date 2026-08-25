@@ -80,6 +80,9 @@ h2{margin:0 0 7px}.detailGrid p{margin:0 0 12px}
 [data-tip]:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 7px);left:50%;transform:translateX(-50%);background:var(--ink);color:var(--panel);padding:7px 10px;border-radius:6px;font:11px/1.4 system-ui;width:max-content;max-width:300px;white-space:normal;z-index:60;text-align:left;box-shadow:0 3px 10px rgba(0,0,0,.25);pointer-events:none}
 .tipUnder[data-tip]:hover::after{bottom:auto;top:calc(100% + 7px)}
 .tipRight[data-tip]:hover::after{left:auto;right:0;transform:none}
+.testBox{margin:10px 18px;padding:10px 14px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
+.testBox div{font:11.5px var(--mono);padding:3px 0}
+.testBox .ok{color:var(--green)}.testBox .ko{color:var(--red)}.testBox .pending{color:var(--muted)}
 .err{margin:10px 18px;padding:8px 12px;border:1px solid var(--red);border-radius:6px;color:var(--red);background:color-mix(in srgb,var(--red) 5%,var(--panel));display:none}
 .btn{border:1px solid var(--line);border-radius:6px;background:var(--panel);padding:6px 10px;color:var(--ink);font:11px inherit;cursor:pointer;white-space:nowrap}
 @media(max-width:980px){[data-cmd]{display:none}}
@@ -108,7 +111,7 @@ h2{margin:0 0 7px}.detailGrid p{margin:0 0 12px}
 <main class="shell">
   <header class="topbar">
     <div class="brand"><span class="brandMark">GW</span><strong>review desk</strong><span class="repo" id="repoLabel">…</span></div>
-    <div class="topStats"><span><b id="cPrs">0</b> PR aperte</span><span><b id="cIssues">0</b> issue aperte</span><button class="sync" id="refresh"><i></i><span id="syncLabel">aggiornato —</span></button><button class="btn tipUnder tipRight" id="btnStop" data-tip="Ferma il server del desk e avvisa la chat collegata. Si riparte dalla chat con /review-desk.">⏻ stop</button></div>
+    <div class="topStats"><span><b id="cPrs">0</b> PR aperte</span><span><b id="cIssues">0</b> issue aperte</span><button class="sync" id="refresh"><i></i><span id="syncLabel">aggiornato —</span></button><button class="btn tipUnder tipRight" id="btnTest" data-tip="Modalità test: verifica la comunicazione desk → server → chat collegata → desk (provider, file di stato, watcher, ping roundtrip).">🧪 test</button><button class="btn tipUnder tipRight" id="btnStop" data-tip="Ferma il server del desk e avvisa la chat collegata. Si riparte dalla chat con /review-desk.">⏻ stop</button></div>
   </header>
 
   <section class="summary">
@@ -120,14 +123,15 @@ h2{margin:0 0 7px}.detailGrid p{margin:0 0 12px}
   </section>
 
   <div class="err" id="errBox"></div>
+  <div class="err" id="watcherBox" style="border-color:var(--red)"></div>
+  <div class="testBox" id="testBox" style="display:none"></div>
   <div class="feed" id="feedBox" style="display:none"></div>
 
   <section class="queue">
     <div class="queueTools">
       <div class="tabs" id="tabs"></div>
       <div style="display:flex;gap:6px;align-items:center">
-        <button class="btn tipUnder" id="btnTriage" data-tip="Griglia di triage qui nel desk: cosa mergiare subito, azioni banali, review da fare, chi sollecitare, decisioni solo tue. Calcolata dai campi del provider; quella con i gate verificati arriva da /pr-triage in chat.">▶ pr-triage</button>
-        <button class="btn tipUnder tipRight" id="btnRun" data-tip="Esegue /pr-run nella chat collegata; qui arrivano le notifiche">▶ pr-run in chat</button>
+        <button class="btn tipUnder tipRight" id="btnAction" style="display:none"></button>
         <label class="search"><span>⌕</span><input id="q" placeholder="Filtra numero, titolo, autore…"></label>
       </div>
     </div>
@@ -152,7 +156,7 @@ const $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const MARK={ready:"✓",attention:"!",waiting:"○",decision:"◆"};
 const STATE_LABEL={ready:"mergiabile",attention:"mossa tua",waiting:"in attesa",decision:"decisione tua"};
-let meta={},prs=[],issues=[],chase={},grid=null,situa=null,session=null,loaded=false,view="grid",query="",selected=null;
+let meta={},prs=[],issues=[],chase={},grid=null,situa=null,session=null,loaded=false,view="grid",query="",selected=null,watcherAlive=false,lastPong=null;
 const triageRunning={pr:false,issue:false};
 
 const VIEWS=()=>[
@@ -176,14 +180,16 @@ function ageDays(d){return Math.max(0,Math.round((Date.now()-new Date(d))/864e5)
 
 function renderTabs(){
   const onIssues=view==="issues";
-  $("btnTriage").textContent=onIssues?"▶ issue-triage":"▶ pr-triage";
-  $("btnTriage").dataset.tip=onIssues
-    ?"Esegue issue-triage nella chat collegata: batch delle issue recenti, rank per impatto, classificazione, cross-check dei branch. La situa arriva nel tab Triage."
-    :"Esegue pr-triage nella chat collegata: legge la coda con i gate veri (CODEOWNERS, protezioni, turni) e produce la griglia a blocchi. Arriva nel tab Triage.";
-  $("btnRun").textContent=onIssues?"▶ issue-run":"▶ pr-run";
-  $("btnRun").dataset.tip=onIssues
-    ?"La skill issue-run lavora il batch in chat: un'analisi a contesto pulito per issue, la scelta di cosa lavorare (in chat), poi branch e PR per le scelte. Ogni passo arriva qui nel feed."
-    :"La skill pr-run svuota la coda in chat: merge delle tue PR approvate, risposte alle review banali, riallineo dei branch, e il resto una PR alla volta. Ogni passo arriva qui nel feed.";
+  const act=$("btnAction");
+  if(view==="grid"||view==="chase"){act.style.display="none";}
+  else{
+    act.style.display="";
+    act.textContent=onIssues?"▶ issue-run in chat":"▶ pr-run in chat";
+    act.dataset.tip=onIssues
+      ?"La skill issue-run lavora il batch in chat: un'analisi a contesto pulito per issue, la scelta di cosa lavorare (in chat), poi branch e PR per le scelte. Ogni passo arriva qui nel feed."
+      :"La skill pr-run svuota la coda in chat: merge delle tue PR approvate, risposte alle review banali, riallineo dei branch, e il resto una PR alla volta. Ogni passo arriva qui nel feed.";
+    act.disabled=!watcherAlive;
+  }
   $("tabs").innerHTML=VIEWS().map(v=>`<button class="${view===v.id?"active":""} tipUnder" data-v="${v.id}" data-tip="${v.tip||""}">${v.label} <b>${v.count}</b></button>`).join("");
   $("tabs").querySelectorAll("button").forEach(b=>b.onclick=()=>{view=b.dataset.v;selected=null;render();});
 }
@@ -240,14 +246,21 @@ let lastStateStamp="";
 async function pollState(){
   try{
     const st=await fetch("/api/state").then(r=>r.json());
-    grid=st.grid;situa=st.situa;session=st.session;
+    grid=st.grid;situa=st.situa;session=st.session;lastPong=st.pong||null;
+    const w=st.watcher||{};
+    watcherAlive=!!w.alive;
+    const wb=$("watcherBox");
+    if(w.chat&&!w.alive){
+      wb.style.display="block";
+      wb.innerHTML="<b>Chat non in ascolto.</b> La sessione collegata non sta guardando l'inbox: i bottoni sono disattivati. Nella chat che ha lanciato il desk rilancia <code>/review-desk</code> (o chiedi di riavviare il watcher).";
+    }else{wb.style.display="none";}
     if(Object.keys(st.chase||{}).length||!loaded)chase=st.chase||chase;
     const box=$("feedBox"),feed=st.feed||[];
     if(feed.length){
       box.style.display="";
       box.innerHTML=feed.slice(-8).reverse().map(f=>`<div><b>${esc(f.at)}</b>${f.pr?`<b>#${f.pr}</b> `:""}${esc(f.msg)}</div>`).join("");
     }
-    const stamp=JSON.stringify([grid&&grid.generated,situa&&situa.generated,feed.length]);
+    const stamp=JSON.stringify([grid&&grid.generated,situa&&situa.generated,feed.length,lastPong,watcherAlive]);
     if(stamp!==lastStateStamp){
       lastStateStamp=stamp;
       if(grid)triageRunning.pr=false;
@@ -317,7 +330,7 @@ function renderGrid(){
     html+=`<div class="actionText">⏳ pr-triage in corso nella chat collegata — segui il feed in basso; la griglia comparirà qui.</div>`;
   }else{
     html+=`<div class="empty1" style="margin:8px 0">Nessun triage PR in questa sessione.</div>
-      <button class="btn primary" id="gTriagePr" data-tip="Esegue pr-triage nella chat collegata: coda letta con i gate veri (CODEOWNERS, protezioni, turni), verdetti e solleciti verificati. L'output è questa griglia.">▶ Esegui pr-triage in chat</button>`;
+      <button class="btn primary" id="gTriagePr" ${watcherAlive?"":"disabled"} data-tip="Esegue pr-triage nella chat collegata: coda letta con i gate veri (CODEOWNERS, protezioni, turni), verdetti e solleciti verificati. L'output è questa griglia.">▶ Esegui pr-triage in chat</button>`;
   }
   html+=`</div><div class="gridBlock" style="border-top:1px solid var(--line);padding-top:12px"><h2 style="font-size:12px">Issue ${situa?`<span class="skillStamp">— ${esc(situa.generated||"")}</span>`:""}</h2>`;
   if(situa){
@@ -326,7 +339,7 @@ function renderGrid(){
     html+=`<div class="actionText">⏳ issue-triage in corso nella chat collegata — segui il feed in basso; la situa comparirà qui.</div>`;
   }else{
     html+=`<div class="empty1" style="margin:8px 0">Nessun triage issue in questa sessione.</div>
-      <button class="btn primary" id="gTriageIssue" data-tip="Esegue issue-triage nella chat collegata: le 10 issue recenti non ancora analizzate, rank per impatto, tipo, cross-check di branch e PR esistenti. L'output è questa situa.">▶ Esegui issue-triage in chat</button>`;
+      <button class="btn primary" id="gTriageIssue" ${watcherAlive?"":"disabled"} data-tip="Esegue issue-triage nella chat collegata: le 10 issue recenti non ancora analizzate, rank per impatto, tipo, cross-check di branch e PR esistenti. L'output è questa situa.">▶ Esegui issue-triage in chat</button>`;
   }
   html+=`</div>`;
   wrap.innerHTML=html;
@@ -473,8 +486,36 @@ function render(){renderTabs();renderTable();renderDetail();renderSummary();}
 
 $("q").oninput=e=>{query=e.target.value;render();};
 $("refresh").onclick=()=>loadQueue(true);
-$("btnTriage").onclick=startTriage;
-$("btnRun").onclick=startRun;
+$("btnAction").onclick=startRun;
+$("btnTest").onclick=runTestMode;
+async function runTestMode(){
+  const box=$("testBox");box.style.display="block";
+  const t0=Date.now();
+  const line=(id,label)=>{box.insertAdjacentHTML("beforeend",`<div id="${id}" data-label="${label}"><span class="pending">…</span> ${label}</div>`);};
+  const setLine=(id,ok,extra)=>{const el=$(id);el.innerHTML=`<span class="${ok?"ok":"ko"}">${ok?"✓":"✗"}</span> ${esc(el.dataset.label)}${extra?` <span class="${ok?"pending":"ko"}">— ${esc(extra)}</span>`:""}`;};
+  box.innerHTML=`<div><b>Modalità test</b> — comunicazione desk → server → chat → desk</div>`;
+  line("tServer","server del desk raggiungibile");
+  line("tProvider","provider (gh) autenticato");
+  line("tState","file di stato scrivibile");
+  line("tWatcher","watcher della chat in ascolto");
+  line("tPing","ping roundtrip: desk → inbox → chat → stato → desk");
+  try{
+    const st=await fetch("/api/selftest").then(r=>r.json());
+    setLine("tServer",true);
+    setLine("tProvider",st.provider.ok,st.provider.ok?("login "+st.provider.login):st.provider.error);
+    setLine("tState",st.state_file.ok,st.state_file.ok?"":st.state_file.error);
+    setLine("tWatcher",st.watcher.ok,st.watcher.chat?(st.watcher.age==null?"mai visto":("ultimo poll "+Math.round(st.watcher.age)+"s fa")):"desk non in modalità chat");
+    if(!st.watcher.ok){setLine("tPing",false,"saltato: nessuna chat in ascolto");return;}
+    const token="t"+t0;
+    await fetch("/api/ping",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token})});
+    const started=Date.now();
+    const timer=setInterval(async()=>{
+      const stt=await fetch("/api/state").then(r=>r.json());
+      if(stt.pong===token){clearInterval(timer);setLine("tPing",true,((Date.now()-started)/1000).toFixed(1)+"s");}
+      else if(Date.now()-started>90000){clearInterval(timer);setLine("tPing",false,"nessuna risposta in 90s");}
+    },2000);
+  }catch(e){setLine("tServer",false,e.message);}
+}
 let stopArmed=null;
 $("btnStop").onclick=async()=>{
   const b=$("btnStop");

@@ -13,6 +13,7 @@ import argparse
 import sys
 import time
 
+from deskstate import STATE_DIR, heartbeat_path
 from inbox import inbox_path
 
 
@@ -25,8 +26,11 @@ def main():
     args = parser.parse_args()
 
     path = inbox_path(args.repo)
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    beat = heartbeat_path(args.repo)
     started = time.time()
     while True:
+        beat.touch()
         if path.exists() and path.stat().st_size:
             sys.stdout.write(path.read_text())
             return 0

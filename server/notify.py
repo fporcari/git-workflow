@@ -26,8 +26,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", required=True)
     parser.add_argument("--pr", type=int)
+    parser.add_argument("--pong", help="answer a desk ping: store the token so the UI sees the roundtrip")
     parser.add_argument("msg")
     args = parser.parse_args()
+    if args.pong:
+        state = deskstate.load(args.repo)
+        state["pong"] = args.pong
+        deskstate.save(args.repo, state)
     notify(args.repo, args.msg, args.pr)
 
 

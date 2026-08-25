@@ -128,10 +128,30 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, {"feed": feed[-50:]})
             elif url.path == "/api/state":
                 st = deskstate.load(self.desk.repo)
+                age = deskstate.watcher_age(self.desk.repo)
                 self._send(200, {"feed": (st.get("feed") or [])[-50:],
                                  "grid": st.get("grid"), "situa": st.get("situa"),
                                  "chase": st.get("chase") or {},
-                                 "session": st.get("session")})
+                                 "session": st.get("session"),
+                                 "pong": st.get("pong"),
+                                 "watcher": {"alive": self.desk.chat and age is not None and age < 10,
+                                             "age": age, "chat": self.desk.chat}})
+            elif url.path == "/api/selftest":
+                out = {}
+                try:
+                    out["provider"] = {"ok": True, "login": self.desk.provider.whoami()}
+                except Exception as exc:
+                    out["provider"] = {"ok": False, "error": str(exc)[:200]}
+                try:
+                    st = deskstate.load(self.desk.repo)
+                    deskstate.save(self.desk.repo, st)
+                    out["state_file"] = {"ok": True, "path": str(deskstate.state_path(self.desk.repo))}
+                except Exception as exc:
+                    out["state_file"] = {"ok": False, "error": str(exc)[:200]}
+                age = deskstate.watcher_age(self.desk.repo)
+                out["watcher"] = {"ok": self.desk.chat and age is not None and age < 10,
+                                  "age": age, "chat": self.desk.chat}
+                self._send(200, out)
             elif url.path.startswith("/api/job/"):
                 job = jobs.get(url.path.rsplit("/", 1)[1])
                 self._send(200 if job else 404, job or {"error": "unknown job"})
@@ -181,6 +201,13 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     flow = body.get("flow", "pr-run")
                     inbox.push(self.desk.repo, {"kind": "run", "flow": flow})
+                    self._send(202, {"queued": True})
+            elif parts == ["api", "ping"]:
+                if not self.desk.chat:
+                    self._send(409, {"error": "il ping ha senso solo in modalità chat"})
+                else:
+                    token = body.get("token") or ""
+                    inbox.push(self.desk.repo, {"kind": "ping", "token": token})
                     self._send(202, {"queued": True})
             elif parts == ["api", "triage"]:
                 if not self.desk.chat:
