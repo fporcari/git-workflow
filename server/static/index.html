@@ -152,16 +152,17 @@ const $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const MARK={ready:"✓",attention:"!",waiting:"○",decision:"◆"};
 const STATE_LABEL={ready:"mergiabile",attention:"mossa tua",waiting:"in attesa",decision:"decisione tua"};
-let meta={},prs=[],issues=[],chase={},chaseVerified=false,session=null,view="queue",query="",selected=null;
+let meta={},prs=[],issues=[],chase={},grid=null,situa=null,session=null,loaded=false,view="grid",query="",selected=null;
+const triageRunning={pr:false,issue:false};
 
 const VIEWS=()=>[
-  {id:"queue",label:"Coda",tip:"Le PR che aspettano una mossa tua o una tua decisione",count:prs.filter(r=>r.state==="attention"||r.state==="decision"||r.state==="ready").length},
-  {id:"ready",label:"Mergiabili",tip:"Approvate e CLEAN: pronte al merge",count:prs.filter(r=>r.state==="ready").length},
-  {id:"waiting",label:"In attesa",tip:"Ferme su qualcun altro: reviewer o autore",count:prs.filter(r=>r.state==="waiting").length},
-  {id:"grid",label:"Triage",tip:"La griglia a blocchi di /pr-triage: cosa mergiare, azioni banali, review da fare, solleciti, decisioni tue",count:prs.filter(r=>r.state!=="waiting").length},
-  {id:"chase",label:"Solleciti",tip:"Un messaggio pronto da incollare per ogni persona da sollecitare",count:Object.keys(chase).length},
-  {id:"all",label:"Tutte",tip:"Tutte le PR aperte in cui sei coinvolto",count:prs.length},
-  {id:"issues",label:"Issues",tip:"Le issue aperte del repo, classificate per tipo",count:issues.length},
+  {id:"grid",label:"Triage",tip:"L'output delle skill di triage, in due blocchi: la griglia PR di pr-triage e la situa issue di issue-triage. Vuoto finché non le lanci.",count:(grid?grid.blocks.reduce((a,b)=>a+b.rows.length,0):0)+(situa?situa.rows.length:0)},
+  {id:"queue",label:"Coda",tip:"Le PR che aspettano una mossa tua o una tua decisione (lettura live dei campi, con ⟳)",count:loaded?prs.filter(r=>r.state!=="waiting").length:"—"},
+  {id:"ready",label:"Mergiabili",tip:"Approvate e CLEAN: pronte al merge",count:loaded?prs.filter(r=>r.state==="ready").length:"—"},
+  {id:"waiting",label:"In attesa",tip:"Ferme su qualcun altro: reviewer o autore",count:loaded?prs.filter(r=>r.state==="waiting").length:"—"},
+  {id:"chase",label:"Solleciti",tip:"Un messaggio pronto da incollare per ogni persona da sollecitare (verificati se esportati da pr-triage)",count:Object.keys(chase).length||"—"},
+  {id:"all",label:"Tutte",tip:"Tutte le PR aperte in cui sei coinvolto",count:loaded?prs.length:"—"},
+  {id:"issues",label:"Issues",tip:"Le issue aperte del repo, classificate per tipo",count:loaded?issues.length:"—"},
 ];
 
 async function copyText(btn,text){
@@ -171,12 +172,15 @@ async function copyText(btn,text){
   const old=btn.textContent;btn.textContent="copiato ✓";btn.classList.add("copied");
   setTimeout(()=>{btn.textContent=old;btn.classList.remove("copied");},1400);
 }
-
 function ageDays(d){return Math.max(0,Math.round((Date.now()-new Date(d))/864e5));}
 
 function renderTabs(){
   const onIssues=view==="issues";
-  $("btnRun").textContent=onIssues?"\u25B6 issue-run in chat":"\u25B6 pr-run in chat";
+  $("btnTriage").textContent=onIssues?"▶ issue-triage":"▶ pr-triage";
+  $("btnTriage").dataset.tip=onIssues
+    ?"Esegue issue-triage nella chat collegata: batch delle issue recenti, rank per impatto, classificazione, cross-check dei branch. La situa arriva nel tab Triage."
+    :"Esegue pr-triage nella chat collegata: legge la coda con i gate veri (CODEOWNERS, protezioni, turni) e produce la griglia a blocchi. Arriva nel tab Triage.";
+  $("btnRun").textContent=onIssues?"▶ issue-run":"▶ pr-run";
   $("btnRun").dataset.tip=onIssues
     ?"La skill issue-run lavora il batch in chat: un'analisi a contesto pulito per issue, la scelta di cosa lavorare (in chat), poi branch e PR per le scelte. Ogni passo arriva qui nel feed."
     :"La skill pr-run svuota la coda in chat: merge delle tue PR approvate, risposte alle review banali, riallineo dei branch, e il resto una PR alla volta. Ogni passo arriva qui nel feed.";
@@ -201,17 +205,15 @@ const analyses={};
 function analysisBlockHtml(r){
   const a=analyses[r.n];
   if(a?.status==="queued")
-    return `<div class="actionText">\u{1F4E8} in lavorazione nella chat collegata \u2014 segui il feed in alto; l'esito compare qui sotto ad analisi chiusa.</div>`;
+    return `<div class="actionText">📨 in lavorazione nella chat collegata — segui il feed in basso; l'esito compare qui ad analisi chiusa.</div>`;
   if(a?.status==="error")
     return `<div class="actionText">Errore: ${esc(a.error)}</div><button class="btn" id="dAnalyze">Riprova</button>`;
-  return `<button class="btn primary" id="dAnalyze" data-tip="La skill pr-analyze legge tutto il diff, verifica i claim della descrizione e i thread, e produce il blocco cosa/storia/proposta con l'eventuale bozza di risposta. Read-only: non posta nulla.">\u25B6 pr-analyze in chat</button>
+  return `<button class="btn primary" id="dAnalyze" data-tip="La skill pr-analyze legge tutto il diff, verifica i claim della descrizione e i thread, e produce il blocco cosa/storia/proposta con l'eventuale bozza di risposta. Read-only: non posta nulla.">▶ pr-analyze in chat</button>
     <small style="display:block;margin-top:4px">L'analisi gira nella chat collegata, con il suo contesto pieno; il desk mostra solo l'esito e le notifiche.</small>`;
 }
-
 function wireAnalysis(r){
   const an=$("dAnalyze");if(an)an.onclick=()=>startAnalysis(r.n);
 }
-
 async function startAnalysis(n){
   const prev=prs.find(x=>x.n===n)?.skill?.next||null;
   try{
@@ -222,12 +224,11 @@ async function startAnalysis(n){
     pollQueueUntil(n,row=>(row.skill?.next||null)!==prev,()=>{delete analyses[n];});
   }catch(e){analyses[n]={status:"error",error:e.message};render();}
 }
-
 function pollQueueUntil(n,test,onDone){
   const t=setInterval(async()=>{
     try{
       const q=await fetch("/api/queue").then(r=>r.json());
-      prs=q.rows;chase=q.chase||{};chaseVerified=!!q.chase_verified;session=q.session;
+      prs=q.rows;loaded=true;session=q.session;
       const row=prs.find(x=>x.n===n);
       if(row&&test(row)){clearInterval(t);onDone(row);}
       render();
@@ -235,28 +236,62 @@ function pollQueueUntil(n,test,onDone){
   },8000);
 }
 
-let lastFeedLen=0;
-async function pollFeed(){
+let lastStateStamp="";
+async function pollState(){
   try{
-    const {feed}=await fetch("/api/feed").then(r=>r.json());
-    const box=$("feedBox");
-    if(feed&&feed.length){
+    const st=await fetch("/api/state").then(r=>r.json());
+    grid=st.grid;situa=st.situa;session=st.session;
+    if(Object.keys(st.chase||{}).length||!loaded)chase=st.chase||chase;
+    const box=$("feedBox"),feed=st.feed||[];
+    if(feed.length){
       box.style.display="";
       box.innerHTML=feed.slice(-8).reverse().map(f=>`<div><b>${esc(f.at)}</b>${f.pr?`<b>#${f.pr}</b> `:""}${esc(f.msg)}</div>`).join("");
-      if(feed.length!==lastFeedLen){lastFeedLen=feed.length;}
+    }
+    const stamp=JSON.stringify([grid&&grid.generated,situa&&situa.generated,feed.length]);
+    if(stamp!==lastStateStamp){
+      lastStateStamp=stamp;
+      if(grid)triageRunning.pr=false;
+      if(situa)triageRunning.issue=false;
+      render();
     }
   }catch(e){}
 }
-setInterval(pollFeed,5000);
+setInterval(pollState,5000);
 
+async function loadQueue(refresh){
+  $("syncLabel").textContent="leggo il provider…";$("errBox").style.display="none";
+  try{
+    const suffix=refresh?"?refresh=1":"";
+    const [q,i]=await Promise.all([
+      fetch("/api/queue"+suffix).then(r=>r.json()),
+      fetch("/api/issues"+suffix).then(r=>r.json()),
+    ]);
+    if(q.error||i.error)throw new Error(q.error||i.error);
+    prs=q.rows;issues=i.rows;session=q.session;loaded=true;
+    if(!Object.keys(chase).length)chase=q.chase||{};
+    $("syncLabel").textContent=`aggiornato ${q.generated}`;
+    render();
+  }catch(e){
+    $("errBox").textContent="Errore provider: "+e.message;$("errBox").style.display="block";
+    $("syncLabel").textContent="lettura fallita";
+  }
+}
+
+async function startTriage(){
+  const flow=view==="issues"?"issue-triage":"pr-triage";
+  const resp=await fetch("/api/triage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({flow})});
+  const d=await resp.json();
+  if(d.error){$("errBox").style.display="block";$("errBox").textContent=d.error;return;}
+  triageRunning[flow==="issue-triage"?"issue":"pr"]=true;
+  view="grid";render();
+}
 async function startRun(){
   const flow=view==="issues"?"issue-run":"pr-run";
   const resp=await fetch("/api/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({flow})});
   const d=await resp.json();
   $("errBox").style.display="block";
-  $("errBox").textContent=d.error||flow+" avviato nella chat collegata: segui il feed.";
+  $("errBox").textContent=d.error||flow+" avviato nella chat collegata: segui il feed in basso.";
 }
-
 async function startIssueAnalysis(n){
   const resp=await fetch(`/api/issue/${n}/analyze`,{method:"POST"});
   const d=await resp.json();
@@ -265,33 +300,40 @@ async function startIssueAnalysis(n){
   else{analyses["i"+n]={status:"queued"};render();}
 }
 
-const GRID_BLOCKS=[
-  {title:"Da mergiare subito",test:r=>r.autorun==="A1"},
-  {title:"Azione banale",test:r=>r.autorun==="A2"||r.autorun==="A3"},
-  {title:"Review da fare",test:r=>/^(review it|re-review it)/.test(r.todo)},
-  {title:"Solo tue",test:r=>r.autorun==="yours"||r.state==="decision"},
-];
+function gridRowsTable(rows){
+  if(!rows.length)return `<div class="empty1">niente in questo blocco</div>`;
+  return `<table><tbody>${rows.map(r=>`<tr data-n="${r.n}"><td class="mono">#${r.n}</td><td class="mono">${esc(r.date||"")}</td><td>${esc(r.author||"")}</td><td class="next" style="max-width:none">${esc(r.what||"")}</td><td><b>${esc(r.todo||"")}</b></td><td class="mono">${esc(r.autorun||"")}</td></tr>`).join("")}</tbody></table>`;
+}
 function renderGrid(){
   const wrap=$("gridWrap"),on=view==="grid";
   wrap.style.display=on?"flex":"none";
   if(!on)return;
-  const used=new Set();
-  let html=`<div class="chaseNote">Griglia dai campi del provider (vocabolario pr-triage \u00A77). La griglia completa, con i gate verificati, la produce <b>/pr-triage</b> in chat e arriva qui via export.</div>`;
-  for(const b of GRID_BLOCKS){
-    const rows=prs.filter(r=>b.test(r));rows.forEach(r=>used.add(r.n));
-    html+=`<div class="gridBlock"><h2>${b.title} (${rows.length})</h2>`+(rows.length
-      ?`<table><tbody>${rows.map(r=>`<tr data-n="${r.n}"><td class="mono">#${r.n}</td><td>${esc(r.title)}</td><td>${esc(r.author)}</td><td class="mono">${esc(r.created)}</td><td class="next">${esc(r.todo)}</td><td class="mono">${esc(r.autorun)}</td></tr>`).join("")}</tbody></table>`
-      :`<div class="empty1">niente in questo blocco</div>`)+`</div>`;
+  let html=`<div class="gridBlock"><h2 style="font-size:12px">Pull request ${grid?`<span class="skillStamp">— ${esc(session||"")} · ${esc(grid.generated||"")}</span>`:""}</h2>`;
+  if(grid){
+    html+=grid.blocks.map(b=>`<div class="gridBlock"><h2>${esc(b.title)} (${b.rows.length})</h2>${gridRowsTable(b.rows)}</div>`).join("");
+    const names=Object.keys(chase);
+    if(names.length)html+=`<div class="gridBlock"><h2>Da sollecitare (${names.length})</h2><div class="chaseWrap" style="padding:0">${names.map(w=>`<div class="chaseCard"><h2>@${esc(w)}</h2><pre>${esc(chase[w])}</pre><button class="btn" data-copy="${esc(chase[w])}">Copia messaggio</button></div>`).join("")}</div></div>`;
+  }else if(triageRunning.pr){
+    html+=`<div class="actionText">⏳ pr-triage in corso nella chat collegata — segui il feed in basso; la griglia comparirà qui.</div>`;
+  }else{
+    html+=`<div class="empty1" style="margin:8px 0">Nessun triage PR in questa sessione.</div>
+      <button class="btn primary" id="gTriagePr" data-tip="Esegue pr-triage nella chat collegata: coda letta con i gate veri (CODEOWNERS, protezioni, turni), verdetti e solleciti verificati. L'output è questa griglia.">▶ Esegui pr-triage in chat</button>`;
   }
-  const names=Object.keys(chase);
-  html+=`<div class="gridBlock"><h2>Da sollecitare (${names.length})</h2>`+(names.length
-    ?`<div class="chaseWrap" style="padding:0">${names.map(w=>`<div class="chaseCard"><h2>@${esc(w)}</h2><pre>${esc(chase[w])}</pre><button class="btn" data-copy="${esc(chase[w])}">Copia messaggio</button></div>`).join("")}</div>`
-    :`<div class="empty1">nessuno da sollecitare</div>`)+`</div>`;
-  const rest=prs.filter(r=>!used.has(r.n)&&r.state==="waiting");
-  html+=`<div class="gridBlock"><h2>In attesa di altri (${rest.length})</h2><div class="empty1">${esc(rest.map(r=>"#"+r.n).join(" "))||"\u2014"}</div></div>`;
+  html+=`</div><div class="gridBlock" style="border-top:1px solid var(--line);padding-top:12px"><h2 style="font-size:12px">Issue ${situa?`<span class="skillStamp">— ${esc(situa.generated||"")}</span>`:""}</h2>`;
+  if(situa){
+    html+=`<table><tbody>${situa.rows.map(r=>`<tr data-i="${r.n}"><td class="mono">#${r.n}</td><td class="mono">${esc(r.date||"")}</td><td>${esc(r.author||"")}</td><td><span class="tag ${esc(r.type||"")}">${esc(r.type||"")}</span></td><td class="next" style="max-width:none">${esc(r.title||"")}</td><td>${esc(r.assignee||"—")}</td><td class="next" style="max-width:none">${esc(r.note||"")}</td></tr>`).join("")}</tbody></table>`;
+  }else if(triageRunning.issue){
+    html+=`<div class="actionText">⏳ issue-triage in corso nella chat collegata — segui il feed in basso; la situa comparirà qui.</div>`;
+  }else{
+    html+=`<div class="empty1" style="margin:8px 0">Nessun triage issue in questa sessione.</div>
+      <button class="btn primary" id="gTriageIssue" data-tip="Esegue issue-triage nella chat collegata: le 10 issue recenti non ancora analizzate, rank per impatto, tipo, cross-check di branch e PR esistenti. L'output è questa situa.">▶ Esegui issue-triage in chat</button>`;
+  }
+  html+=`</div>`;
   wrap.innerHTML=html;
   wrap.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>copyText(b,b.dataset.copy));
-  wrap.querySelectorAll("tr[data-n]").forEach(tr=>tr.onclick=()=>{selected="p"+tr.dataset.n;view="queue";render();});
+  const tp=$("gTriagePr");if(tp)tp.onclick=()=>{view="queue";view="grid";fetch("/api/triage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({flow:"pr-triage"})}).then(r=>r.json()).then(d=>{if(d.error){$("errBox").style.display="block";$("errBox").textContent=d.error;}else{triageRunning.pr=true;render();}});};
+  const ti=$("gTriageIssue");if(ti)ti.onclick=()=>{fetch("/api/triage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({flow:"issue-triage"})}).then(r=>r.json()).then(d=>{if(d.error){$("errBox").style.display="block";$("errBox").textContent=d.error;}else{triageRunning.issue=true;render();}});};
+  wrap.querySelectorAll("tr[data-n]").forEach(tr=>{tr.style.cursor="pointer";tr.onclick=()=>{if(loaded){selected="p"+tr.dataset.n;view="queue";render();}};});
 }
 
 function renderChase(){
@@ -300,11 +342,11 @@ function renderChase(){
   wrap.style.display=onChase?"grid":"none";
   if(!onChase)return;
   const names=Object.keys(chase);
-  wrap.innerHTML=(names.length?`<div class="chaseNote">${chaseVerified
-    ?`Blocchi verificati da /pr-triage${session?` — ${esc(session)}`:""}. Pronti da incollare.`
-    :"Blocchi grezzi, raggruppati dai soli campi del provider. Per i blocchi verificati (gate sui turni, ritardatari vs mai iniziate) lancia <b>/pr-triage</b> in Claude Code."}</div>`:"")
+  wrap.innerHTML=(names.length?`<div class="chaseNote">${grid
+    ?`Blocchi verificati da pr-triage${session?` — ${esc(session)}`:""}. Pronti da incollare.`
+    :"Blocchi grezzi, raggruppati dai soli campi del provider. Quelli verificati arrivano da ▶ pr-triage."}</div>`:"")
     +names.map(w=>`<div class="chaseCard"><h2>@${esc(w)}</h2><pre>${esc(chase[w])}</pre><button class="btn" data-copy="${esc(chase[w])}">Copia messaggio</button></div>`).join("")
-    ||`<div class="chaseNote">Nessuno da sollecitare.</div>`;
+    ||`<div class="chaseNote">${loaded?"Nessuno da sollecitare.":"Ancora niente qui: lancia ▶ pr-triage per i solleciti verificati, o ⟳ per il raggruppamento grezzo dai campi."}</div>`;
   wrap.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>copyText(b,b.dataset.copy));
 }
 
@@ -312,6 +354,13 @@ function renderTable(){
   const tb=$("tbody"),th=$("thead");
   renderChase();renderGrid();
   if(view==="chase"||view==="grid"){$("empty").style.display="none";tb.innerHTML="";th.innerHTML="";return;}
+  if(!loaded){
+    th.innerHTML="";tb.innerHTML="";
+    $("empty").style.display="flex";
+    $("empty").innerHTML=`<b>Coda non caricata</b><span>Il desk parte vuoto: premi ⟳ in alto per leggere PR e issue live dal provider.</span>`;
+    return;
+  }
+  $("empty").innerHTML=`<b>Niente in questa vista</b><span>Prova un altro filtro o un altro tab.</span>`;
   if(view==="issues"){
     th.innerHTML=`<tr><th class="markCol"></th><th>issue</th><th title="DEFECT bug reale · REQUEST nuova funzione · QUESTION domanda · DOCS documentazione — letto da label e titolo">tipo</th><th>autore</th><th>label</th><th>assegnatari</th><th class="num">commenti</th><th class="num">età</th></tr>`;
     const rows=visibleIssues();
@@ -326,7 +375,8 @@ function renderTable(){
       <td class="num mono">${ageDays(r.created)}d</td></tr>`).join("");
     $("empty").style.display=rows.length?"none":"flex";
   }else{
-    th.innerHTML=`<tr><th class="markCol"></th><th>pull request</th><th>autore</th><th>review</th><th>stato merge</th><th class="num" title="Thread di review non risolti">aperti</th><th>base</th><th title="La prossima azione, dal vocabolario di pr-triage">prossima mossa</th><th title="Cosa può fare pr-run da solo: A1 = merge automatico (tua PR approvata e CLEAN), A2 = edit banale chiesto dal reviewer, A3 = riallineo del branch. asks = te lo porta in chat, yours = decisione solo tua, - = tocca ad altri">autorun</th></tr>`;
+    const AUTORUN_TIP="Cosa può fare pr-run da solo: A1 = merge automatico (tua PR approvata e CLEAN), A2 = edit banale chiesto dal reviewer, A3 = riallineo del branch. asks = te lo porta in chat, yours = decisione solo tua, - = tocca ad altri";
+    th.innerHTML=`<tr><th class="markCol"></th><th>pull request</th><th>autore</th><th>review</th><th>stato merge</th><th class="num" title="Thread di review non risolti">aperti</th><th>base</th><th title="La prossima azione, dal vocabolario di pr-triage">prossima mossa</th><th title="${AUTORUN_TIP}">autorun</th></tr>`;
     const rows=visiblePrs();
     tb.innerHTML=rows.map(r=>`<tr data-n="${r.n}" data-kind="pr" class="${r.state} ${selected===`p${r.n}`?"selected":""}" tabindex="0">
       <td class="mark"><span title="${STATE_LABEL[r.state]}">${MARK[r.state]}</span></td>
@@ -337,7 +387,7 @@ function renderTable(){
       <td class="num">${r.unresolved||"—"}</td>
       <td class="mono">${esc(r.base)}</td>
       <td class="next">${esc(r.todo)}</td>
-      <td class="mono" title="Cosa può fare pr-run da solo: A1 = merge automatico (tua PR approvata e CLEAN), A2 = edit banale chiesto dal reviewer, A3 = riallineo del branch. asks = te lo porta in chat, yours = decisione solo tua, - = tocca ad altri">${esc(r.autorun)}</td></tr>`).join("");
+      <td class="mono" title="${AUTORUN_TIP}">${esc(r.autorun)}</td></tr>`).join("");
     $("empty").style.display=rows.length?"none":"flex";
   }
   tb.querySelectorAll("tr").forEach(tr=>tr.onclick=()=>{selected=(tr.dataset.kind==="pr"?"p":"i")+tr.dataset.n;render();});
@@ -353,7 +403,7 @@ function renderDetail(){
   $("dLink").href=r.url;
   if(kind==="p"){
     $("dMark").textContent=MARK[r.state];$("dMark").className="largeMark "+r.state;
-    $("dKicker").textContent=`PR #${r.n} · ${r.author} · opened ${r.created} · base ${r.base}`;
+    $("dKicker").textContent=`PR #${r.n} · ${r.author} · aperta ${r.created} · base ${r.base}`;
     $("dTitle").textContent=r.title;
     const reviews=(r.reviews||[]).map(v=>`<div class="signal"><b>${esc(v.who)}</b><span>${esc(v.state)} · ${esc(v.on)}</span></div>`).join("")||`<div class="signal"><span>ancora nessuna review</span></div>`;
     const closes=(r.closes||[]).map(c=>`<div class="signal"><b>issue #${c.issue}</b><span>${c.assignees.join(", ")||"senza assegnatario"}</span></div>`).join("");
@@ -381,7 +431,7 @@ function renderDetail(){
     const dr=$("dDraft");if(dr)dr.onclick=()=>copyText(dr,r.skill.draft);
   }else{
     $("dMark").textContent=r.assignees.length?"○":"!";$("dMark").className="largeMark "+(r.assignees.length?"waiting":"attention");
-    $("dKicker").textContent=`issue #${r.n} · ${r.author} · opened ${r.created}`;
+    $("dKicker").textContent=`issue #${r.n} · ${r.author} · aperta ${r.created}`;
     $("dTitle").textContent=r.title;
     $("dGrid").innerHTML=`
       <article><h2>Classificazione</h2>
@@ -390,7 +440,7 @@ function renderDetail(){
         <div><dt>Assegnatari</dt><dd>${r.assignees.join(", ")||"nessuno"}</dd></div>
         <div><dt>Commenti</dt><dd>${r.comments}</dd></div></dl></article>
       <article class="nextCard"><h2>Prossima mossa</h2><p>${r.assignees.length?`assegnata a ${esc(r.assignees.join(", "))}`:"senza assegnatario — candidata per issue-run"}</p>
-        ${analyses["i"+r.n]?.status==="queued"?`<div class="actionText">\u{1F4E8} in analisi nella chat collegata \u2014 segui il feed.</div>`:`<button class="btn primary" id="dIssueAnalyze" data-tip="La skill issue-analyze verifica la root cause nel codice (o il riuso già esistente per le richieste) in un contesto pulito, e classifica: SINGLE-PHASE o WORKFLOW, EASY/MEDIUM/HARD. Read-only.">\u25B6 issue-analyze in chat</button>`}
+        ${analyses["i"+r.n]?.status==="queued"?`<div class="actionText">📨 in analisi nella chat collegata — segui il feed.</div>`:`<button class="btn primary" id="dIssueAnalyze" data-tip="La skill issue-analyze verifica la root cause nel codice (o il riuso già esistente per le richieste) in un contesto pulito, e classifica: SINGLE-PHASE o WORKFLOW, EASY/MEDIUM/HARD. Read-only.">▶ issue-analyze in chat</button>`}
         <div style="margin-top:8px"><small>tipo letto da label e titolo; l'analisi gira in un contesto vergine e l'esito arriva qui.</small></div></article>
       <aside><h2>Età</h2><div class="signal"><b>${ageDays(r.created)} giorni</b><span>dal ${esc(r.created)}</span></div></aside>
       ${r.skill?`<article style="grid-column:1/-1;border-top:1px solid var(--line)">
@@ -403,6 +453,12 @@ function renderDetail(){
 }
 
 function renderSummary(){
+  if(!loaded){
+    ["mAttention","mDecision","mWaiting","mReady","cPrs","cIssues"].forEach(id=>$(id).textContent="—");
+    $("leadTitle").textContent="desk vuoto";
+    $("leadSub").textContent=`▶ pr-triage / ▶ issue-triage per il triage in chat · ⟳ per la coda live · provider ${meta.provider||"—"}`;
+    return;
+  }
   const c={ready:0,attention:0,waiting:0,decision:0};
   prs.forEach(r=>c[r.state]++);
   $("mAttention").textContent=c.attention;$("mDecision").textContent=c.decision;
@@ -415,29 +471,9 @@ function renderSummary(){
 
 function render(){renderTabs();renderTable();renderDetail();renderSummary();}
 
-async function load(refresh){
-  $("syncLabel").textContent="aggiorno…";$("errBox").style.display="none";
-  const suffix=refresh?"?refresh=1":"";
-  try{
-    const [m,q,i]=await Promise.all([
-      fetch("/api/meta").then(r=>r.json()),
-      fetch("/api/queue"+suffix).then(r=>r.json()),
-      fetch("/api/issues"+suffix).then(r=>r.json()),
-    ]);
-    if(q.error||i.error)throw new Error(q.error||i.error);
-    meta=m;prs=q.rows;issues=i.rows;chase=q.chase||{};chaseVerified=!!q.chase_verified;session=q.session;
-    $("repoLabel").textContent=`${m.repo} · ${m.me}`;
-    $("syncLabel").textContent=`aggiornato ${q.generated}`;
-    render();
-  }catch(e){
-    $("errBox").textContent="Errore provider: "+e.message;$("errBox").style.display="block";
-    $("syncLabel").textContent="aggiornamento fallito";
-  }
-}
-
 $("q").oninput=e=>{query=e.target.value;render();};
-$("refresh").onclick=()=>load(true);
-$("btnTriage").onclick=()=>{view="grid";render();};
+$("refresh").onclick=()=>loadQueue(true);
+$("btnTriage").onclick=startTriage;
 $("btnRun").onclick=startRun;
 let stopArmed=null;
 $("btnStop").onclick=async()=>{
@@ -452,7 +488,11 @@ $("btnStop").onclick=async()=>{
   try{await fetch("/api/shutdown",{method:"POST"});}catch(e){}
   document.body.innerHTML='<div style="padding:40px;font:14px system-ui;color:var(--ink)"><b>Server fermato.</b><br>La chat collegata è stata avvisata. Per ripartire: <code>/review-desk</code> in chat.</div>';
 };
-load(false);
+
+fetch("/api/meta").then(r=>r.json()).then(m=>{meta=m;$("repoLabel").textContent=`${m.repo} · ${m.me}`;render();});
+$("syncLabel").textContent="coda non caricata — ⟳ per leggerla";
+pollState();
+render();
 </script>
 </body>
 </html>

@@ -52,8 +52,23 @@ would pick up.
 
 Export to the review desk state
 (`~/.local/state/git-workflow/<owner>__<repo>.json`, preserve other keys):
-each batch issue under `issues.<n>` with `{type, finding: <the one-line
-note>, phase: null, size: null}` — issue-analyze fills phase and size later.
+the situa table under `situa` and each batch issue under `issues.<n>`:
+
+```json
+{"situa": {"generated": "<ISO timestamp>",
+           "rows": [{"n": 1156, "date": "2026-08-25", "author": "dgpaci",
+                      "type": "DEFECT", "title": "...",
+                      "assignee": "", "note": "<una riga, in italiano>"}]},
+ "issues": {"1156": {"type": "DEFECT", "finding": "<la stessa riga>",
+                      "phase": null, "size": null}}}
+```
+
+issue-analyze fills phase and size later. The desk's Triage tab shows
+`situa` in its ISSUE block — it stays empty until this command has run.
+
+**Triggered from the desk** (a `{"kind": "triage", "flow": "issue-triage"}`
+inbox event): run through Step 2 and the export, skip the Step 3 handover
+question — the user drives from the dashboard.
 
 ## Step 3 — Handover
 

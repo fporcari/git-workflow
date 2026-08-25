@@ -74,7 +74,9 @@ class Desk:
         chase = state.get("chase") or fallback_chase(rows)
         return {"rows": rows, "chase": chase,
                 "chase_verified": bool(state.get("chase")),
-                "session": state.get("session")}
+                "session": state.get("session"),
+                "grid": state.get("grid"),
+                "situa": state.get("situa")}
 
     def issues(self, refresh=False):
         def load():
@@ -124,6 +126,12 @@ class Handler(BaseHTTPRequestHandler):
             elif url.path == "/api/feed":
                 feed = deskstate.load(self.desk.repo).get("feed") or []
                 self._send(200, {"feed": feed[-50:]})
+            elif url.path == "/api/state":
+                st = deskstate.load(self.desk.repo)
+                self._send(200, {"feed": (st.get("feed") or [])[-50:],
+                                 "grid": st.get("grid"), "situa": st.get("situa"),
+                                 "chase": st.get("chase") or {},
+                                 "session": st.get("session")})
             elif url.path.startswith("/api/job/"):
                 job = jobs.get(url.path.rsplit("/", 1)[1])
                 self._send(200 if job else 404, job or {"error": "unknown job"})
@@ -173,6 +181,13 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     flow = body.get("flow", "pr-run")
                     inbox.push(self.desk.repo, {"kind": "run", "flow": flow})
+                    self._send(202, {"queued": True})
+            elif parts == ["api", "triage"]:
+                if not self.desk.chat:
+                    self._send(409, {"error": "triage needs the desk launched from a chat session"})
+                else:
+                    flow = body.get("flow", "pr-triage")
+                    inbox.push(self.desk.repo, {"kind": "triage", "flow": flow})
                     self._send(202, {"queued": True})
             else:
                 self._send(404, {"error": "not found"})

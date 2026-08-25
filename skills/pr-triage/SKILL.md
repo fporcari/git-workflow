@@ -259,21 +259,39 @@ they were built for.
 
 ## 10 · Publish to the review desk
 
-Before the handover, export the grid so the `review-desk` dashboard shows this
-run's findings instead of its raw field fallbacks. Write
-`~/.local/state/git-workflow/<owner>__<repo>.json` (create the directory):
+Before the handover, export the run so the `review-desk` dashboard's Triage
+tab shows THIS grid — the desk renders nothing there until a real triage has
+run. Merge into `~/.local/state/git-workflow/<owner>__<repo>.json` (create
+the directory, preserve unrelated keys):
 
 ```json
 {
-  "generated": "<ISO timestamp>",
   "session": "PR triage · <repo> · <YYYY-MM-DD>",
-  "prs": {"<n>": {"analysis": "<the one-line 'what it is' + the verdict's reason>",
-                   "next": "<what is to be done>"}},
-  "chase": {"<login>": "<the exact fenced block of §6, verbatim>"}
+  "grid": {
+    "generated": "<ISO timestamp>",
+    "blocks": [
+      {"title": "Da mergiare subito",
+       "rows": [{"n": 1027, "date": "2026-07-29", "author": "me",
+                  "what": "<one line, user's language>",
+                  "todo": "merge it", "autorun": "A1"}]},
+      {"title": "Azione banale", "rows": []},
+      {"title": "Review da fare", "rows": []},
+      {"title": "Solo tue", "rows": []},
+      {"title": "In attesa di altri", "rows": []}
+    ]
+  },
+  "chase": {"<login>": "<the exact fenced block of §6, verbatim>"},
+  "prs": {"<n>": {"analysis": "<in italiano: what it is + the verdict's reason>",
+                   "next": "<what is to be done>"}}
 }
 ```
 
-Only rows with something beyond the fields go in `prs`; `chase` carries only the
-blocks that passed the §6 gate — the desk labels them as verified and offers a
-copy button per person. Overwrite the whole file: stale analysis is worse than
-none.
+The five §5 blocks map onto `grid.blocks` in the same order (block 4's chase
+messages go under `chase`, per person, only the ones that passed the §6
+gate). User-facing strings (`what`, `analysis`) in Italian; the verdict
+vocabulary stays as-is. Overwrite `grid`, `chase` and `session` wholesale:
+stale triage is worse than none.
+
+**Triggered from the desk** (a `{"kind": "triage"}` inbox event): run
+report-only — blocks, findings, export — and skip the §9 handover question;
+the user is driving from the dashboard and will press run himself.

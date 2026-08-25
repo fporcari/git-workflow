@@ -66,6 +66,12 @@ each event in order:
 - **`{"kind": "issue-analyze", "n": N}`** — spawn one fresh read-only agent
   following `../issue-analyze/SKILL.md` on issue #N (virgin context by
   design); it persists the verdict to the desk state itself.
+- **`{"kind": "triage", "flow": "pr-triage"|"issue-triage"}`** — run that
+  skill here, report-only, and export its output to the desk state as the
+  skill's own export section specifies (`grid`+`chase` for pr-triage,
+  `situa` for issue-triage): the desk's Triage tab renders exactly that
+  export. Skip the skill's closing handover question — the user drives from
+  the dashboard.
 - **`{"kind": "run", "flow": "pr-run"|"issue-run"}`** — run that skill here
   in chat, step by step.
 - **`{"kind": "shutdown"}`** — the user pressed the desk's stop button: the
