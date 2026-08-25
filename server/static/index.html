@@ -144,7 +144,8 @@ tbody tr:hover .rowBtn{color:var(--ink);border-color:var(--muted)}
     <div class="queueTools">
       <div class="tabs" id="tabs"></div>
       <div style="display:flex;gap:6px;align-items:center">
-        <button class="btn tipUnder tipRight" id="btnAction" style="display:none"></button>
+        <button class="btn tipUnder" id="btnTriage"></button>
+        <button class="btn tipUnder tipRight" id="btnAction"></button>
         <label class="search"><span>⌕</span><input id="q" placeholder="Filtra numero, titolo, autore…"></label>
       </div>
     </div>
@@ -167,17 +168,19 @@ const $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const MARK={ready:"✓",attention:"!",waiting:"○",decision:"◆"};
 const STATE_LABEL={ready:"mergiabile",attention:"mossa tua",waiting:"in attesa",decision:"decisione tua"};
-let meta={},prs=[],issues=[],chase={},grid=null,situa=null,session=null,loaded=false,view="grid",query="",watcherAlive=false,lastPong=null;
+let meta={},DESK="pr",prs=[],issues=[],chase={},grid=null,situa=null,session=null,loaded=false,view="grid",query="",watcherAlive=false,lastPong=null;
 const triageRunning={pr:false,issue:false};
 
-const VIEWS=()=>[
-  {id:"grid",label:"Triage",tip:"L'output delle skill di triage, in due blocchi: la griglia PR di pr-triage e la situa issue di issue-triage. Vuoto finché non le lanci.",count:(grid?grid.blocks.reduce((a,b)=>a+b.rows.length,0):0)+(situa?situa.rows.length:0)},
-  {id:"queue",label:"Coda",tip:"Le PR che aspettano una mossa tua o una tua decisione (lettura live dei campi, con ⟳)",count:loaded?prs.filter(r=>r.state!=="waiting").length:"—"},
+const VIEWS=()=>DESK==="issue"?[
+  {id:"grid",label:"Situa",tip:"L'output di issue-triage: le 10 issue recenti non analizzate, tipo e cross-check di branch e PR. Si aggiorna col bottone ↻.",count:situa?situa.rows.length:0},
+  {id:"issues",label:"Tutte",tip:"Tutte le issue aperte del repo, live dai campi (si caricano col ⟳)",count:loaded?issues.length:"—"},
+]:[
+  {id:"grid",label:"Triage",tip:"L'output di pr-triage: la griglia a blocchi con i gate veri e i solleciti verificati. Si aggiorna col bottone ↻.",count:grid?grid.blocks.reduce((a,b)=>a+b.rows.length,0):0},
+  {id:"queue",label:"Coda",tip:"Le PR che aspettano una mossa tua o una tua decisione (lettura live dei campi, col ⟳)",count:loaded?prs.filter(r=>r.state!=="waiting").length:"—"},
   {id:"ready",label:"Mergiabili",tip:"Approvate e CLEAN: pronte al merge",count:loaded?prs.filter(r=>r.state==="ready").length:"—"},
   {id:"waiting",label:"In attesa",tip:"Ferme su qualcun altro: reviewer o autore",count:loaded?prs.filter(r=>r.state==="waiting").length:"—"},
-  {id:"chase",label:"Solleciti",tip:"Un messaggio pronto da incollare per ogni persona da sollecitare (verificati se esportati da pr-triage)",count:Object.keys(chase).length||"—"},
-  {id:"all",label:"Tutte",tip:"Tutte le PR aperte in cui sei coinvolto",count:loaded?prs.length:"—"},
-  {id:"issues",label:"Issues",tip:"Le issue aperte del repo, classificate per tipo",count:loaded?issues.length:"—"},
+  {id:"chase",label:"Solleciti",tip:"Un messaggio pronto da incollare per ogni persona da sollecitare (verificati, da pr-triage)",count:Object.keys(chase).length||"—"},
+  {id:"all",label:"Tutte",tip:"Tutte le PR aperte in cui sei coinvolto (col ⟳)",count:loaded?prs.length:"—"},
 ];
 
 async function copyText(btn,text){
@@ -190,9 +193,14 @@ async function copyText(btn,text){
 function ageDays(d){return Math.max(0,Math.round((Date.now()-new Date(d))/864e5));}
 
 function renderTabs(){
-  const onIssues=view==="issues";
+  const onIssues=DESK==="issue";
+  const tri=$("btnTriage");
+  tri.textContent=onIssues?"↻ issue-triage":"↻ pr-triage";
+  tri.dataset.tip=onIssues
+    ?"Rilancia issue-triage nella chat collegata: rifà la situa (batch recenti, tipo, cross-check branch/PR). All'avvio del desk parte da solo."
+    :"Rilancia pr-triage nella chat collegata: rifà la griglia con i gate veri e i solleciti verificati. All'avvio del desk parte da solo.";
+  tri.disabled=!watcherAlive||triageRunning[onIssues?"issue":"pr"];
   const act=$("btnAction");
-  act.style.display="";
   act.textContent=onIssues?"▶ issue-run in chat":"▶ pr-run in chat";
   act.dataset.tip=onIssues
     ?"La skill issue-run lavora il batch in chat: un'analisi a contesto pulito per issue, la scelta di cosa lavorare (in chat), poi branch e PR per le scelte. Ogni passo arriva qui nel feed."
@@ -251,7 +259,7 @@ function pollQueueUntil(n,test,onDone){
   const t=setInterval(async()=>{
     try{
       const q=await fetch("/api/queue").then(r=>r.json());
-      prs=q.rows;loaded=true;session=q.session;
+      prs=q.rows;session=q.session;
       const row=prs.find(x=>x.n===n);
       if(row&&test(row)){clearInterval(t);onDone(row);}
       render();
@@ -307,20 +315,26 @@ async function loadQueue(refresh){
   }
 }
 
+function localFeed(msg){
+  const box=$("feedBox");box.style.display="";
+  box.insertAdjacentHTML("afterbegin",`<div><b>${new Date().toTimeString().slice(0,8)}</b>${esc(msg)}</div>`);
+}
 async function startTriage(){
-  const flow=view==="issues"?"issue-triage":"pr-triage";
+  const flow=DESK==="issue"?"issue-triage":"pr-triage";
   const resp=await fetch("/api/triage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({flow})});
   const d=await resp.json();
   if(d.error){$("errBox").style.display="block";$("errBox").textContent=d.error;return;}
   triageRunning[flow==="issue-triage"?"issue":"pr"]=true;
+  localFeed("richiesta "+flow+" inviata alla chat collegata…");
   view="grid";render();
 }
 async function startRun(){
-  const flow=view==="issues"?"issue-run":"pr-run";
+  const flow=DESK==="issue"?"issue-run":"pr-run";
   const resp=await fetch("/api/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({flow})});
   const d=await resp.json();
   $("errBox").style.display="block";
   $("errBox").textContent=d.error||flow+" avviato nella chat collegata: segui il feed in basso.";
+  if(!d.error)localFeed("richiesta "+flow+" inviata alla chat collegata…");
 }
 async function startIssueAnalysis(n){
   const resp=await fetch(`/api/issue/${n}/analyze`,{method:"POST"});
@@ -339,7 +353,9 @@ function renderGrid(){
   const wrap=$("gridWrap"),on=view==="grid";
   wrap.style.display=on?"flex":"none";
   if(!on)return;
-  let html=`<div class="gridBlock"><h2 style="font-size:12px">Pull request ${grid?`<span class="skillStamp">— ${esc(session||"")} · ${esc(grid.generated||"")}</span>`:""}</h2>`;
+  let html="";
+  if(DESK==="pr"){
+  html+=`<div class="gridBlock"><h2 style="font-size:12px">Pull request ${grid?`<span class="skillStamp">— ${esc(session||"")} · ${esc(grid.generated||"")}</span>`:""}</h2>`;
   if(grid){
     html+=grid.blocks.map(b=>`<div class="gridBlock"><h2>${esc(b.title)} (${b.rows.length})</h2>${gridRowsTable(b.rows)}</div>`).join("");
     const names=Object.keys(chase);
@@ -347,24 +363,23 @@ function renderGrid(){
   }else if(triageRunning.pr){
     html+=`<div class="actionText">⏳ pr-triage in corso nella chat collegata — segui il feed in basso; la griglia comparirà qui.</div>`;
   }else{
-    html+=`<div class="empty1" style="margin:8px 0">Nessun triage PR in questa sessione.</div>
-      <button class="btn primary" id="gTriagePr" ${watcherAlive?"":"disabled"} data-tip="Esegue pr-triage nella chat collegata: coda letta con i gate veri (CODEOWNERS, protezioni, turni), verdetti e solleciti verificati. L'output è questa griglia.">▶ Esegui pr-triage in chat</button>`;
+    html+=`<div class="actionText">⏳ pr-triage parte con il desk — segui il feed in basso; la griglia comparirà qui. Se non arriva, controlla 🧪.</div>`;
   }
-  html+=`</div><div class="gridBlock" style="border-top:1px solid var(--line);padding-top:12px"><h2 style="font-size:12px">Issue ${situa?`<span class="skillStamp">— ${esc(situa.generated||"")}</span>`:""}</h2>`;
+  html+=`</div>`;
+  }else{
+  html+=`<div class="gridBlock"><h2 style="font-size:12px">Issue ${situa?`<span class="skillStamp">— ${esc(situa.generated||"")}</span>`:""}</h2>`;
   if(situa){
     const scols=`<colgroup><col style="width:64px"><col style="width:92px"><col style="width:100px"><col style="width:110px"><col><col style="width:110px"><col style="width:86px"></colgroup>`;
     html+=`<table>${scols}<tbody>${situa.rows.map(r=>`<tr data-dlg="i${r.n}"><td class="mono">#${r.n}</td><td class="mono">${esc(r.date||"")}</td><td>${esc(r.author||"")}</td><td><span class="tag ${esc(r.type||"")}">${esc(r.type||"")}</span></td><td title="${esc(r.note||"")}">${esc(r.title||"")}</td><td>${esc(r.assignee||"—")}</td><td><button class="rowBtn" data-dlg="i${r.n}">Azioni…</button></td></tr>`).join("")}</tbody></table>`;
   }else if(triageRunning.issue){
     html+=`<div class="actionText">⏳ issue-triage in corso nella chat collegata — segui il feed in basso; la situa comparirà qui.</div>`;
   }else{
-    html+=`<div class="empty1" style="margin:8px 0">Nessun triage issue in questa sessione.</div>
-      <button class="btn primary" id="gTriageIssue" ${watcherAlive?"":"disabled"} data-tip="Esegue issue-triage nella chat collegata: le 10 issue recenti non ancora analizzate, rank per impatto, tipo, cross-check di branch e PR esistenti. L'output è questa situa.">▶ Esegui issue-triage in chat</button>`;
+    html+=`<div class="actionText">⏳ issue-triage parte con il desk — segui il feed in basso; la situa comparirà qui. Se non arriva, controlla 🧪.</div>`;
   }
   html+=`</div>`;
+  }
   wrap.innerHTML=html;
   wrap.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>copyText(b,b.dataset.copy));
-  const tp=$("gTriagePr");if(tp)tp.onclick=()=>{view="queue";view="grid";fetch("/api/triage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({flow:"pr-triage"})}).then(r=>r.json()).then(d=>{if(d.error){$("errBox").style.display="block";$("errBox").textContent=d.error;}else{triageRunning.pr=true;render();}});};
-  const ti=$("gTriageIssue");if(ti)ti.onclick=()=>{fetch("/api/triage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({flow:"issue-triage"})}).then(r=>r.json()).then(d=>{if(d.error){$("errBox").style.display="block";$("errBox").textContent=d.error;}else{triageRunning.issue=true;render();}});};
   wrap.querySelectorAll("[data-dlg]").forEach(el=>{el.onclick=e=>{e.stopPropagation();openDialog(el.dataset.dlg);};});
 }
 
@@ -430,8 +445,6 @@ function renderTable(){
 let dlgTarget=null;
 
 async function openDialog(id){
-  const kind=id[0],n=+id.slice(1);
-  if(!loaded)await loadQueue(false);
   dlgTarget=id;
   renderDialog();
   const d=$("dlg");if(!d.open)d.showModal();
@@ -441,8 +454,16 @@ function closeDialog(){dlgTarget=null;const d=$("dlg");if(d.open)d.close();}
 function renderDialog(){
   if(!dlgTarget)return;
   const kind=dlgTarget[0],n=+dlgTarget.slice(1);
-  const r=(kind==="p"?prs:issues).find(x=>x.n===n);
-  if(!r){$("dlgBody").innerHTML=`<p>#${n}: dettagli non nella coda caricata — apri nel browser.</p>`;$("dlgActions").innerHTML=`<a class="btn" href="${kind==="p"?("https://github.com/"+meta.repo+"/pull/"+n):("https://github.com/"+meta.repo+"/issues/"+n)}" target="_blank" rel="noreferrer">Apri nel browser ↗</a><button class="btn" onclick="closeDialog()">Chiudi</button>`;return;}
+  let r=(kind==="p"?prs:issues).find(x=>x.n===n);
+  if(!r&&kind==="p"&&grid){
+    for(const b of grid.blocks){const g=b.rows.find(x=>x.n===n);
+      if(g){r={n:g.n,title:g.what,author:g.author,created:g.date,base:"",state:"attention",todo:g.todo,autorun:g.autorun,decision:"",req:[],merge:"—",unresolved:"—",threads:"—",last:null,reviews:[],url:"https://github.com/"+meta.repo+"/pull/"+n};break;}}
+  }
+  if(!r&&kind==="i"&&situa){
+    const g=situa.rows.find(x=>x.n===n);
+    if(g)r={n:g.n,title:g.title,author:g.author,created:g.date,type:g.type,labels:[],assignees:g.assignee?[g.assignee]:[],comments:"—",url:"https://github.com/"+meta.repo+"/issues/"+n,skill:{finding:g.note}};
+  }
+  if(!r){$("dlgBody").innerHTML=`<p>#${n}: dettagli non nella coda caricata — usa ⟳ o apri nel browser.</p>`;$("dlgActions").innerHTML=`<a class="btn" href="${kind==="p"?("https://github.com/"+meta.repo+"/pull/"+n):("https://github.com/"+meta.repo+"/issues/"+n)}" target="_blank" rel="noreferrer">Apri nel browser ↗</a><button class="btn" onclick="closeDialog()">Chiudi</button>`;return;}
   if(kind==="p"){
     $("dlgTitle").innerHTML=`<span class="detailKicker">PR #${r.n} · ${esc(r.author)} · aperta ${esc(r.created)} · base ${esc(r.base)} · <span class="status ${r.state}">${esc(STATE_LABEL[r.state])}</span></span><h1>${esc(r.title)}</h1>`;
     const reviews=(r.reviews||[]).map(v=>`<div class="signal"><b>${esc(v.who)}</b><span>${esc(v.state)} · ${esc(v.on)}</span></div>`).join("")||`<div class="signal"><span>ancora nessuna review</span></div>`;
@@ -498,8 +519,8 @@ function renderDialog(){
 function renderSummary(){
   if(!loaded){
     ["mAttention","mDecision","mWaiting","mReady","cPrs","cIssues"].forEach(id=>$(id).textContent="—");
-    $("leadTitle").textContent="desk vuoto";
-    $("leadSub").textContent=`▶ pr-triage / ▶ issue-triage per il triage in chat · ⟳ per la coda live · provider ${meta.provider||"—"}`;
+    $("leadTitle").textContent=DESK==="issue"?"issue desk":"pr desk";
+    $("leadSub").textContent=`il triage parte da solo all'avvio · ↻ per rifarlo · ⟳ per i campi live · provider ${meta.provider||"—"}`;
     return;
   }
   const c={ready:0,attention:0,waiting:0,decision:0};
@@ -562,7 +583,15 @@ $("btnStop").onclick=async()=>{
   document.body.innerHTML='<div style="padding:40px;font:14px system-ui;color:var(--ink)"><b>Server fermato.</b><br>La chat collegata è stata avvisata. Per ripartire: <code>/review-desk</code> in chat.</div>';
 };
 
-fetch("/api/meta").then(r=>r.json()).then(m=>{meta=m;$("repoLabel").textContent=`${m.repo} · ${m.me}`;render();});
+fetch("/api/meta").then(r=>r.json()).then(m=>{
+  meta=m;DESK=m.desk||"pr";
+  document.title=(DESK==="issue"?"Issue desk":"PR desk");
+  document.querySelector(".brand strong").textContent=DESK==="issue"?"issue desk":"pr desk";
+  $("repoLabel").textContent=`${m.repo} · ${m.me}`;
+  if(DESK==="pr")triageRunning.pr=true;else triageRunning.issue=true;
+  render();
+});
+$("btnTriage").onclick=startTriage;
 $("syncLabel").textContent="coda non caricata — ⟳ per leggerla";
 pollState();
 render();

@@ -9,25 +9,33 @@ The dashboard renders state; this session is its engine. Buttons in the desk
 enqueue events; a background watcher wakes this session, which acts with its
 full context and writes results back where the desk reads them.
 
-## 1 · Launch the server in chat mode
+## 1 · Launch the two desks in chat mode
 
-Via the browser preview (a `launch.json` entry), from the repo's checkout:
+There are TWO servers — the PR desk (port 8399) and the issue desk (port
+8398) — sharing one repo, one state file, one inbox and one watcher. Launch
+both via the browser preview (`launch.json` entries), from the repo's
+checkout:
 
 ```json
-{
-  "name": "review-desk",
-  "runtimeExecutable": "python3",
-  "runtimeArgs": ["${CLAUDE_PLUGIN_ROOT}/server/prdesk.py", "--chat", "--port", "8399"],
-  "port": 8399
-}
+{"name": "pr-desk", "runtimeExecutable": "python3",
+ "runtimeArgs": ["${CLAUDE_PLUGIN_ROOT}/server/prdesk.py", "--chat", "--desk", "pr"],
+ "port": 8399},
+{"name": "issue-desk", "runtimeExecutable": "python3",
+ "runtimeArgs": ["${CLAUDE_PLUGIN_ROOT}/server/prdesk.py", "--chat", "--desk", "issue"],
+ "port": 8398}
 ```
 
-Without `--chat` the desk runs standalone: Analyze spawns a headless
-read-only `claude -p` (pr-analyze skill) and Go leaves orders for `/pr-run`.
-With `--chat`, both buttons write to the inbox instead.
+**At startup each desk enqueues its own triage** (`pr-triage` /
+`issue-triage`): expect those events as soon as the watcher parks, run them
+report-only and export — the desks fill themselves. The ↻ button re-runs
+them. Launch only the desk the user asked for when they name one.
+
+Without `--chat` a desk runs standalone: Analyze spawns a headless
+read-only `claude -p` and Go leaves orders for `/pr-run`; no startup triage.
 
 Options: `--repo owner/repo` (default: the cwd's origin), `--provider
-github|forgejo` (forgejo needs `FORGEJO_URL`/`FORGEJO_TOKEN`), `--me`, `--port`.
+github|forgejo` (forgejo needs `FORGEJO_URL`/`FORGEJO_TOKEN`), `--me`,
+`--port` (default by desk), `--keep-state`.
 
 ## 2 · Park the watcher
 

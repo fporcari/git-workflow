@@ -39,12 +39,13 @@ def detect_repo():
 
 
 class Desk:
-    def __init__(self, provider, repo, me, cwd, chat=False):
+    def __init__(self, provider, repo, me, cwd, chat=False, kind="pr"):
         self.provider = provider
         self.repo = repo
         self.me = me
         self.cwd = cwd
         self.chat = chat
+        self.kind = kind
         self._cache = {}
         self._lock = threading.Lock()
 
@@ -115,7 +116,7 @@ class Handler(BaseHTTPRequestHandler):
             elif url.path == "/api/meta":
                 self._send(200, {"repo": self.desk.repo, "me": self.desk.me,
                                  "provider": self.desk.provider.name,
-                                 "chat": self.desk.chat,
+                                 "chat": self.desk.chat, "desk": self.desk.kind,
                                  "generated": time.strftime("%H:%M:%S")})
             elif url.path == "/api/queue":
                 self._send(200, dict(self.desk.queue(refresh),
@@ -226,7 +227,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", help="owner/repo (default: origin of the cwd)")
     parser.add_argument("--provider", default="github", choices=("github", "forgejo"))
-    parser.add_argument("--port", type=int, default=8399)
+    parser.add_argument("--desk", default="pr", choices=("pr", "issue"),
+                        help="which desk this server is: pr (default) or issue")
+    parser.add_argument("--port", type=int, default=0,
+                        help="default: 8399 for the pr desk, 8398 for the issue desk")
     parser.add_argument("--me", help="login to triage for (default: the authenticated user)")
     parser.add_argument("--chat", action="store_true",
                         help="attached-chat mode: buttons enqueue events for the "
@@ -240,13 +244,18 @@ def main():
     provider = get_provider(args.provider)
     repo = args.repo or detect_repo()
     me = args.me or provider.whoami()
+    port = args.port or (8399 if args.desk == "pr" else 8398)
     if not args.keep_state:
         deskstate.reset(repo)
 
-    Handler.desk = Desk(provider, repo, me, str(Path.cwd()), chat=args.chat)
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    sys.stderr.write("review desk on http://127.0.0.1:%s  repo=%s me=%s provider=%s\n"
-                     % (args.port, repo, me, provider.name))
+    Handler.desk = Desk(provider, repo, me, str(Path.cwd()), chat=args.chat,
+                        kind=args.desk)
+    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    if args.chat:
+        flow = "pr-triage" if args.desk == "pr" else "issue-triage"
+        inbox.push(repo, {"kind": "triage", "flow": flow})
+    sys.stderr.write("%s desk on http://127.0.0.1:%s  repo=%s me=%s provider=%s\n"
+                     % (args.desk, port, repo, me, provider.name))
     sys.stderr.flush()
     server.serve_forever()
 

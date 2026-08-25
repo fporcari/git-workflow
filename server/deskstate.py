@@ -54,12 +54,14 @@ def load(repo):
 def reset(repo):
     """Archive the previous session's state so the desk starts empty:
     stale analyses and feed lines read as fresh data otherwise. The old
-    file survives as .prev next to it."""
+    file survives as .prev next to it. The inbox is emptied only when its
+    events are stale: the two desks start back to back and each enqueues
+    its own startup triage, which must survive the sibling's reset."""
     path = state_path(repo)
     if path.exists():
         path.replace(path.with_suffix(".json.prev"))
     inbox = STATE_DIR / ("%s__inbox.jsonl" % repo.replace("/", "__"))
-    if inbox.exists():
+    if inbox.exists() and inbox.stat().st_size and time.time() - inbox.stat().st_mtime > 60:
         inbox.write_text("")
 
 
