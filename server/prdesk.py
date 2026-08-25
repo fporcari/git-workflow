@@ -19,6 +19,7 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
 import deskstate
+import inbox
 import jobs
 from providers import get_provider
 from verdicts import decorate, fallback_chase, handoff, issue_handoff, issue_type
@@ -38,11 +39,12 @@ def detect_repo():
 
 
 class Desk:
-    def __init__(self, provider, repo, me, cwd):
+    def __init__(self, provider, repo, me, cwd, chat=False):
         self.provider = provider
         self.repo = repo
         self.me = me
         self.cwd = cwd
+        self.chat = chat
         self._cache = {}
         self._lock = threading.Lock()
 
@@ -111,6 +113,7 @@ class Handler(BaseHTTPRequestHandler):
             elif url.path == "/api/meta":
                 self._send(200, {"repo": self.desk.repo, "me": self.desk.me,
                                  "provider": self.desk.provider.name,
+                                 "chat": self.desk.chat,
                                  "generated": time.strftime("%H:%M:%S")})
             elif url.path == "/api/queue":
                 self._send(200, dict(self.desk.queue(refresh),
@@ -133,15 +136,23 @@ class Handler(BaseHTTPRequestHandler):
         try:
             parts = url.path.strip("/").split("/")
             if len(parts) == 4 and parts[:2] == ["api", "pr"] and parts[3] == "analyze":
-                job_id = jobs.analyze_pr(self.desk.repo, int(parts[2]),
-                                         self.desk.me, self.desk.cwd)
-                self._send(202, {"job": job_id})
+                n = int(parts[2])
+                if self.desk.chat:
+                    inbox.push(self.desk.repo, {"kind": "analyze", "n": n})
+                    self._send(202, {"queued": True})
+                else:
+                    job_id = jobs.analyze_pr(self.desk.repo, n, self.desk.me,
+                                             self.desk.cwd)
+                    self._send(202, {"job": job_id})
             elif len(parts) == 4 and parts[:2] == ["api", "pr"] and parts[3] == "order":
-                order = deskstate.add_order(self.desk.repo, int(parts[2]),
+                n = int(parts[2])
+                order = deskstate.add_order(self.desk.repo, n,
                                             body.get("propose", ""),
                                             body.get("draft"),
                                             body.get("instruction", ""))
-                self._send(200, {"order": order})
+                if self.desk.chat:
+                    inbox.push(self.desk.repo, {"kind": "order", "n": n})
+                self._send(200, {"order": order, "queued": self.desk.chat})
             else:
                 self._send(404, {"error": "not found"})
         except Exception as exc:
@@ -154,13 +165,17 @@ def main():
     parser.add_argument("--provider", default="github", choices=("github", "forgejo"))
     parser.add_argument("--port", type=int, default=8399)
     parser.add_argument("--me", help="login to triage for (default: the authenticated user)")
+    parser.add_argument("--chat", action="store_true",
+                        help="attached-chat mode: buttons enqueue events for the "
+                             "Claude session that launched the desk, instead of "
+                             "spawning headless runs")
     args = parser.parse_args()
 
     provider = get_provider(args.provider)
     repo = args.repo or detect_repo()
     me = args.me or provider.whoami()
 
-    Handler.desk = Desk(provider, repo, me, str(Path.cwd()))
+    Handler.desk = Desk(provider, repo, me, str(Path.cwd()), chat=args.chat)
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     sys.stderr.write("review desk on http://127.0.0.1:%s  repo=%s me=%s provider=%s\n"
                      % (args.port, repo, me, provider.name))

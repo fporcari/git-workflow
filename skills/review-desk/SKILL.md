@@ -1,59 +1,76 @@
 ---
 name: review-desk
-description: Start the local review-desk dashboard — a read-only web view of the PR queue and the open issues of the current repo, with the pr-triage verdicts computed from the provider fields. Use when the user asks for the dashboard, the review desk, or a visual overview of PRs and issues. It renders state; acting on it is /pr-run and /issue-triage.
+description: Launch the review-desk dashboard attached to THIS chat session — a web view of the PR queue and open issues whose Analyze/Go buttons send their requests back here, so analyses and executions run in the chat with its full context (CLAUDE.md, skills, permissions). Use when the user asks for the dashboard, the review desk, or a visual overview of PRs and issues.
 ---
 
-# Review desk
+# Review desk — attached to this chat
 
-A local, read-only dashboard for the PR queue and the open issues. It shows the
-same normalized rows the `pr-triage` skill reads, with the field-level verdicts
-(`merge it`, `realign with the base`, `waiting on <login>`, …) computed
-server-side. It never posts, merges or edits anything.
+The dashboard renders state; this session is its engine. Buttons in the desk
+enqueue events; a background watcher wakes this session, which acts with its
+full context and writes results back where the desk reads them.
 
-## Start it
+## 1 · Launch the server in chat mode
 
-The server lives in this plugin at `${CLAUDE_PLUGIN_ROOT}/server/prdesk.py`.
-Use the browser preview (a `launch.json` entry), never a bare background shell:
+Via the browser preview (a `launch.json` entry), from the repo's checkout:
 
 ```json
 {
   "name": "review-desk",
   "runtimeExecutable": "python3",
-  "runtimeArgs": ["${CLAUDE_PLUGIN_ROOT}/server/prdesk.py", "--port", "8399"],
+  "runtimeArgs": ["${CLAUDE_PLUGIN_ROOT}/server/prdesk.py", "--chat", "--port", "8399"],
   "port": 8399
 }
 ```
 
-With no `--repo` it reads the `origin` remote of the current directory.
-Options: `--repo owner/repo`, `--provider github|forgejo`, `--me <login>`,
-`--port <n>` (default 8399).
+Without `--chat` the desk runs standalone: Analyze spawns a headless
+read-only `claude -p` (pr-analyze skill) and Go leaves orders for `/pr-run`.
+With `--chat`, both buttons write to the inbox instead.
 
-## Providers
+Options: `--repo owner/repo` (default: the cwd's origin), `--provider
+github|forgejo` (forgejo needs `FORGEJO_URL`/`FORGEJO_TOKEN`), `--me`, `--port`.
 
-- **github** (default) — uses the authenticated `gh` CLI; no configuration.
-- **forgejo** — needs `FORGEJO_URL` and `FORGEJO_TOKEN` in the environment.
+## 2 · Park the watcher
 
-## What the columns mean
+Start it in a **background** shell (`run_in_background`), so its exit
+re-invokes the session:
 
-The verdict vocabulary is the pr-triage skill's section 7, restricted to what
-the provider fields can honestly answer: anything needing a diff read shows as
-`asks`. The `autorun` column says what `/pr-run` would do unattended (A1 merge,
-A3 realign) versus what it brings to the user one PR at a time.
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/server/watch_inbox.py --repo <owner/repo>
+```
 
-Data is cached for two minutes; the sync button in the top bar forces a fresh
-read.
+It blocks until a desk button is clicked, prints the pending events as JSON
+lines, and exits. Tell the user in one line that the desk is live and the
+session is listening, then end the turn — the watcher's exit is the next
+input.
 
-## Where the skills plug in
+## 3 · On wake: process the events
 
-The desk prepares actions, it never executes them:
+Read the printed events, truncate the inbox
+(`: > ~/.local/state/git-workflow/<owner>__<repo>__inbox.jsonl`), then for
+each event in order:
 
-- every PR row carries a prepared **handoff** — the exact merge command for an
-  A1, a targeted `/pr-run` prompt for anything else that is the user's move, a
-  paste-ready chase line for the waiting rows — one click to copy;
-- the **Chase** tab groups the people to chase; raw field grouping by default,
-  replaced by the verified §6 blocks when pr-triage has exported them;
-- the skills write their diff-level work to
-  `~/.local/state/git-workflow/<owner>__<repo>.json` (schema in pr-triage §10):
-  per-PR analysis and review drafts, per-issue findings. The desk merges the
-  file into its rows live — run `/pr-triage`, `/pr-run` or `/issue-triage` and
-  refresh to see their output in the detail panel.
+- **`{"kind": "analyze", "n": N}`** — run the `pr-analyze` skill on PR #N
+  right here (read-only; full playbook in `../pr-analyze/SKILL.md`). Write
+  the result into the desk state file as that skill specifies — the desk is
+  polling and will show the block. One line in chat: which PR, the verdict.
+- **`{"kind": "order", "n": N}`** — the user clicked Go on the analysis
+  block: that click is the authorization, do not re-ask. Read the order from
+  the state file (`orders.<N>`: `propose`, `draft`, `instruction`) and
+  execute it under the pr-run rules (A2 discipline for answers, A1 gates
+  re-checked fresh before any merge, A3 for realigns; an empty or `vai`
+  instruction means the proposal as it stands, any other text wins). Set the
+  order's `status` to `done` with a one-line `report`, or `failed`/
+  `needs-input` with why. Report in chat what was done.
+
+Then **restart the watcher** (step 2) and end the turn. Stop the loop when
+the user says so or the preview server is stopped; a watcher exit code 3
+(timeout, if one was set) just means restart it.
+
+## What the desk shows
+
+Verdicts are the pr-triage vocabulary computed from provider fields
+(anything needing a diff read shows `asks`); the Chase tab groups people to
+chase (raw field grouping until pr-triage exports its verified §6 blocks);
+the detail panel merges the state file live — analyses, drafts, order
+outcomes. Copying prompts is the last-resort link at the bottom of the
+panel. Data is cached two minutes; the sync button forces a fresh read.

@@ -183,8 +183,10 @@ function analysisBlockHtml(r){
   const a=analyses[r.n];
   if(r.order&&!a?.block){
     return `<div class="actionText">Ordine ${esc(r.order.status)} — ${esc(r.order.instruction||"esegui la proposta")}\n→ ${esc(r.order.propose)}${r.order.report?`\n${esc(r.order.report)}`:""}</div>
-      <small>${r.order.status==="pending"?"Lo esegue <b>/pr-run</b> in chat, senza altre conferme (Lane 0).":""}</small>`;
+      <small>${r.order.status==="pending"?(meta.chat?"Inviato alla chat che ha lanciato il desk: lo esegue lì (Lane 0), senza altre conferme.":"Lo esegue <b>/pr-run</b> in chat, senza altre conferme (Lane 0)."):""}</small>`;
   }
+  if(a?.status==="queued")
+    return `<div class="actionText">📨 richiesta inviata alla chat che ha lanciato il desk — il blocco apparirà qui quando la sessione chiude l'analisi.</div>`;
   if(a?.status==="running")
     return `<div class="actionText">⏳ analisi in corso — pr-analyze sta leggendo diff, thread e claim della PR. Un paio di minuti.</div>`;
   if(a?.status==="error")
@@ -216,13 +218,27 @@ function wireAnalysis(r){
 }
 
 async function startAnalysis(n){
+  const prev=prs.find(x=>x.n===n)?.skill?.next||null;
   analyses[n]={status:"running"};render();
   try{
     const resp=await fetch(`/api/pr/${n}/analyze`,{method:"POST"});
-    const {job,error}=await resp.json();
+    const {job,queued,error}=await resp.json();
     if(error)throw new Error(error);
-    pollJob(n,job);
+    if(queued){analyses[n]={status:"queued"};render();pollQueueUntil(n,row=>(row.skill?.next||null)!==prev,()=>{delete analyses[n];});}
+    else pollJob(n,job);
   }catch(e){analyses[n]={status:"error",error:e.message};render();}
+}
+
+function pollQueueUntil(n,test,onDone){
+  const t=setInterval(async()=>{
+    try{
+      const q=await fetch("/api/queue").then(r=>r.json());
+      prs=q.rows;chase=q.chase||{};chaseVerified=!!q.chase_verified;session=q.session;
+      const row=prs.find(x=>x.n===n);
+      if(row&&test(row)){clearInterval(t);onDone(row);}
+      render();
+    }catch(e){}
+  },8000);
 }
 
 async function pollJob(n,job){
@@ -248,10 +264,11 @@ async function sendOrder(n){
   const instruction=($("dInstr")?.value||"").trim();
   const resp=await fetch(`/api/pr/${n}/order`,{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({propose:a.block.propose,draft:a.block.draft||null,instruction})});
-  const {order,error}=await resp.json();
+  const {order,queued,error}=await resp.json();
   if(error){analyses[n]={status:"error",error};render();return;}
   const row=prs.find(x=>x.n===n);if(row)row.order=order;
   delete analyses[n];render();
+  if(queued)pollQueueUntil(n,r=>r.order&&r.order.status!=="pending",()=>{});
 }
 
 function renderChase(){
