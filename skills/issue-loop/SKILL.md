@@ -134,29 +134,21 @@ should do, and you move on.
 ## Step 3 — What can run in parallel, and what cannot
 
 **Never hand the batch straight to N agents.** Build the conflict graph over
-the approved set first, take its connected components, and run the
-components in parallel while the members of one component run in sequence,
-in queue order. Two items conflict when any of these holds:
+the approved set first, take its connected components, and run the components
+in parallel while the members of one component run in sequence, in queue
+order — the five ways two items conflict, and how to say the grouping before
+launching, are in `${CLAUDE_PLUGIN_ROOT}/skills/pr-loop/SKILL.md`, *What can
+run in parallel, and what cannot*.
 
-- **they touch the same file** — the intersection of the files each
-  analyst's minimal change names;
-- **their PRs would stack** — one's base is the other's head branch;
-- **they meet on the same issue** — the same issue closed by both, or one
-  closing the other. This is also what stops two agents racing on
-  `gh issue edit --add-assignee`;
-- **one of them is a merge or a realign** on a base another shares — a merge
-  into the base invalidates every merge state computed a moment ago, so a
-  merge or a realign **runs alone**;
-- they would push the same head branch.
+Two things are this loop's own:
 
-**Unknown means sequential.** An issue whose analysis names no files — a
-REQUEST with the design still open — is not batchable: it runs alone, after
-the parallel groups.
-
-Say the grouping **before launching**, one line per group:
-
-> gruppo 2 (sequenziale): #1145 → #1128, toccano entrambe
-> `gnrpy/gnr/web/gnrbaseclasses.py`
+- **the file list comes from the analyst, not from a diff.** There is no PR to
+  read yet, so the intersection is over the files each verdict's minimal
+  change names. An issue whose analysis names no files — a REQUEST with the
+  design still open — is **not batchable**: it runs alone, after the parallel
+  groups. Unknown means sequential.
+- **the same-issue edge starts earlier.** Two items meeting on one issue would
+  also race on `gh issue edit --add-assignee`, before either has a branch.
 
 ## Step 4 — Claim it, fix it, open the PR
 
@@ -173,8 +165,9 @@ verbatim:
 > --base <base>`. Do NOT fork, do NOT add remotes, do NOT open a PR against
 > any other repo. If a push is rejected for permissions, STOP and report.
 
-plus the worktree traps, every one of which bites harder with several agents
-at once:
+plus **the worktree traps — this list is the protocol, and `pr-loop` and
+`issue-work` both point at it.** Every one of them bites harder with several
+agents at once:
 
 - `gnr.*` imports resolve to the **main checkout** unless
   `PYTHONPATH=<worktree>/gnrpy`, and `module.__file__` is asserted inside the

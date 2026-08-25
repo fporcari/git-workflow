@@ -326,19 +326,24 @@ the next batch. Otherwise the batch buys nothing.
 
 ### What can run in parallel, and what cannot
 
+**This section is the rule for both loops. `issue-loop` points here and only
+adds where an issue's file list comes from.**
+
 **Never hand an approved batch straight to N agents.** Build the conflict graph
 over the approved set, take its connected components, and run the components in
 parallel while the members of one component run in sequence, in queue order.
-Two PRs conflict when any of these holds:
+Two items conflict when any of these holds:
 
-- **they touch the same file** — intersect `gh pr diff <n> --name-only`;
+- **they touch the same file** — here, intersect
+  `gh pr diff <n> --name-only`; where there is no PR yet, the files the
+  analysis names;
 - **they are stacked** — one's `baseRefName` is the other's `headRefName`
   (`gh pr view <n> --json baseRefName,headRefName`); the chain is sequential
   base→head;
 - **they meet on the same issue** — intersecting `closingIssuesReferences`;
-- **one of them is an A1 merge or an A3 realign** on a base the other shares.
-  A merge into the base invalidates every `mergeStateStatus` read a moment
-  ago, so **a merge or a realign runs alone**;
+- **one of them is a merge or a realign** (A1 or A3 here) on a base the other
+  shares. A merge into the base invalidates every `mergeStateStatus` read a
+  moment ago, so **a merge or a realign runs alone**;
 - they would push the same head branch.
 
 **Unknown means sequential.** Say the grouping before launching, one line per
@@ -348,8 +353,10 @@ group:
 > `gnrpy/gnr/web/gnrbaseclasses.py`
 
 Every agent that touches a working tree runs with `isolation: "worktree"`, one
-per PR, and never `git stash`: worktrees share a single stash stack, so a stash
-in one agent surfaces in another. Use a patch file.
+per PR, under the traps in `${CLAUDE_PLUGIN_ROOT}/skills/issue-loop/SKILL.md`
+Step 4 — a shared stash stack, `PYTHONPATH`, a per-agent scratch
+`GENRO_GNRFOLDER`, which test count is worth reading. That list is the
+protocol; every one of its entries bites harder with several agents at once.
 
 ### When one of them fails
 
