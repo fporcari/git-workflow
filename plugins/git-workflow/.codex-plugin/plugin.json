@@ -1,6 +1,6 @@
 {
   "name": "git-workflow",
-  "version": "0.16.2",
+  "version": "0.16.2+codex.20260825214050",
   "description": "A repository workflow toolkit for pull request and issue triage, review, execution loops, and a local review desk.",
   "author": {
     "name": "Francesco Porcari",
