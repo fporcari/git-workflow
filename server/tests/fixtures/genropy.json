@@ -1,0 +1,2777 @@
+{
+ "repo": "genropy/genropy",
+ "me": "fporcari",
+ "rows": [
+  {
+   "n": 1164,
+   "title": "fix(#1160): anchor the save_failed controller to #FORM so nested forms show the refused-save message",
+   "created": "2026-08-25",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "REVIEW_REQUIRED",
+   "req": [
+    "genro"
+   ],
+   "reviews": [],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [
+    {
+     "issue": 1160,
+     "assignees": [
+      "fporcari"
+     ]
+    }
+   ],
+   "last": null,
+   "url": "https://github.com/genropy/genropy/pull/1164"
+  },
+  {
+   "n": 1163,
+   "title": "fix(grid): do not select an unresolved pkey in NewIncludedView",
+   "created": "2026-08-25",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "REVIEW_REQUIRED",
+   "req": [
+    "genro"
+   ],
+   "reviews": [],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [
+    {
+     "issue": 1162,
+     "assignees": [
+      "fporcari"
+     ]
+    }
+   ],
+   "last": null,
+   "url": "https://github.com/genropy/genropy/pull/1163"
+  },
+  {
+   "n": 1161,
+   "title": "feat(serve): --collect records requests and site register calls",
+   "created": "2026-08-25",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "REVIEW_REQUIRED",
+   "req": [
+    "genro",
+    "cgabriel"
+   ],
+   "reviews": [],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [],
+   "last": null,
+   "url": "https://github.com/genropy/genropy/pull/1161"
+  },
+  {
+   "n": 1152,
+   "title": "perf(gnrjs): path-indexed trigger dispatch, per-handler caches and bag hot paths",
+   "created": "2026-08-24",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "CHANGES_REQUESTED",
+   "req": [
+    "genro",
+    "cgabriel"
+   ],
+   "reviews": [
+    {
+     "who": "cgabriel",
+     "state": "COMMENTED",
+     "on": "2026-08-25"
+    },
+    {
+     "who": "cgabriel",
+     "state": "COMMENTED",
+     "on": "2026-08-25"
+    },
+    {
+     "who": "cgabriel",
+     "state": "CHANGES_REQUESTED",
+     "on": "2026-08-25"
+    },
+    {
+     "who": "fporcari",
+     "state": "COMMENTED",
+     "on": "2026-08-25"
+    },
+    {
+     "who": "fporcari",
+     "state": "COMMENTED",
+     "on": "2026-08-25"
+    },
+    {
+     "who": "dgpaci",
+     "state": "APPROVED",
+     "on": "2026-08-25"
+    }
+   ],
+   "unresolved": 2,
+   "threads": 2,
+   "closes": [
+    {
+     "issue": 1146,
+     "assignees": [
+      "fporcari"
+     ]
+    },
+    {
+     "issue": 1147,
+     "assignees": [
+      "fporcari"
+     ]
+    },
+    {
+     "issue": 1148,
+     "assignees": [
+      "fporcari"
+     ]
+    },
+    {
+     "issue": 1149,
+     "assignees": [
+      "fporcari"
+     ]
+    },
+    {
+     "issue": 1150,
+     "assignees": [
+      "fporcari"
+     ]
+    }
+   ],
+   "last": {
+    "t": "2026-08-25T12:23:01Z",
+    "who": "dgpaci",
+    "ch": "approved"
+   },
+   "url": "https://github.com/genropy/genropy/pull/1152"
+  },
+  {
+   "n": 1145,
+   "title": "fix(datastore): trigger a set with attributes only on a real change",
+   "created": "2026-08-24",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "CHANGES_REQUESTED",
+   "req": [
+    "genro"
+   ],
+   "reviews": [
+    {
+     "who": "cgabriel",
+     "state": "APPROVED",
+     "on": "2026-08-25"
+    },
+    {
+     "who": "dgpaci",
+     "state": "CHANGES_REQUESTED",
+     "on": "2026-08-25"
+    }
+   ],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [
+    {
+     "issue": 1144,
+     "assignees": [
+      "fporcari"
+     ]
+    }
+   ],
+   "last": {
+    "t": "2026-08-25T14:35:51Z",
+    "who": "dgpaci",
+    "ch": "changes_requested"
+   },
+   "url": "https://github.com/genropy/genropy/pull/1145"
+  },
+  {
+   "n": 1143,
+   "title": "fix(security): sanitize_js switch was unreadable and stripping was silent",
+   "created": "2026-08-24",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "REVIEW_REQUIRED",
+   "req": [
+    "genro",
+    "cgabriel"
+   ],
+   "reviews": [],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [],
+   "last": null,
+   "url": "https://github.com/genropy/genropy/pull/1143"
+  },
+  {
+   "n": 1137,
+   "title": "fix(pdf): joinPdf assembles with append, no more pages swapped between source files",
+   "created": "2026-08-24",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "REVIEW_REQUIRED",
+   "req": [
+    "genro",
+    "cgabriel"
+   ],
+   "reviews": [],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [
+    {
+     "issue": 1136,
+     "assignees": [
+      "fporcari"
+     ]
+    }
+   ],
+   "last": null,
+   "url": "https://github.com/genropy/genropy/pull/1137"
+  },
+  {
+   "n": 1142,
+   "title": "docu: handbook logo on the documentation storage, export to sphinx on the grid selection",
+   "created": "2026-08-24",
+   "author": "dgpaci",
+   "draft": false,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "CHANGES_REQUESTED",
+   "req": [
+    "genro"
+   ],
+   "reviews": [
+    {
+     "who": "fporcari",
+     "state": "CHANGES_REQUESTED",
+     "on": "2026-08-25"
+    }
+   ],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [],
+   "last": {
+    "t": "2026-08-25T07:30:53Z",
+    "who": "fporcari",
+    "ch": "changes_requested"
+   },
+   "url": "https://github.com/genropy/genropy/pull/1142"
+  },
+  {
+   "n": 1130,
+   "title": "fix(grid): support selectedId in legacy included views",
+   "created": "2026-08-21",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "REVIEW_REQUIRED",
+   "req": [
+    "genro"
+   ],
+   "reviews": [],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [
+    {
+     "issue": 1103,
+     "assignees": [
+      "fporcari"
+     ]
+    },
+    {
+     "issue": 1127,
+     "assignees": [
+      "fporcari"
+     ]
+    }
+   ],
+   "last": null,
+   "url": "https://github.com/genropy/genropy/pull/1130"
+  },
+  {
+   "n": 1128,
+   "title": "refactor(test): remove hand-maintained test menus",
+   "created": "2026-08-21",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "CHANGES_REQUESTED",
+   "req": [],
+   "reviews": [
+    {
+     "who": "genro",
+     "state": "APPROVED",
+     "on": "2026-08-25"
+    },
+    {
+     "who": "dgpaci",
+     "state": "CHANGES_REQUESTED",
+     "on": "2026-08-25"
+    }
+   ],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [
+    {
+     "issue": 1107,
+     "assignees": [
+      "fporcari"
+     ]
+    }
+   ],
+   "last": {
+    "t": "2026-08-25T14:53:10Z",
+    "who": "dgpaci",
+    "ch": "changes_requested"
+   },
+   "url": "https://github.com/genropy/genropy/pull/1128"
+  },
+  {
+   "n": 1133,
+   "title": "test15 triage, macro 1: the regression net, the websocket and components areas",
+   "created": "2026-08-21",
+   "author": "dgpaci",
+   "draft": false,
+   "base": "develop",
+   "merge": "DIRTY",
+   "decision": "APPROVED",
+   "req": [
+    "genro"
+   ],
+   "reviews": [
+    {
+     "who": "fporcari",
+     "state": "APPROVED",
+     "on": "2026-08-24"
+    }
+   ],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [],
+   "last": {
+    "t": "2026-08-24T13:31:08Z",
+    "who": "fporcari",
+    "ch": "approved"
+   },
+   "url": "https://github.com/genropy/genropy/pull/1133"
+  },
+  {
+   "n": 1132,
+   "title": "test15 triage, macro 2: empty the gnrwdg area",
+   "created": "2026-08-21",
+   "author": "dgpaci",
+   "draft": false,
+   "base": "refactor/test15-example-migration-macro1",
+   "merge": "UNSTABLE",
+   "decision": "CHANGES_REQUESTED",
+   "req": [
+    "genro"
+   ],
+   "reviews": [
+    {
+     "who": "fporcari",
+     "state": "CHANGES_REQUESTED",
+     "on": "2026-08-24"
+    }
+   ],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [],
+   "last": {
+    "t": "2026-08-24T13:38:26Z",
+    "who": "fporcari",
+    "ch": "changes_requested"
+   },
+   "url": "https://github.com/genropy/genropy/pull/1132"
+  },
+  {
+   "n": 1131,
+   "title": "During image build, stop if the instance is not found",
+   "created": "2026-08-21",
+   "author": "cgabriel",
+   "draft": false,
+   "base": "develop",
+   "merge": "CLEAN",
+   "decision": "APPROVED",
+   "req": [
+    "genro"
+   ],
+   "reviews": [
+    {
+     "who": "fporcari",
+     "state": "APPROVED",
+     "on": "2026-08-24"
+    }
+   ],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [
+    {
+     "issue": 1121,
+     "assignees": [
+      "cgabriel"
+     ]
+    }
+   ],
+   "last": {
+    "t": "2026-08-24T13:13:40Z",
+    "who": "fporcari",
+    "ch": "approved"
+   },
+   "url": "https://github.com/genropy/genropy/pull/1131"
+  },
+  {
+   "n": 1120,
+   "title": "feat(pdf): restore the sys.pdf_render default margins and apply them in every htmltopdf implementation",
+   "created": "2026-08-21",
+   "author": "dgpaci",
+   "draft": false,
+   "base": "develop",
+   "merge": "CLEAN",
+   "decision": "APPROVED",
+   "req": [
+    "genro"
+   ],
+   "reviews": [
+    {
+     "who": "fporcari",
+     "state": "APPROVED",
+     "on": "2026-08-21"
+    },
+    {
+     "who": "cgabriel",
+     "state": "APPROVED",
+     "on": "2026-08-25"
+    }
+   ],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [
+    {
+     "issue": 1007,
+     "assignees": [
+      "dgpaci"
+     ]
+    }
+   ],
+   "last": {
+    "t": "2026-08-25T10:14:15Z",
+    "who": "cgabriel",
+    "ch": "approved"
+   },
+   "url": "https://github.com/genropy/genropy/pull/1120"
+  },
+  {
+   "n": 1113,
+   "title": "fix(web): bagField without resource no longer raises UnboundLocalError",
+   "created": "2026-08-20",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "CLEAN",
+   "decision": "APPROVED",
+   "req": [
+    "cgabriel"
+   ],
+   "reviews": [
+    {
+     "who": "genro",
+     "state": "APPROVED",
+     "on": "2026-08-25"
+    }
+   ],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [
+    {
+     "issue": 1101,
+     "assignees": [
+      "fporcari"
+     ]
+    }
+   ],
+   "last": {
+    "t": "2026-08-25T12:21:32Z",
+    "who": "genro",
+    "ch": "approved"
+   },
+   "url": "https://github.com/genropy/genropy/pull/1113"
+  },
+  {
+   "n": 1100,
+   "title": "fix(web): escape dotted usernames in the remaining Bag-label keyed registries",
+   "created": "2026-08-19",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "REVIEW_REQUIRED",
+   "req": [
+    "genro",
+    "genro"
+   ],
+   "reviews": [],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [
+    {
+     "issue": 1062,
+     "assignees": [
+      "fporcari"
+     ]
+    }
+   ],
+   "last": null,
+   "url": "https://github.com/genropy/genropy/pull/1100"
+  },
+  {
+   "n": 1099,
+   "title": "fix(traceback): let the ep_error description wrap and make it selectable",
+   "created": "2026-08-19",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "CLEAN",
+   "decision": "APPROVED",
+   "req": [
+    "cgabriel"
+   ],
+   "reviews": [
+    {
+     "who": "genro",
+     "state": "APPROVED",
+     "on": "2026-08-25"
+    }
+   ],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [
+    {
+     "issue": 1092,
+     "assignees": [
+      "fporcari"
+     ]
+    }
+   ],
+   "last": {
+    "t": "2026-08-25T08:03:55Z",
+    "who": "genro",
+    "ch": "approved"
+   },
+   "url": "https://github.com/genropy/genropy/pull/1099"
+  },
+  {
+   "n": 1091,
+   "title": "feat(deploy): nginx returns a retriable 503 with Retry-After during upstream downtime",
+   "created": "2026-08-18",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "CLEAN",
+   "decision": "APPROVED",
+   "req": [
+    "cgabriel"
+   ],
+   "reviews": [
+    {
+     "who": "genro",
+     "state": "APPROVED",
+     "on": "2026-08-25"
+    }
+   ],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [
+    {
+     "issue": 928,
+     "assignees": [
+      "fporcari"
+     ]
+    }
+   ],
+   "last": {
+    "t": "2026-08-25T08:03:56Z",
+    "who": "genro",
+    "ch": "approved"
+   },
+   "url": "https://github.com/genropy/genropy/pull/1091"
+  },
+  {
+   "n": 1090,
+   "title": "fix(deps): make boto3 an optional [s3] extra instead of a core dependency",
+   "created": "2026-08-18",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "REVIEW_REQUIRED",
+   "req": [
+    "cgabriel",
+    "genro"
+   ],
+   "reviews": [],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [
+    {
+     "issue": 1079,
+     "assignees": [
+      "fporcari"
+     ]
+    }
+   ],
+   "last": {
+    "t": "2026-08-24T16:14:43Z",
+    "who": "fporcari",
+    "ch": "comment"
+   },
+   "url": "https://github.com/genropy/genropy/pull/1090"
+  },
+  {
+   "n": 1089,
+   "title": "fix(core): toDHZ resolves the zone with zoneinfo and attaches the offset in force",
+   "created": "2026-08-18",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "REVIEW_REQUIRED",
+   "req": [
+    "genro"
+   ],
+   "reviews": [],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [
+    {
+     "issue": 1076,
+     "assignees": [
+      "fporcari"
+     ]
+    }
+   ],
+   "last": {
+    "t": "2026-08-24T16:14:41Z",
+    "who": "fporcari",
+    "ch": "comment"
+   },
+   "url": "https://github.com/genropy/genropy/pull/1089"
+  },
+  {
+   "n": 1083,
+   "title": "fix(#1081): give every process its own siteregister Pyro proxy",
+   "created": "2026-08-17",
+   "author": "fporcari",
+   "draft": false,
+   "base": "fix/1082-siteregister-pyro-retry",
+   "merge": "DIRTY",
+   "decision": null,
+   "req": [
+    "cgabriel"
+   ],
+   "reviews": [],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [
+    {
+     "issue": 1081,
+     "assignees": [
+      "fporcari"
+     ]
+    }
+   ],
+   "last": {
+    "t": "2026-08-24T13:54:31Z",
+    "who": "fporcari",
+    "ch": "comment"
+   },
+   "url": "https://github.com/genropy/genropy/pull/1083"
+  },
+  {
+   "n": 1074,
+   "title": "fix(print): sort by selection order only when the query came from the selection",
+   "created": "2026-08-17",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "REVIEW_REQUIRED",
+   "req": [
+    "cgabriel",
+    "genro"
+   ],
+   "reviews": [],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [
+    {
+     "issue": 980,
+     "assignees": [
+      "fporcari"
+     ]
+    }
+   ],
+   "last": null,
+   "url": "https://github.com/genropy/genropy/pull/1074"
+  },
+  {
+   "n": 1073,
+   "title": "fix(sql): assign _row_count before the hierarchical fields are built",
+   "created": "2026-08-17",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "CLEAN",
+   "decision": "APPROVED",
+   "req": [
+    "cgabriel"
+   ],
+   "reviews": [
+    {
+     "who": "genro",
+     "state": "APPROVED",
+     "on": "2026-08-25"
+    }
+   ],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [
+    {
+     "issue": 987,
+     "assignees": [
+      "fporcari"
+     ]
+    }
+   ],
+   "last": {
+    "t": "2026-08-25T08:10:51Z",
+    "who": "genro",
+    "ch": "approved"
+   },
+   "url": "https://github.com/genropy/genropy/pull/1073"
+  },
+  {
+   "n": 1071,
+   "title": "fix(sys): evaluate task schedules against local wall-clock time",
+   "created": "2026-08-17",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "CLEAN",
+   "decision": "APPROVED",
+   "req": [
+    "cgabriel"
+   ],
+   "reviews": [
+    {
+     "who": "cgabriel",
+     "state": "DISMISSED",
+     "on": "2026-08-20"
+    },
+    {
+     "who": "genro",
+     "state": "CHANGES_REQUESTED",
+     "on": "2026-08-20"
+    },
+    {
+     "who": "genro",
+     "state": "APPROVED",
+     "on": "2026-08-25"
+    }
+   ],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [
+    {
+     "issue": 975,
+     "assignees": [
+      "fporcari"
+     ]
+    }
+   ],
+   "last": {
+    "t": "2026-08-25T12:32:55Z",
+    "who": "genro",
+    "ch": "approved"
+   },
+   "url": "https://github.com/genropy/genropy/pull/1071"
+  },
+  {
+   "n": 1069,
+   "title": "fix(web): _runCleanup reads the register client dict, not a list of items",
+   "created": "2026-08-17",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "REVIEW_REQUIRED",
+   "req": [
+    "cgabriel",
+    "genro"
+   ],
+   "reviews": [],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [
+    {
+     "issue": 956,
+     "assignees": [
+      "genro"
+     ]
+    }
+   ],
+   "last": null,
+   "url": "https://github.com/genropy/genropy/pull/1069"
+  },
+  {
+   "n": 1059,
+   "title": "feat(menu): add docpage entries for public stored documents",
+   "created": "2026-08-07",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "CHANGES_REQUESTED",
+   "req": [
+    "genro",
+    "cgabriel"
+   ],
+   "reviews": [
+    {
+     "who": "dgpaci",
+     "state": "CHANGES_REQUESTED",
+     "on": "2026-08-20"
+    },
+    {
+     "who": "dgpaci",
+     "state": "DISMISSED",
+     "on": "2026-08-21"
+    },
+    {
+     "who": "dgpaci",
+     "state": "COMMENTED",
+     "on": "2026-08-21"
+    },
+    {
+     "who": "fporcari",
+     "state": "COMMENTED",
+     "on": "2026-08-25"
+    },
+    {
+     "who": "dgpaci",
+     "state": "CHANGES_REQUESTED",
+     "on": "2026-08-25"
+    }
+   ],
+   "unresolved": 2,
+   "threads": 10,
+   "closes": [],
+   "last": {
+    "t": "2026-08-25T15:00:42Z",
+    "who": "dgpaci",
+    "ch": "inline"
+   },
+   "url": "https://github.com/genropy/genropy/pull/1059"
+  },
+  {
+   "n": 1058,
+   "title": "fix(app): checkdep resolves packages pulled in via required_packages()",
+   "created": "2026-08-07",
+   "author": "fporcari",
+   "draft": true,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "REVIEW_REQUIRED",
+   "req": [
+    "cgabriel",
+    "genro"
+   ],
+   "reviews": [],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [
+    {
+     "issue": 1006,
+     "assignees": [
+      "cgabriel",
+      "dgpaci"
+     ]
+    }
+   ],
+   "last": null,
+   "url": "https://github.com/genropy/genropy/pull/1058"
+  },
+  {
+   "n": 1057,
+   "title": "fix(widgets): setCondition no longer nulls then re-asserts a stale value",
+   "created": "2026-08-07",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "REVIEW_REQUIRED",
+   "req": [
+    "genro",
+    "cgabriel"
+   ],
+   "reviews": [
+    {
+     "who": "dgpaci",
+     "state": "CHANGES_REQUESTED",
+     "on": "2026-08-20"
+    },
+    {
+     "who": "dgpaci",
+     "state": "APPROVED",
+     "on": "2026-08-21"
+    }
+   ],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [
+    {
+     "issue": 994,
+     "assignees": [
+      "fporcari"
+     ]
+    }
+   ],
+   "last": {
+    "t": "2026-08-24T16:14:44Z",
+    "who": "fporcari",
+    "ch": "comment"
+   },
+   "url": "https://github.com/genropy/genropy/pull/1057"
+  },
+  {
+   "n": 1056,
+   "title": "feat(template): resolve a symbol through a value map server-side",
+   "created": "2026-08-07",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "REVIEW_REQUIRED",
+   "req": [
+    "cgabriel",
+    "genro"
+   ],
+   "reviews": [],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [],
+   "last": null,
+   "url": "https://github.com/genropy/genropy/pull/1056"
+  },
+  {
+   "n": 1055,
+   "title": "fix(sql): batchUpdate and touchRecords no longer swallow a call with no selection",
+   "created": "2026-08-07",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "REVIEW_REQUIRED",
+   "req": [
+    "cgabriel",
+    "genro"
+   ],
+   "reviews": [
+    {
+     "who": "dgpaci",
+     "state": "APPROVED",
+     "on": "2026-08-21"
+    }
+   ],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [
+    {
+     "issue": 1021,
+     "assignees": [
+      "fporcari"
+     ]
+    }
+   ],
+   "last": {
+    "t": "2026-08-21T14:39:37Z",
+    "who": "dgpaci",
+    "ch": "approved"
+   },
+   "url": "https://github.com/genropy/genropy/pull/1055"
+  },
+  {
+   "n": 1054,
+   "title": "fix(sys): reject over-long upgrade filenames before they abort the migration run",
+   "created": "2026-08-07",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "REVIEW_REQUIRED",
+   "req": [
+    "genro",
+    "cgabriel"
+   ],
+   "reviews": [
+    {
+     "who": "cgabriel",
+     "state": "COMMENTED",
+     "on": "2026-08-19"
+    }
+   ],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [
+    {
+     "issue": 1019,
+     "assignees": [
+      "fporcari"
+     ]
+    }
+   ],
+   "last": {
+    "t": "2026-08-19T14:06:46Z",
+    "who": "cgabriel",
+    "ch": "commented"
+   },
+   "url": "https://github.com/genropy/genropy/pull/1054"
+  },
+  {
+   "n": 1050,
+   "title": "fix(multidb): log the three silent paths that leave a subscription without its record",
+   "created": "2026-08-07",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "CLEAN",
+   "decision": "APPROVED",
+   "req": [
+    "cgabriel"
+   ],
+   "reviews": [
+    {
+     "who": "genro",
+     "state": "APPROVED",
+     "on": "2026-08-25"
+    }
+   ],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [],
+   "last": {
+    "t": "2026-08-25T08:03:51Z",
+    "who": "genro",
+    "ch": "approved"
+   },
+   "url": "https://github.com/genropy/genropy/pull/1050"
+  },
+  {
+   "n": 1048,
+   "title": "fix(web): reset the thread-local currentPage on every task exit path",
+   "created": "2026-08-07",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "REVIEW_REQUIRED",
+   "req": [
+    "genro",
+    "cgabriel"
+   ],
+   "reviews": [
+    {
+     "who": "cgabriel",
+     "state": "COMMENTED",
+     "on": "2026-08-20"
+    }
+   ],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [],
+   "last": {
+    "t": "2026-08-25T08:06:15Z",
+    "who": "fporcari",
+    "ch": "comment"
+   },
+   "url": "https://github.com/genropy/genropy/pull/1048"
+  },
+  {
+   "n": 1045,
+   "title": "feat(print): generic _default resource to print a record through a named template",
+   "created": "2026-08-07",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "REVIEW_REQUIRED",
+   "req": [
+    "genro",
+    "cgabriel"
+   ],
+   "reviews": [
+    {
+     "who": "dgpaci",
+     "state": "APPROVED",
+     "on": "2026-08-25"
+    }
+   ],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [],
+   "last": {
+    "t": "2026-08-25T14:53:54Z",
+    "who": "dgpaci",
+    "ch": "approved"
+   },
+   "url": "https://github.com/genropy/genropy/pull/1045"
+  },
+  {
+   "n": 1044,
+   "title": "fix(webstruct): field() ignores a column's values when the dtype is numeric",
+   "created": "2026-08-06",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "CHANGES_REQUESTED",
+   "req": [],
+   "reviews": [
+    {
+     "who": "cgabriel",
+     "state": "DISMISSED",
+     "on": "2026-08-20"
+    },
+    {
+     "who": "genro",
+     "state": "DISMISSED",
+     "on": "2026-08-20"
+    },
+    {
+     "who": "genro",
+     "state": "APPROVED",
+     "on": "2026-08-25"
+    },
+    {
+     "who": "dgpaci",
+     "state": "CHANGES_REQUESTED",
+     "on": "2026-08-25"
+    }
+   ],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [],
+   "last": {
+    "t": "2026-08-25T13:27:43Z",
+    "who": "dgpaci",
+    "ch": "comment"
+   },
+   "url": "https://github.com/genropy/genropy/pull/1044"
+  },
+  {
+   "n": 1040,
+   "title": "fix(web): a Bag returned by a page is no longer mistaken for a WSGI response",
+   "created": "2026-08-06",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "CHANGES_REQUESTED",
+   "req": [],
+   "reviews": [
+    {
+     "who": "cgabriel",
+     "state": "COMMENTED",
+     "on": "2026-08-19"
+    },
+    {
+     "who": "genro",
+     "state": "CHANGES_REQUESTED",
+     "on": "2026-08-25"
+    }
+   ],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [
+    {
+     "issue": 1032,
+     "assignees": [
+      "fporcari"
+     ]
+    }
+   ],
+   "last": {
+    "t": "2026-08-25T12:21:31Z",
+    "who": "genro",
+    "ch": "changes_requested"
+   },
+   "url": "https://github.com/genropy/genropy/pull/1040"
+  },
+  {
+   "n": 1036,
+   "title": "fix(tests): the daemon web suite silently skipped on CI, missing sqlite schema files",
+   "created": "2026-08-06",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "REVIEW_REQUIRED",
+   "req": [
+    "genro",
+    "cgabriel"
+   ],
+   "reviews": [
+    {
+     "who": "cgabriel",
+     "state": "COMMENTED",
+     "on": "2026-08-20"
+    }
+   ],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [],
+   "last": {
+    "t": "2026-08-25T08:09:49Z",
+    "who": "fporcari",
+    "ch": "comment"
+   },
+   "url": "https://github.com/genropy/genropy/pull/1036"
+  },
+  {
+   "n": 1029,
+   "title": "fix(sql): no phantom table when a model module's filename differs from the declared table name",
+   "created": "2026-08-06",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "CHANGES_REQUESTED",
+   "req": [
+    "genro",
+    "cgabriel"
+   ],
+   "reviews": [
+    {
+     "who": "cgabriel",
+     "state": "CHANGES_REQUESTED",
+     "on": "2026-08-20"
+    }
+   ],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [
+    {
+     "issue": 106,
+     "assignees": [
+      "fporcari"
+     ]
+    }
+   ],
+   "last": {
+    "t": "2026-08-21T08:22:49Z",
+    "who": "fporcari",
+    "ch": "comment"
+   },
+   "url": "https://github.com/genropy/genropy/pull/1029"
+  },
+  {
+   "n": 1027,
+   "title": "fix(sql): virtual relation tree nodes carry another column's attributes",
+   "created": "2026-08-06",
+   "author": "fporcari",
+   "draft": false,
+   "base": "develop",
+   "merge": "CLEAN",
+   "decision": "APPROVED",
+   "req": [
+    "cgabriel"
+   ],
+   "reviews": [
+    {
+     "who": "genro",
+     "state": "APPROVED",
+     "on": "2026-08-25"
+    }
+   ],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [
+    {
+     "issue": 146,
+     "assignees": [
+      "mbertoldi",
+      "fporcari"
+     ]
+    }
+   ],
+   "last": {
+    "t": "2026-08-25T08:03:52Z",
+    "who": "genro",
+    "ch": "approved"
+   },
+   "url": "https://github.com/genropy/genropy/pull/1027"
+  },
+  {
+   "n": 996,
+   "title": "fix(pwa): rework service worker for webpush notifications",
+   "created": "2026-07-22",
+   "author": "fporcari",
+   "draft": true,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "CHANGES_REQUESTED",
+   "req": [],
+   "reviews": [
+    {
+     "who": "cgabriel",
+     "state": "CHANGES_REQUESTED",
+     "on": "2026-07-28"
+    },
+    {
+     "who": "cgabriel",
+     "state": "CHANGES_REQUESTED",
+     "on": "2026-08-03"
+    },
+    {
+     "who": "cgabriel",
+     "state": "COMMENTED",
+     "on": "2026-08-20"
+    }
+   ],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [],
+   "last": {
+    "t": "2026-08-20T16:50:23Z",
+    "who": "fporcari",
+    "ch": "comment"
+   },
+   "url": "https://github.com/genropy/genropy/pull/996"
+  },
+  {
+   "n": 964,
+   "title": "feat(adm): static/dynamic notification lists with date window",
+   "created": "2026-06-30",
+   "author": "dgpaci",
+   "draft": false,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "CHANGES_REQUESTED",
+   "req": [
+    "genro"
+   ],
+   "reviews": [
+    {
+     "who": "fporcari",
+     "state": "CHANGES_REQUESTED",
+     "on": "2026-07-28"
+    }
+   ],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [],
+   "last": {
+    "t": "2026-07-28T14:34:25Z",
+    "who": "fporcari",
+    "ch": "changes_requested"
+   },
+   "url": "https://github.com/genropy/genropy/pull/964"
+  },
+  {
+   "n": 933,
+   "title": "feat(attachmanager): forward uploader kwargs from attachmentGrid",
+   "created": "2026-06-04",
+   "author": "dgpaci",
+   "draft": false,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "CHANGES_REQUESTED",
+   "req": [],
+   "reviews": [
+    {
+     "who": "fporcari",
+     "state": "DISMISSED",
+     "on": "2026-06-16"
+    },
+    {
+     "who": "genro",
+     "state": "COMMENTED",
+     "on": "2026-06-16"
+    },
+    {
+     "who": "fporcari",
+     "state": "CHANGES_REQUESTED",
+     "on": "2026-08-24"
+    }
+   ],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [],
+   "last": {
+    "t": "2026-08-24T15:07:59Z",
+    "who": "fporcari",
+    "ch": "changes_requested"
+   },
+   "url": "https://github.com/genropy/genropy/pull/933"
+  },
+  {
+   "n": 912,
+   "title": "docs(grouplet): For Dummies tour of the grouplet family",
+   "created": "2026-05-18",
+   "author": "genro",
+   "draft": false,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "REVIEW_REQUIRED",
+   "req": [],
+   "reviews": [
+    {
+     "who": "fporcari",
+     "state": "COMMENTED",
+     "on": "2026-08-19"
+    }
+   ],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [],
+   "last": {
+    "t": "2026-08-24T15:13:00Z",
+    "who": "fporcari",
+    "ch": "comment"
+   },
+   "url": "https://github.com/genropy/genropy/pull/912"
+  },
+  {
+   "n": 906,
+   "title": "feat(gnrwebstruct): registry-driven widget namespace + W3C HTML5 catalog",
+   "created": "2026-05-15",
+   "author": "genro",
+   "draft": false,
+   "base": "develop",
+   "merge": "DIRTY",
+   "decision": "REVIEW_REQUIRED",
+   "req": [
+    "mbertoldi"
+   ],
+   "reviews": [
+    {
+     "who": "fporcari",
+     "state": "COMMENTED",
+     "on": "2026-08-03"
+    }
+   ],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [],
+   "last": {
+    "t": "2026-08-03T16:06:10Z",
+    "who": "fporcari",
+    "ch": "commented"
+   },
+   "url": "https://github.com/genropy/genropy/pull/906"
+  },
+  {
+   "n": 842,
+   "title": "feat: add genro.cmd unified client capabilities catalog",
+   "created": "2026-04-28",
+   "author": "genro",
+   "draft": true,
+   "base": "develop",
+   "merge": "DIRTY",
+   "decision": "REVIEW_REQUIRED",
+   "req": [
+    "cgabriel"
+   ],
+   "reviews": [
+    {
+     "who": "fporcari",
+     "state": "COMMENTED",
+     "on": "2026-08-03"
+    }
+   ],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [],
+   "last": {
+    "t": "2026-08-03T16:06:11Z",
+    "who": "fporcari",
+    "ch": "commented"
+   },
+   "url": "https://github.com/genropy/genropy/pull/842"
+  },
+  {
+   "n": 798,
+   "title": "Fix XLSX importer column shift and update_only+sql_mode",
+   "created": "2026-04-15",
+   "author": "dgpaci",
+   "draft": false,
+   "base": "develop",
+   "merge": "BLOCKED",
+   "decision": "CHANGES_REQUESTED",
+   "req": [
+    "genro"
+   ],
+   "reviews": [
+    {
+     "who": "cgabriel",
+     "state": "DISMISSED",
+     "on": "2026-04-15"
+    },
+    {
+     "who": "fporcari",
+     "state": "CHANGES_REQUESTED",
+     "on": "2026-08-24"
+    }
+   ],
+   "unresolved": 0,
+   "threads": 0,
+   "closes": [
+    {
+     "issue": 797,
+     "assignees": [
+      "dgpaci"
+     ]
+    }
+   ],
+   "last": {
+    "t": "2026-08-24T13:20:42Z",
+    "who": "fporcari",
+    "ch": "changes_requested"
+   },
+   "url": "https://github.com/genropy/genropy/pull/798"
+  }
+ ],
+ "issues": [
+  {
+   "n": 1166,
+   "title": "[BUG] contentFromTemplate prints a template name verbatim instead of raising",
+   "created": "2026-08-25",
+   "author": "dgpaci",
+   "labels": [],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1166"
+  },
+  {
+   "n": 1165,
+   "title": "[BUG] page.loadTemplate() cannot run on sqlite: adm.userobject formula columns emit Postgres-only string_to_array",
+   "created": "2026-08-25",
+   "author": "dgpaci",
+   "labels": [],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1165"
+  },
+  {
+   "n": 1162,
+   "title": "[BUG] NewIncludedView.setSelectedId overwrites the subscribed selectedId with null for an unknown pkey",
+   "created": "2026-08-25",
+   "author": "fporcari",
+   "labels": [],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1162"
+  },
+  {
+   "n": 1160,
+   "title": "[BUG] Nested form: a refused save shows no message because the save_failed controller watches the wrong datapath",
+   "created": "2026-08-25",
+   "author": "dgpaci",
+   "labels": [],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 2,
+   "url": "https://github.com/genropy/genropy/issues/1160"
+  },
+  {
+   "n": 1155,
+   "title": "Build the sqlite test schema files from the model instead of tracking them in git",
+   "created": "2026-08-25",
+   "author": "fporcari",
+   "labels": [],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1155"
+  },
+  {
+   "n": 1151,
+   "title": "[FEATURE] Remaining client build margins: dijit share, JSON wire format, source-level nodeId registry",
+   "created": "2026-08-24",
+   "author": "fporcari",
+   "labels": [
+    "enhancement"
+   ],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1151"
+  },
+  {
+   "n": 1150,
+   "title": "[FEATURE] Heavy test page and client-side profiler for build/trigger profiling",
+   "created": "2026-08-24",
+   "author": "fporcari",
+   "labels": [
+    "enhancement"
+   ],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1150"
+  },
+  {
+   "n": 1149,
+   "title": "[TASK] Bag hot-path cleanups: htraverse fast path, static walk, fromXmlDoc conversions",
+   "created": "2026-08-24",
+   "author": "fporcari",
+   "labels": [
+    "task"
+   ],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1149"
+  },
+  {
+   "n": 1148,
+   "title": "[TASK] Cache widget factory resolution and handler mixin plans",
+   "created": "2026-08-24",
+   "author": "fporcari",
+   "labels": [
+    "task"
+   ],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1148"
+  },
+  {
+   "n": 1147,
+   "title": "[BUG] Full source-tree walk on every del/upd trigger to refresh index and subscribers",
+   "created": "2026-08-24",
+   "author": "fporcari",
+   "labels": [
+    "bug"
+   ],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1147"
+  },
+  {
+   "n": 1146,
+   "title": "[BUG] Every datastore change is dispatched to every dynamic attribute subscription",
+   "created": "2026-08-24",
+   "author": "fporcari",
+   "labels": [
+    "bug"
+   ],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1146"
+  },
+  {
+   "n": 1144,
+   "title": "[BUG] Grid selectedId always fires the ^ trigger, even when id and row attributes are unchanged",
+   "created": "2026-08-24",
+   "author": "fporcari",
+   "labels": [
+    "bug"
+   ],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1144"
+  },
+  {
+   "n": 1141,
+   "title": "[FEATURE] Run \"Export to Sphinx\" on the handbook grid selection",
+   "created": "2026-08-24",
+   "author": "dgpaci",
+   "labels": [
+    "documentation",
+    "enhancement"
+   ],
+   "assignees": [
+    "dgpaci"
+   ],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1141"
+  },
+  {
+   "n": 1140,
+   "title": "[BUG] docu: handbook logo preference uploads to home: instead of documentation: storage",
+   "created": "2026-08-24",
+   "author": "dgpaci",
+   "labels": [
+    "bug",
+    "documentation"
+   ],
+   "assignees": [
+    "dgpaci"
+   ],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1140"
+  },
+  {
+   "n": 1139,
+   "title": "[BUG] A client URI refresh can restart a site register that is being stopped, and makes siteregister_restart lose its port",
+   "created": "2026-08-24",
+   "author": "fporcari",
+   "labels": [
+    "bug"
+   ],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1139"
+  },
+  {
+   "n": 1138,
+   "title": "[BUG] convertToText and toTypedJSON recurse on each other until the client stack overflows",
+   "created": "2026-08-24",
+   "author": "fporcari",
+   "labels": [
+    "bug"
+   ],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1138"
+  },
+  {
+   "n": 1136,
+   "title": "[BUG] joinPdf swaps pages between the source pdfs",
+   "created": "2026-08-24",
+   "author": "fporcari",
+   "labels": [
+    "bug"
+   ],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1136"
+  },
+  {
+   "n": 1135,
+   "title": "ServerStore.data does two register round trips for one read",
+   "created": "2026-08-23",
+   "author": "genro",
+   "labels": [],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1135"
+  },
+  {
+   "n": 1127,
+   "title": "[BUG] includedViewBox grids throw 'setSelectedId is not a function' and stay empty",
+   "created": "2026-08-21",
+   "author": "dgpaci",
+   "labels": [
+    "bug"
+   ],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 1,
+   "url": "https://github.com/genropy/genropy/issues/1127"
+  },
+  {
+   "n": 1123,
+   "title": "[BUG] gnr db migrate reports a failed store twice as completed with errors",
+   "created": "2026-08-21",
+   "author": "fporcari",
+   "labels": [
+    "bug"
+   ],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1123"
+  },
+  {
+   "n": 1121,
+   "title": "Ci Building problem",
+   "created": "2026-08-21",
+   "author": "cgabriel",
+   "labels": [
+    "bug"
+   ],
+   "assignees": [
+    "cgabriel"
+   ],
+   "comments": 1,
+   "url": "https://github.com/genropy/genropy/issues/1121"
+  },
+  {
+   "n": 1119,
+   "title": "[BUG] Task scheduler ignores configured weekdays",
+   "created": "2026-08-21",
+   "author": "fporcari",
+   "labels": [
+    "bug"
+   ],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1119"
+  },
+  {
+   "n": 1118,
+   "title": "[BUG] Legacy task frequency comparison discards elapsed days",
+   "created": "2026-08-21",
+   "author": "fporcari",
+   "labels": [
+    "bug"
+   ],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1118"
+  },
+  {
+   "n": 1117,
+   "title": "[BUG] Async scheduler replaces stored timezone offset instead of converting it",
+   "created": "2026-08-21",
+   "author": "fporcari",
+   "labels": [
+    "bug"
+   ],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1117"
+  },
+  {
+   "n": 1116,
+   "title": "[BUG] Async scheduler re-enqueues calendar tasks every second",
+   "created": "2026-08-21",
+   "author": "fporcari",
+   "labels": [
+    "bug"
+   ],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1116"
+  },
+  {
+   "n": 1107,
+   "title": "[TASK] Deprecate the hand-maintained Tests menu of the gnrdevelop instance",
+   "created": "2026-08-19",
+   "author": "dgpaci",
+   "labels": [
+    "task"
+   ],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 1,
+   "url": "https://github.com/genropy/genropy/issues/1107"
+  },
+  {
+   "n": 1104,
+   "title": "[BUG] Client-side websocket unusable from a page: gnrwebsocket undefined and no service on the served port",
+   "created": "2026-08-19",
+   "author": "dgpaci",
+   "labels": [
+    "bug"
+   ],
+   "assignees": [],
+   "comments": 1,
+   "url": "https://github.com/genropy/genropy/issues/1104"
+  },
+  {
+   "n": 1103,
+   "title": "[BUG] genro_grid calls this.setSelectedId on a class that does not have it",
+   "created": "2026-08-19",
+   "author": "dgpaci",
+   "labels": [
+    "bug"
+   ],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 1,
+   "url": "https://github.com/genropy/genropy/issues/1103"
+  },
+  {
+   "n": 1101,
+   "title": "[BUG] bagField without resource= raises UnboundLocalError on mixinedClass",
+   "created": "2026-08-19",
+   "author": "dgpaci",
+   "labels": [
+    "bug"
+   ],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 1,
+   "url": "https://github.com/genropy/genropy/issues/1101"
+  },
+  {
+   "n": 1098,
+   "title": "[TASK] Deprecate the unused gnrdocker project in projects/",
+   "created": "2026-08-19",
+   "author": "dgpaci",
+   "labels": [
+    "task"
+   ],
+   "assignees": [],
+   "comments": 1,
+   "url": "https://github.com/genropy/genropy/issues/1098"
+  },
+  {
+   "n": 1097,
+   "title": "[TASK] Deprecate the unused uke package in gnrcore",
+   "created": "2026-08-19",
+   "author": "dgpaci",
+   "labels": [
+    "task"
+   ],
+   "assignees": [],
+   "comments": 1,
+   "url": "https://github.com/genropy/genropy/issues/1097"
+  },
+  {
+   "n": 1096,
+   "title": "develop protection: no required status checks, force pushes allowed, admins exempt",
+   "created": "2026-08-19",
+   "author": "genro",
+   "labels": [
+    "task"
+   ],
+   "assignees": [],
+   "comments": 2,
+   "url": "https://github.com/genropy/genropy/issues/1096"
+  },
+  {
+   "n": 1095,
+   "title": "[FEATURE] groupletWizard: terminal state as a resource, initial step, and no reposition on a self-triggered reload",
+   "created": "2026-08-19",
+   "author": "fporcari",
+   "labels": [
+    "enhancement"
+   ],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 2,
+   "url": "https://github.com/genropy/genropy/issues/1095"
+  },
+  {
+   "n": 1094,
+   "title": "[TASK] Run package tests in CI: gnr dev tests step and non-zero exit on failure",
+   "created": "2026-08-18",
+   "author": "fporcari",
+   "labels": [
+    "task"
+   ],
+   "assignees": [],
+   "comments": 1,
+   "url": "https://github.com/genropy/genropy/issues/1094"
+  },
+  {
+   "n": 1092,
+   "title": "[BUG] sys/ep_error truncate error description + unable to copy",
+   "created": "2026-08-18",
+   "author": "cgabriel",
+   "labels": [
+    "bug"
+   ],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 2,
+   "url": "https://github.com/genropy/genropy/issues/1092"
+  },
+  {
+   "n": 1082,
+   "title": "[BUG] siteregister client: Pyro4 proxies never retry, a dropped daemon connection ends in HTTP 500",
+   "created": "2026-08-17",
+   "author": "fporcari",
+   "labels": [
+    "bug"
+   ],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1082"
+  },
+  {
+   "n": 1081,
+   "title": "[BUG] siteregister Pyro proxy is created pre-fork: workers share one socket, causing random 'reply sequence out of sync' / connection reset",
+   "created": "2026-08-17",
+   "author": "fporcari",
+   "labels": [],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 1,
+   "url": "https://github.com/genropy/genropy/issues/1081"
+  },
+  {
+   "n": 1079,
+   "title": "[BUG] boto3 declared without an upper bound conflicts with the aiobotocore that arrives via s3fs",
+   "created": "2026-08-17",
+   "author": "fporcari",
+   "labels": [],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1079"
+  },
+  {
+   "n": 1077,
+   "title": "[BUG] test_invoice_pg site is not versioned: a fresh clone cannot start it",
+   "created": "2026-08-17",
+   "author": "fporcari",
+   "labels": [],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1077"
+  },
+  {
+   "n": 1076,
+   "title": "[BUG] toDHZ attaches a timezone with replace() and resolves LOCAL to an abbreviation on POSIX",
+   "created": "2026-08-17",
+   "author": "fporcari",
+   "labels": [
+    "bug"
+   ],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1076"
+  },
+  {
+   "n": 1075,
+   "title": "[BUG] register connections() has two incompatible return shapes under the same name (client dict vs daemon list)",
+   "created": "2026-08-17",
+   "author": "fporcari",
+   "labels": [
+    "bug"
+   ],
+   "assignees": [],
+   "comments": 1,
+   "url": "https://github.com/genropy/genropy/issues/1075"
+  },
+  {
+   "n": 1062,
+   "title": "Usernames containing dots break Bag-label keyed features (chat first, audit needed)",
+   "created": "2026-08-13",
+   "author": "genro",
+   "labels": [
+    "bug"
+   ],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1062"
+  },
+  {
+   "n": 1032,
+   "title": "A `Bag` returned by a page is mistaken for a WSGI response",
+   "created": "2026-08-06",
+   "author": "cgabriel",
+   "labels": [],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1032"
+  },
+  {
+   "n": 1030,
+   "title": "Finalize external sqlmigration integration: update branch, add wrap tests, open PR to develop",
+   "created": "2026-08-06",
+   "author": "genro",
+   "labels": [],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 3,
+   "url": "https://github.com/genropy/genropy/issues/1030"
+  },
+  {
+   "n": 1022,
+   "title": "[BUG] htmltopdf/weasyprint: explicit pageSize/pageMargin stylesheet never wins over the document's own @page rule",
+   "created": "2026-08-05",
+   "author": "dgpaci",
+   "labels": [],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1022"
+  },
+  {
+   "n": 1021,
+   "title": "[BUG] batchUpdate without where/pkey silently returns without updating anything",
+   "created": "2026-08-05",
+   "author": "dgpaci",
+   "labels": [],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1021"
+  },
+  {
+   "n": 1019,
+   "title": "[BUG] sys.upgrade: filenames longer than 40 chars crash the whole migration run after the upgrade has executed",
+   "created": "2026-08-04",
+   "author": "fporcari",
+   "labels": [],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1019"
+  },
+  {
+   "n": 1018,
+   "title": "[BUG] multidb: subscription row can exist without the physical record in the store, and nothing repairs or reports it",
+   "created": "2026-08-04",
+   "author": "fporcari",
+   "labels": [],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/1018"
+  },
+  {
+   "n": 1007,
+   "title": "[FEATURE] Restore default PDF margin preferences and apply them in all htmltopdf implementations",
+   "created": "2026-07-29",
+   "author": "dgpaci",
+   "labels": [
+    "enhancement"
+   ],
+   "assignees": [
+    "dgpaci"
+   ],
+   "comments": 1,
+   "url": "https://github.com/genropy/genropy/issues/1007"
+  },
+  {
+   "n": 1006,
+   "title": "[BUG] gnr app checkdep ignores packages declared via required_packages()",
+   "created": "2026-07-29",
+   "author": "dgpaci",
+   "labels": [
+    "hotfix"
+   ],
+   "assignees": [
+    "cgabriel",
+    "dgpaci"
+   ],
+   "comments": 2,
+   "url": "https://github.com/genropy/genropy/issues/1006"
+  },
+  {
+   "n": 994,
+   "title": "[BUG] dbSelect setCondition re-asserts a stale captured value (async write-back race)",
+   "created": "2026-07-17",
+   "author": "fporcari",
+   "labels": [
+    "bug"
+   ],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/994"
+  },
+  {
+   "n": 993,
+   "title": "[FEATURE] Conditional template parameters: if/else branching via computed parameters",
+   "created": "2026-07-16",
+   "author": "dgpaci",
+   "labels": [
+    "enhancement"
+   ],
+   "assignees": [
+    "dgpaci"
+   ],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/993"
+  },
+  {
+   "n": 991,
+   "title": "[FEATURE] htmlpage menu entry to display standalone HTML documents",
+   "created": "2026-07-15",
+   "author": "dgpaci",
+   "labels": [
+    "enhancement"
+   ],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/991"
+  },
+  {
+   "n": 987,
+   "title": "[BUG] HierarchicalHandler.trigger_before computes hierarchical_* fields before auto-assigning _row_count",
+   "created": "2026-07-13",
+   "author": "dgpaci",
+   "labels": [],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/987"
+  },
+  {
+   "n": 980,
+   "title": "[BUG] gridData sorts rows by selectionPkeys even when the query is not built from the current selection",
+   "created": "2026-07-10",
+   "author": "dgpaci",
+   "labels": [],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/980"
+  },
+  {
+   "n": 978,
+   "title": "[BUG] calcRowsNumber crashes with FileNotFoundError on pip-installed deployments (afm_widths.json not found)",
+   "created": "2026-07-10",
+   "author": "dgpaci",
+   "labels": [
+    "hotfix"
+   ],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/978"
+  },
+  {
+   "n": 975,
+   "title": "[BUG] Task scheduler matches hour/minute against UTC time: tasks run shifted by the local timezone offset",
+   "created": "2026-07-09",
+   "author": "dgpaci",
+   "labels": [
+    "hotfix"
+   ],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/975"
+  },
+  {
+   "n": 974,
+   "title": "DataCollector in the site boot: permanent, or extractable to a separate package?",
+   "created": "2026-07-08",
+   "author": "genro",
+   "labels": [],
+   "assignees": [],
+   "comments": 2,
+   "url": "https://github.com/genropy/genropy/issues/974"
+  },
+  {
+   "n": 973,
+   "title": "[FEATURE] smart_open breaking changes",
+   "created": "2026-07-08",
+   "author": "cgabriel",
+   "labels": [
+    "enhancement"
+   ],
+   "assignees": [],
+   "comments": 1,
+   "url": "https://github.com/genropy/genropy/issues/973"
+  },
+  {
+   "n": 960,
+   "title": "Well-known / probe paths return 200 (phantom page) or 500 instead of 404",
+   "created": "2026-06-29",
+   "author": "genro",
+   "labels": [
+    "bug"
+   ],
+   "assignees": [],
+   "comments": 1,
+   "url": "https://github.com/genropy/genropy/issues/960"
+  },
+  {
+   "n": 956,
+   "title": "Regression in #882 - _runCleanup will never execute.",
+   "created": "2026-06-26",
+   "author": "cgabriel",
+   "labels": [],
+   "assignees": [
+    "genro"
+   ],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/956"
+  },
+  {
+   "n": 954,
+   "title": "Call to action: switch to no_mako and report regressions \u2014 so we can drop Mako",
+   "created": "2026-06-26",
+   "author": "genro",
+   "labels": [],
+   "assignees": [],
+   "comments": 2,
+   "url": "https://github.com/genropy/genropy/issues/954"
+  },
+  {
+   "n": 951,
+   "title": "WebSocket over HTTPS: preliminary investigation \u2014 deploy templates and async port",
+   "created": "2026-06-24",
+   "author": "genro",
+   "labels": [],
+   "assignees": [],
+   "comments": 1,
+   "url": "https://github.com/genropy/genropy/issues/951"
+  },
+  {
+   "n": 932,
+   "title": "[FEATURE] dbSelect should accept hierarchical=True and delegate to hdbSelect (like checkBoxText)",
+   "created": "2026-06-01",
+   "author": "dgpaci",
+   "labels": [],
+   "assignees": [],
+   "comments": 1,
+   "url": "https://github.com/genropy/genropy/issues/932"
+  },
+  {
+   "n": 930,
+   "title": "[BUG] _addClass on formulaColumn not applied to grid rows when column is declared via th_hiddencolumns",
+   "created": "2026-05-29",
+   "author": "dgpaci",
+   "labels": [],
+   "assignees": [],
+   "comments": 1,
+   "url": "https://github.com/genropy/genropy/issues/930"
+  },
+  {
+   "n": 928,
+   "title": "[TASK] Handle RPC errors during service restart: return retriable 503 from Nginx (no 500)",
+   "created": "2026-05-25",
+   "author": "fporcari",
+   "labels": [
+    "task"
+   ],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/928"
+  },
+  {
+   "n": 927,
+   "title": "Static asset resolver: automatic gnr_d20 \u2192 gnr_d11 fallback",
+   "created": "2026-05-21",
+   "author": "fporcari",
+   "labels": [],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/927"
+  },
+  {
+   "n": 926,
+   "title": "sqlite adapter violates DHZ tz-aware contract on round-trip",
+   "created": "2026-05-21",
+   "author": "fporcari",
+   "labels": [
+    "bug"
+   ],
+   "assignees": [],
+   "comments": 1,
+   "url": "https://github.com/genropy/genropy/issues/926"
+  },
+  {
+   "n": 925,
+   "title": "Encrypted Q-columns: use #ENCRYPTED($col) compiler macro for searchable predicates",
+   "created": "2026-05-21",
+   "author": "genro",
+   "labels": [],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/925"
+  },
+  {
+   "n": 923,
+   "title": "Factor the test_invoice fixture into a shared, reusable module",
+   "created": "2026-05-20",
+   "author": "genro",
+   "labels": [],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/923"
+  },
+  {
+   "n": 922,
+   "title": "Refactor ep_sourcerer.py on top of gnr.app.api_engine.ApiEngine",
+   "created": "2026-05-20",
+   "author": "genro",
+   "labels": [],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/922"
+  },
+  {
+   "n": 919,
+   "title": "Add per-query timeout (statement_timeout) support to db.execute / SqlTable.query",
+   "created": "2026-05-20",
+   "author": "genro",
+   "labels": [],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/919"
+  },
+  {
+   "n": 911,
+   "title": "Reintroduce fluent tag syntax on GnrDomSource (clientside), narrower and opt-in",
+   "created": "2026-05-18",
+   "author": "genro",
+   "labels": [
+    "enhancement"
+   ],
+   "assignees": [],
+   "comments": 1,
+   "url": "https://github.com/genropy/genropy/issues/911"
+  },
+  {
+   "n": 910,
+   "title": "RFC: should grouplet accept a client-side handler (handlerJs=)?",
+   "created": "2026-05-18",
+   "author": "genro",
+   "labels": [],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/910"
+  },
+  {
+   "n": 909,
+   "title": "Grouplet family: surface silent failures and identifier collisions",
+   "created": "2026-05-18",
+   "author": "genro",
+   "labels": [
+    "bug"
+   ],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/909"
+  },
+  {
+   "n": 901,
+   "title": "refactor(gnrwebstruct): three-PR roadmap to modularize gnrwebstruct and align widgets to W3C HTML5",
+   "created": "2026-05-14",
+   "author": "genro",
+   "labels": [],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/901"
+  },
+  {
+   "n": 900,
+   "title": "[TASK] groupletGrid: introduce GroupletDataStore (model fa\u00e7ade)",
+   "created": "2026-05-14",
+   "author": "fporcari",
+   "labels": [
+    "task"
+   ],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/900"
+  },
+  {
+   "n": 899,
+   "title": "[TASK] groupletGrid: adopt wdgByDtype/widgetFromField in struct adapter",
+   "created": "2026-05-14",
+   "author": "fporcari",
+   "labels": [
+    "task"
+   ],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/899"
+  },
+  {
+   "n": 898,
+   "title": "[TASK] groupletGrid: migrate DnD to genro.dom.* helpers + dedup wire methods",
+   "created": "2026-05-14",
+   "author": "fporcari",
+   "labels": [
+    "task"
+   ],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/898"
+  },
+  {
+   "n": 897,
+   "title": "[TASK] groupletGrid: MVC store-ready \u2014 GroupletDataStore",
+   "created": "2026-05-13",
+   "author": "fporcari",
+   "labels": [
+    "task"
+   ],
+   "assignees": [
+    "genro"
+   ],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/897"
+  },
+  {
+   "n": 893,
+   "title": "[BUG] Group-by view: JS column classification ignores numeric default-sum, causing empty stacked/tree view",
+   "created": "2026-05-08",
+   "author": "dgpaci",
+   "labels": [],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/893"
+  },
+  {
+   "n": 891,
+   "title": "[BUG] getSelection: format_* kwargs trigger TypeError (slice on dict)",
+   "created": "2026-05-07",
+   "author": "genro",
+   "labels": [],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/891"
+  },
+  {
+   "n": 889,
+   "title": "Move sys.service (and other) secrets to an encrypted Bag column",
+   "created": "2026-05-06",
+   "author": "genro",
+   "labels": [],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/889"
+  },
+  {
+   "n": 879,
+   "title": "Robust site start timestamp: design proposal (follows #878)",
+   "created": "2026-05-05",
+   "author": "genro",
+   "labels": [],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/879"
+  },
+  {
+   "n": 878,
+   "title": "RESTART_TS in globalStore: keep, drop, or fix?",
+   "created": "2026-05-05",
+   "author": "genro",
+   "labels": [],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/878"
+  },
+  {
+   "n": 875,
+   "title": "Investigate spurious --reload triggers on Windows: hypothesis around missing watchdog",
+   "created": "2026-05-04",
+   "author": "genro",
+   "labels": [],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/875"
+  },
+  {
+   "n": 866,
+   "title": "[FEATURE] \"Click to download\" advice for attachments without preview",
+   "created": "2026-05-02",
+   "author": "dedalus2000",
+   "labels": [
+    "enhancement"
+   ],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/866"
+  },
+  {
+   "n": 865,
+   "title": "ProseMirror-based editor stack: introduce ProseMirror, Milkdown, TipTap",
+   "created": "2026-05-02",
+   "author": "genro",
+   "labels": [
+    "enhancement",
+    "task"
+   ],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/865"
+  },
+  {
+   "n": 846,
+   "title": "LlmService: aggiungere supporto tool use",
+   "created": "2026-04-29",
+   "author": "fporcari",
+   "labels": [
+    "enhancement",
+    "ai-extension"
+   ],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/846"
+  },
+  {
+   "n": 836,
+   "title": "[BUG] archive_and_delete batch creates empty folders even in delete-only mode",
+   "created": "2026-04-27",
+   "author": "dgpaci",
+   "labels": [],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/836"
+  },
+  {
+   "n": 834,
+   "title": "[BUG] Storage relative service",
+   "created": "2026-04-27",
+   "author": "dgpaci",
+   "labels": [],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/834"
+  },
+  {
+   "n": 824,
+   "title": "[TASK] Remove workaround for GnrSqlAppDb mandatory application pars",
+   "created": "2026-04-22",
+   "author": "cgabriel",
+   "labels": [
+    "task"
+   ],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/824"
+  },
+  {
+   "n": 820,
+   "title": "[FEATURE] esm_requirements.txt for packages \u2014 CI bundling of modern ESM libraries",
+   "created": "2026-04-21",
+   "author": "genro",
+   "labels": [
+    "enhancement"
+   ],
+   "assignees": [
+    "cgabriel"
+   ],
+   "comments": 2,
+   "url": "https://github.com/genropy/genropy/issues/820"
+  },
+  {
+   "n": 818,
+   "title": "[BUG] Tab navigation in dialog",
+   "created": "2026-04-21",
+   "author": "cgabriel",
+   "labels": [],
+   "assignees": [
+    "fporcari"
+   ],
+   "comments": 1,
+   "url": "https://github.com/genropy/genropy/issues/818"
+  },
+  {
+   "n": 812,
+   "title": "[FEATURE] Empty state indication for tableHandler and query results",
+   "created": "2026-04-17",
+   "author": "dgpaci",
+   "labels": [],
+   "assignees": [],
+   "comments": 1,
+   "url": "https://github.com/genropy/genropy/issues/812"
+  },
+  {
+   "n": 811,
+   "title": "[FEATURE] display objects in sys.error tracebacks",
+   "created": "2026-04-17",
+   "author": "cgabriel",
+   "labels": [
+    "enhancement"
+   ],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/811"
+  },
+  {
+   "n": 810,
+   "title": "[FEATURE] Make error's traceback text selectable/copyable",
+   "created": "2026-04-17",
+   "author": "cgabriel",
+   "labels": [
+    "enhancement"
+   ],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/810"
+  },
+  {
+   "n": 809,
+   "title": "[FEATURE] Serialize dicts in error reporting",
+   "created": "2026-04-17",
+   "author": "cgabriel",
+   "labels": [
+    "enhancement"
+   ],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/809"
+  },
+  {
+   "n": 799,
+   "title": "Improve \"server not responding\"  overlay",
+   "created": "2026-04-15",
+   "author": "cgabriel",
+   "labels": [],
+   "assignees": [],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/799"
+  },
+  {
+   "n": 797,
+   "title": "Fix Excel importer: column shift with empty headers and update_only+sql_mode handling",
+   "created": "2026-04-15",
+   "author": "dgpaci",
+   "labels": [],
+   "assignees": [
+    "dgpaci"
+   ],
+   "comments": 0,
+   "url": "https://github.com/genropy/genropy/issues/797"
+  }
+ ]
+}

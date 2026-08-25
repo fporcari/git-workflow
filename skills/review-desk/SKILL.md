@@ -25,17 +25,23 @@ checkout:
  "port": 8398}
 ```
 
-**At startup each desk enqueues its own triage** (`pr-triage` /
-`issue-triage`): expect those events as soon as the watcher parks, run them
-report-only and export — the desks fill themselves. The ↻ button re-runs
-them. Launch only the desk the user asked for when they name one.
+**The desks do NOT triage at startup.** Each one boots, reads the provider
+in the background and paints its real rows within seconds; the triage is the
+↻ button, and it arrives as a `triage` event carrying `rows` — the path of a
+JSON file with the queue and the issues **already downloaded**. Read that
+file instead of re-querying the provider: the skill's own fetch is the
+slowest thing it does and the desk has already paid for it. Pass
+`--triage-at-boot` only if the user wants the old open-and-wait behaviour.
+Launch only the desk the user asked for when they name one.
 
 Without `--chat` a desk runs standalone: Analyze spawns a headless
 read-only `claude -p` and Go leaves orders for `/pr-run`; no startup triage.
 
 Options: `--repo owner/repo` (default: the cwd's origin), `--provider
-github|forgejo` (forgejo needs `FORGEJO_URL`/`FORGEJO_TOKEN`), `--me`,
-`--port` (default by desk), `--keep-state`.
+github|forgejo|fixture` (forgejo needs `FORGEJO_URL`/`FORGEJO_TOKEN`;
+`fixture` replays a recorded payload with no network, for development),
+`--me`, `--port` (default by desk), `--keep-state`, `--triage-at-boot`,
+`--no-prefetch`.
 
 ## 2 · Park the watcher
 
@@ -89,9 +95,11 @@ each event in order:
   roundtrip. Answer immediately and cheaply, nothing else:
   `python3 ${CLAUDE_PLUGIN_ROOT}/server/notify.py --repo <owner/repo> --pong T "pong — chat collegata e in ascolto"`,
   then restart the watcher. No analysis, no chat prose beyond one line.
-- **`{"kind": "triage", "flow": "pr-triage"|"issue-triage"}`** — run that
-  skill here, report-only, and export its output to the desk state as the
-  skill's own export section specifies (`grid`+`chase` for pr-triage,
+- **`{"kind": "triage", "flow": ..., "rows": "<path>"}`** — run that
+  skill here, report-only, **reading `rows` instead of querying the
+  provider** (it holds `{repo, me, generated, queue: [...], issues: [...]}`
+  with the same row shape the skill's own fetch produces), and export its
+  output to the desk state as the skill's own export section specifies (`grid`+`chase` for pr-triage,
   `situa` for issue-triage): the desk's Triage tab renders exactly that
   export. Skip the skill's closing handover question — the user drives from
   the dashboard.
@@ -127,4 +135,11 @@ Verdicts are the pr-triage vocabulary computed from provider fields
 chase (raw field grouping until pr-triage exports its verified §6 blocks);
 the detail panel merges the state file live — analyses, drafts, order
 outcomes. Copying prompts is the last-resort link at the bottom of the
-panel. Data is cached two minutes; the sync button forces a fresh read.
+panel.
+
+Rows come from a disk cache (fresh for two minutes, served stale while it
+revalidates), so a restart repaints instantly; ⟳ forces a fresh read. The
+merge state is fetched as a second phase — it is by far the most expensive
+field on GitHub — so the merge column may read `…` for a beat on a cold
+start and fill itself in. A queue the provider had to truncate is stated in
+a banner, never hidden.

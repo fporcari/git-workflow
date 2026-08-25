@@ -1,637 +1,741 @@
 <!doctype html>
-<html lang="en">
+<html lang="it">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Review desk</title>
 <style>
 :root{--bg:#f4f2ed;--panel:#fbfaf7;--ink:#1e1d1a;--muted:#77736b;--line:#d9d5cc;--soft:#ebe8e0;--rust:#b95832;--red:#a53d32;--amber:#a57421;--green:#347044;--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
-*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink)}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink)}
 body{font:13px/1.4 system-ui,sans-serif}
 .shell{min-height:100vh;display:flex;flex-direction:column}
-.topbar{height:48px;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 18px;background:var(--panel);justify-content:space-between}
+
+.topbar{height:48px;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 18px;background:var(--panel);justify-content:space-between;gap:12px}
 .brand,.topStats{display:flex;align-items:center;gap:12px}
-.brandMark{font:700 10px/24px var(--mono);width:26px;height:26px;border-radius:7px;text-align:center;background:var(--ink);color:var(--panel);letter-spacing:-.05em}
+.brandMark{font:700 10px/26px var(--mono);width:26px;height:26px;border-radius:7px;text-align:center;background:var(--ink);color:var(--panel);letter-spacing:-.05em}
 .brand strong{font-size:13px}
-.repo{font:11px var(--mono);color:var(--muted);border-left:1px solid var(--line);padding-left:12px}
-.topStats{font-size:11px;color:var(--muted)}.topStats b{font:600 12px var(--mono);color:var(--ink)}
-.sync{display:flex;align-items:center;gap:6px;cursor:pointer;border:0;background:none;color:var(--muted);font:11px inherit}
-.sync i{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px color-mix(in srgb,var(--green) 12%,transparent)}
-.summary{display:grid;grid-template-columns:minmax(300px,1fr) repeat(4,minmax(110px,160px));border-bottom:1px solid var(--line);background:var(--panel)}
-.summaryLead{padding:16px 18px;display:flex;flex-direction:column;gap:2px}
-.summaryLead strong{font-size:17px;letter-spacing:-.02em}.summaryLead small{color:var(--muted)}
+.repo{font:11px var(--mono);color:var(--muted);border-left:1px solid var(--line);padding-left:12px;white-space:nowrap}
+.topStats{font-size:11px;color:var(--muted)}
+.topStats b{font:600 12px var(--mono);color:var(--ink)}
+.btn{border:1px solid var(--line);border-radius:6px;background:var(--panel);padding:5px 9px;color:var(--ink);font:11px inherit;cursor:pointer;text-decoration:none;white-space:nowrap}
+.btn:hover:not(:disabled){background:var(--soft)}
+.btn:disabled{opacity:.42;cursor:not-allowed}
+.btn.primary{background:var(--ink);border-color:var(--ink);color:var(--panel)}
+.btn.copied,.btn.done{border-color:var(--green);color:var(--green);background:color-mix(in srgb,var(--green) 8%,var(--panel))}
+.btn.working{border-color:var(--amber);color:var(--amber)}
+.sync{display:flex;align-items:center;gap:6px}
+.sync i{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px color-mix(in srgb,var(--green) 12%,transparent);flex:none}
+.sync.loading i{background:var(--amber);box-shadow:0 0 0 3px color-mix(in srgb,var(--amber) 12%,transparent);animation:pulse 1s infinite}
+.sync.ko i{background:var(--red);box-shadow:0 0 0 3px color-mix(in srgb,var(--red) 12%,transparent)}
+@keyframes pulse{50%{opacity:.25}}
+
+.summary{display:grid;grid-template-columns:minmax(300px,1fr) repeat(4,minmax(104px,150px));border-bottom:1px solid var(--line);background:var(--panel)}
+.summaryLead{padding:14px 18px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.summaryLead strong{font-size:17px;letter-spacing:-.02em}
+.summaryLead small{color:var(--muted)}
 .eyebrow,h2{font:600 10px var(--mono);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
-.metric{padding:14px 16px;border-left:1px solid var(--line);display:flex;flex-direction:column;justify-content:center}
-.metric b{font:600 22px/1 var(--mono)}.metric span{font-size:10.5px;color:var(--muted);margin-top:4px}
+.metric{padding:12px 16px;border-left:1px solid var(--line);display:flex;flex-direction:column;justify-content:center;cursor:pointer;border-top:0;background:none;text-align:left;font:inherit;color:inherit}
+.metric:hover{background:var(--soft)}
+.metric.on{box-shadow:inset 0 -2px var(--rust)}
+.metric b{font:600 21px/1 var(--mono)}
+.metric span{font-size:10.5px;color:var(--muted);margin-top:3px}
 .metric.hot b{color:var(--red)}.metric.amber b{color:var(--amber)}.metric.green b{color:var(--green)}
+
+.banner{display:none;padding:7px 18px;border-bottom:1px solid var(--line);font-size:11.5px}
+.banner.on{display:block}
+.banner.err{background:color-mix(in srgb,var(--red) 7%,var(--panel));color:var(--red)}
+.banner.warn{background:color-mix(in srgb,var(--amber) 8%,var(--panel));color:var(--amber)}
+.banner.info{background:var(--panel);color:var(--muted)}
+.feed{display:none;padding:6px 18px;border-bottom:1px solid var(--line);background:var(--panel);max-height:88px;overflow:auto;font:11px var(--mono);color:var(--muted)}
+.feed.on{display:block}
+.feed div{padding:1px 0}.feed b{color:var(--ink);margin-right:7px}
+.testBox{display:none;padding:9px 18px;border-bottom:1px solid var(--line);background:var(--panel);font:11.5px var(--mono)}
+.testBox.on{display:block}
+.testBox .ok{color:var(--green)}.testBox .ko{color:var(--red)}.testBox .pending{color:var(--muted)}
+
 .queue{background:var(--panel);border-bottom:1px solid var(--line)}
-.queueTools{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-bottom:1px solid var(--line)}
-.tabs{height:100%;display:flex;gap:2px}
-.tabs button{height:100%;border:0;border-bottom:2px solid transparent;background:none;color:var(--muted);font:500 11.5px inherit;padding:0 10px;cursor:pointer}
+.queueTools{min-height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-bottom:1px solid var(--line);gap:10px;flex-wrap:wrap}
+.tabs{display:flex;gap:2px;align-self:stretch}
+.tabs button{border:0;border-bottom:2px solid transparent;background:none;color:var(--muted);font:500 11.5px inherit;padding:0 10px;cursor:pointer}
 .tabs button.active{color:var(--ink);border-color:var(--rust)}
 .tabs b{font:500 10px var(--mono);padding:1px 5px;border-radius:8px;background:var(--soft);margin-left:4px}
+.tools{display:flex;gap:6px;align-items:center}
 .search{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);padding:4px 8px;color:var(--muted)}
-.search input{width:210px;border:0;outline:0;background:transparent;font:11px inherit;color:var(--ink)}
-.tableWrap{overflow:auto;max-height:44vh;position:relative}
-table{width:100%;min-width:1150px;border-collapse:collapse}
-th,td{text-align:left;border-bottom:1px solid var(--line);padding:7px 10px;white-space:nowrap}
-th{position:sticky;top:0;z-index:2;background:var(--panel);font:600 9.5px var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.07em}
+.search input{width:190px;border:0;outline:0;background:transparent;font:11px inherit;color:var(--ink)}
+
+.tableWrap{overflow:auto;max-height:min(34vh,340px)}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;border-bottom:1px solid var(--line);padding:6px 10px;white-space:nowrap}
+th{position:sticky;top:0;z-index:2;background:var(--panel);font:600 9.5px var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.07em;cursor:pointer;user-select:none}
+th .dir{color:var(--rust)}
 tbody tr{cursor:pointer;outline:none}
-tbody tr:hover td,tbody tr:focus td{background:#f7f5f0}
+tbody tr:hover td{background:#f7f5f0}
 tbody tr.selected td{background:#eeeae1}
 tbody tr.selected td:first-child{box-shadow:inset 3px 0 var(--rust)}
-.markCol{width:34px}.mark{text-align:center;font:700 12px var(--mono)}
-tr.attention .mark{color:var(--red)}tr.decision .mark{color:var(--amber)}tr.ready .mark{color:var(--green)}tr.waiting .mark{color:var(--muted)}
-.prTitle{display:flex;align-items:center;gap:8px;max-width:330px}
-.prTitle b{font:600 11px var(--mono);color:var(--muted)}
+.markCol{width:32px}
+.mark{text-align:center;font:700 12px var(--mono)}
+tr.attention .mark{color:var(--red)}tr.decision .mark{color:var(--amber)}
+tr.ready .mark{color:var(--green)}tr.waiting .mark{color:var(--muted)}
+.prTitle{display:flex;align-items:center;gap:8px;max-width:420px}
+.prTitle b{font:600 11px var(--mono);color:var(--muted);flex:none}
 .prTitle span{overflow:hidden;text-overflow:ellipsis;font-weight:560}
-.prTitle small{margin-left:auto;color:var(--muted);font:10px var(--mono)}
-.avatar{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#d9dfe0;color:#425657;font:600 8px var(--mono);margin-right:6px}
+.prTitle small{margin-left:auto;color:var(--muted);font:10px var(--mono);flex:none}
+.avatar{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#d9dfe0;color:#425657;font:600 8px var(--mono);margin-right:6px;vertical-align:middle}
 .status{display:inline-block;border:1px solid var(--line);border-radius:10px;padding:1px 7px;font-size:10px;color:var(--muted)}
 .status.attention{color:var(--red);border-color:color-mix(in srgb,var(--red) 35%,var(--line));background:color-mix(in srgb,var(--red) 6%,transparent)}
 .status.decision{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 35%,var(--line))}
 .status.ready{color:var(--green);border-color:color-mix(in srgb,var(--green) 35%,var(--line))}
-.check{font-size:8px}.check.CLEAN{color:var(--green)}.check.DIRTY,.check.UNSTABLE{color:var(--red)}.check.BLOCKED{color:var(--amber)}
+.check{font-size:8px}
+.check.CLEAN{color:var(--green)}.check.DIRTY,.check.BLOCKED{color:var(--red)}
+.check.UNSTABLE{color:var(--amber)}.check.pending{color:var(--line)}
 .num{text-align:right}.mono{font:10.5px var(--mono)}
-.next{max-width:230px;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
-.tag{font:600 9px var(--mono);border:1px solid var(--line);border-radius:8px;padding:1px 6px;color:var(--muted)}
+.next{max-width:250px;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+.tag{display:inline-block;border:1px solid var(--line);border-radius:4px;padding:0 5px;font:9.5px var(--mono);color:var(--muted)}
 .tag.DEFECT{color:var(--red);border-color:color-mix(in srgb,var(--red) 35%,var(--line))}
-.tag.REQUEST{color:var(--amber)}.tag.QUESTION{color:#3d5a80}.tag.DOCS{color:var(--green)}
-.empty{padding:28px;display:flex;flex-direction:column;align-items:center;color:var(--muted);gap:3px}.empty b{color:var(--ink)}
-.detail{padding:14px 18px 28px;flex:1;min-height:240px}
-.detailHead{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px}
-.detailHead>div:first-child{display:grid;grid-template-columns:26px 1fr;column-gap:8px}
+.tag.REQUEST{color:var(--green);border-color:color-mix(in srgb,var(--green) 35%,var(--line))}
+.tag.QUESTION{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 35%,var(--line))}
+.dot{color:var(--rust);font-size:9px}
+.empty{padding:26px;display:flex;flex-direction:column;align-items:center;color:var(--muted);gap:3px}
+.empty b{color:var(--ink)}
+.skel{padding:0}
+.skel div{height:29px;border-bottom:1px solid var(--line);background:linear-gradient(90deg,var(--panel),var(--soft),var(--panel));background-size:200% 100%;animation:shimmer 1.1s infinite}
+@keyframes shimmer{to{background-position:-200% 0}}
+
+.chaseWrap{display:none;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px;padding:12px 14px}
+.chaseWrap.on{display:grid}
+.chaseCard{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--bg)}
+.chaseCard pre{margin:6px 0 8px;white-space:pre-wrap;font:11px var(--mono);color:var(--muted)}
+.chaseNote{grid-column:1/-1;color:var(--muted);font-size:11.5px}
+
+.detail{padding:12px 18px 18px;flex:1;min-height:230px}
+.detailHead{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:9px;gap:14px}
+.detailHead>div:first-child{display:grid;grid-template-columns:26px 1fr;column-gap:8px;min-width:0}
 .largeMark{grid-row:1/3;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--line);font:700 11px var(--mono)}
-.largeMark.attention{color:var(--red);border-color:var(--red)}.largeMark.decision{color:var(--amber);border-color:var(--amber)}.largeMark.ready{color:var(--green);border-color:var(--green)}
+.largeMark.attention{color:var(--red);border-color:var(--red)}
+.largeMark.decision{color:var(--amber);border-color:var(--amber)}
+.largeMark.ready{color:var(--green);border-color:var(--green)}
 .detailKicker{font:10px var(--mono);color:var(--muted)}
 h1{font-size:18px;line-height:1.2;margin:2px 0 0;letter-spacing:-.02em}
-.detailActions a{border:1px solid var(--line);border-radius:6px;background:var(--panel);padding:6px 10px;color:var(--ink);font:11px inherit;text-decoration:none}
-.detailGrid{display:grid;grid-template-columns:1.3fr .9fr .9fr;border:1px solid var(--line);border-radius:8px;background:var(--panel);overflow:hidden;min-height:150px}
-.detailGrid>*{padding:13px 15px;min-width:0}.detailGrid>*+*{border-left:1px solid var(--line)}
-h2{margin:0 0 7px}.detailGrid p{margin:0 0 12px}
+.detailActions{display:flex;gap:7px;flex:none;flex-wrap:wrap;justify-content:flex-end}
+.detailTabs{display:flex;gap:2px;margin-bottom:-1px;position:relative;z-index:1}
+.detailTabs button{border:1px solid transparent;border-radius:6px 6px 0 0;background:none;padding:5px 10px;color:var(--muted);font:11px inherit;cursor:pointer}
+.detailTabs button[aria-selected=true]{background:var(--panel);border-color:var(--line);border-bottom-color:var(--panel);color:var(--ink);font-weight:600}
+.detailGrid{display:grid;grid-template-columns:1.3fr .9fr .9fr;border:1px solid var(--line);border-radius:0 8px 8px 8px;background:var(--panel);overflow:hidden;min-height:140px}
+.detailGrid>*{padding:12px 15px;min-width:0}
+.detailGrid>*+*{border-left:1px solid var(--line)}
+.wideArticle{grid-column:span 2}
+h2{margin:0 0 7px}
+.detailGrid p{margin:0 0 11px}
 .detailGrid dl{margin:0;border-top:1px solid var(--line)}
-.detailGrid dl div{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line);font-size:11px}
-.detailGrid dt{color:var(--muted)}.detailGrid dd{margin:0;font-weight:560;text-align:right}
+.detailGrid dl div{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--line);font-size:11px}
+.detailGrid dt{color:var(--muted);flex:none}
+.detailGrid dd{margin:0;font-weight:560;text-align:right;overflow:hidden;text-overflow:ellipsis}
 .nextCard{background:color-mix(in srgb,var(--amber) 4%,var(--panel))}
-.nextCard p{font-weight:600;font-size:14px}.nextCard small{color:var(--muted)}
-.signal{display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding:6px 0;font-size:11px}
+.nextCard p{font-weight:600;font-size:14px}
+.nextCard small{color:var(--muted)}
+.signal{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--line);padding:6px 0;font-size:11px}
 .signal span{color:var(--muted)}
-[data-tip]{position:relative}
-[data-tip]:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 7px);left:50%;transform:translateX(-50%);background:var(--ink);color:var(--panel);padding:7px 10px;border-radius:6px;font:11px/1.4 system-ui;width:max-content;max-width:300px;white-space:normal;z-index:60;text-align:left;box-shadow:0 3px 10px rgba(0,0,0,.25);pointer-events:none}
-.tipUnder[data-tip]:hover::after{bottom:auto;top:calc(100% + 7px)}
-.tipRight[data-tip]:hover::after{left:auto;right:0;transform:none}
-.testBox{margin:10px 18px;padding:10px 14px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
-.testBox div{font:11.5px var(--mono);padding:3px 0}
-.testBox .ok{color:var(--green)}.testBox .ko{color:var(--red)}.testBox .pending{color:var(--muted)}
-dialog#dlg{border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);padding:0;width:min(760px,94vw);max-height:84vh;overflow:auto;box-shadow:0 14px 44px rgba(0,0,0,.28)}
-dialog#dlg::backdrop{background:rgba(30,29,26,.38)}
-.dlgHead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:13px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel);z-index:2}
-.dlgHead h1{font-size:15px;margin:2px 0 0}
-.dlgBody{padding:13px 16px}
-.dlgBody dl{margin:0;border-top:1px solid var(--line)}
-.dlgBody dl div{display:flex;justify-content:space-between;gap:14px;padding:5px 0;border-bottom:1px solid var(--line);font-size:11.5px}
-.dlgBody dt{color:var(--muted)}.dlgBody dd{margin:0;font-weight:560;text-align:right}
-.dlgActions{display:flex;gap:8px;flex-wrap:wrap;padding:12px 16px;border-top:1px solid var(--line);position:sticky;bottom:0;background:var(--panel)}
-.rowBtn{border:1px solid var(--line);border-radius:6px;background:var(--panel);font:10.5px inherit;padding:3px 9px;cursor:pointer;color:var(--muted);white-space:nowrap}
-tbody tr:hover .rowBtn{color:var(--ink);border-color:var(--muted)}
-.gridBlock table{table-layout:fixed;width:100%;min-width:0}
-.gridBlock td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:6px 8px}
-.err{margin:10px 18px;padding:8px 12px;border:1px solid var(--red);border-radius:6px;color:var(--red);background:color-mix(in srgb,var(--red) 5%,var(--panel));display:none}
-.btn{border:1px solid var(--line);border-radius:6px;background:var(--panel);padding:6px 10px;color:var(--ink);font:11px inherit;cursor:pointer;white-space:nowrap}
-@media(max-width:980px){[data-cmd]{display:none}}
-.btn.primary{background:var(--ink);border-color:var(--ink);color:var(--panel)}
-.btn.copied{border-color:var(--green);color:var(--green)}
-.actionText{font:10.5px var(--mono);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px;white-space:pre-wrap;word-break:break-word;margin:8px 0;color:var(--muted)}
-.draft{border-left:3px solid var(--rust);padding:9px 11px;background:var(--bg);border-radius:0 6px 6px 0;margin-bottom:8px}
-.draft span{font:600 9px var(--mono);color:var(--rust)}.draft p{margin:4px 0 0;white-space:pre-wrap}
-.chaseWrap{padding:16px 18px;display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(340px,1fr))}
-.chaseCard{border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:12px 14px}
-.chaseCard pre{font:11px var(--mono);white-space:pre-wrap;word-break:break-word;margin:6px 0 10px;color:var(--ink)}
-.chaseNote{grid-column:1/-1;font-size:11px;color:var(--muted)}
-.skillStamp{font:10px var(--mono);color:var(--muted)}
-.feed{position:fixed;left:0;right:0;bottom:0;z-index:40;border-top:1px solid var(--line);background:color-mix(in srgb,var(--amber) 3%,var(--panel));padding:6px 18px;display:flex;flex-direction:column;gap:2px;max-height:96px;overflow:auto;box-shadow:0 -2px 10px rgba(0,0,0,.07)}
-.shell{padding-bottom:110px}
-.feed div{font:11px var(--mono);color:var(--ink)}
-.feed div b{color:var(--muted);font-weight:500;margin-right:8px}
-.gridWrap{padding:14px 18px;display:flex;flex-direction:column;gap:14px}
-.gridBlock h2{margin-bottom:6px}
-.gridBlock table{min-width:0;width:100%}
-.gridBlock .empty1{font-size:11px;color:var(--muted)}
-@media(max-width:900px){.summary{grid-template-columns:1fr repeat(2,130px)}.metric:nth-last-child(-n+2){display:none}.detailGrid{grid-template-columns:1fr}.detailGrid>*+*{border-left:0;border-top:1px solid var(--line)}}
+.evidence{display:flex;flex-direction:column;padding:5px 0;border-bottom:1px solid var(--line)}
+.evidence code{font:10.5px var(--mono);white-space:normal}
+.evidence span{font-size:10.5px;color:var(--muted)}
+.thread{display:grid;grid-template-columns:22px 1fr;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
+.thread>span{width:20px;height:20px;display:grid;place-items:center;border-radius:50%;background:var(--soft);font:10px var(--mono)}
+.thread p{margin:2px 0;color:var(--muted);font-size:11.5px}
+.draft{border-left:3px solid var(--red);padding:9px 11px;background:var(--bg);border-radius:0 6px 6px 0}
+.draft span{font:600 9px var(--mono);color:var(--red)}
+.draft p{margin:4px 0 0;white-space:pre-wrap}
+.draftActions{display:flex;gap:7px;margin-top:10px;flex-wrap:wrap}
+.detailGrid ul{margin:0;padding-left:17px;color:var(--muted);font-size:11.5px}
+.detailGrid li{margin:4px 0}
+.tabEmpty{padding:18px 0;color:var(--muted)}
+.actionText{border:1px dashed var(--line);border-radius:6px;padding:8px 10px;margin-top:9px;color:var(--muted);font-size:11.5px}
+.kbd{font:10px var(--mono);border:1px solid var(--line);border-radius:3px;padding:0 4px;color:var(--muted)}
+.timings{font:10px var(--mono);color:var(--muted)}
+
+@media(max-width:1000px){.summary{grid-template-columns:1fr repeat(2,120px)}.metric:nth-last-child(-n+2){display:none}.detailGrid{grid-template-columns:1fr 1fr}.detailGrid aside{grid-column:1/-1;border-left:0;border-top:1px solid var(--line)}}
+@media(max-width:680px){.repo,.topStats span{display:none}.summary{grid-template-columns:1fr 1fr}.summaryLead{grid-column:1/-1}.detailGrid{grid-template-columns:1fr}.wideArticle{grid-column:auto}.detailGrid>*+*{border-left:0;border-top:1px solid var(--line)}.search input{width:110px}}
 </style>
 </head>
 <body>
 <main class="shell">
   <header class="topbar">
-    <div class="brand"><span class="brandMark">GW</span><strong>review desk</strong><span class="repo" id="repoLabel">…</span></div>
-    <div class="topStats"><span><b id="cPrs">0</b> PR aperte</span><span><b id="cIssues">0</b> issue aperte</span><button class="sync" id="refresh"><i></i><span id="syncLabel">aggiornato —</span></button><button class="btn tipUnder tipRight" id="btnTest" data-tip="Modalità test: verifica la comunicazione desk → server → chat collegata → desk (provider, file di stato, watcher, ping roundtrip).">🧪 test</button><button class="btn tipUnder tipRight" id="btnStop" data-tip="Ferma il server del desk e avvisa la chat collegata. Si riparte dalla chat con /review-desk.">⏻ stop</button></div>
+    <div class="brand"><span class="brandMark">GW</span><strong id="deskName">desk</strong><span class="repo" id="repoLabel">…</span></div>
+    <div class="topStats">
+      <span><b id="cPrs">—</b> PR</span><span><b id="cIssues">—</b> issue</span>
+      <button class="btn sync" id="btnFetch" title="Rilegge il provider ignorando la cache"><i></i><span id="syncLabel">avvio…</span></button>
+      <button class="btn" id="btnTest" title="Verifica desk → server → chat collegata → desk">🧪</button>
+      <button class="btn" id="btnStop" title="Ferma il server del desk">⏻</button>
+    </div>
   </header>
 
   <section class="summary">
-    <div class="summaryLead"><span class="eyebrow">coda review</span><strong id="leadTitle">carico…</strong><small id="leadSub">leggo il provider</small></div>
-    <div class="metric hot tipUnder" data-tip="PR dove la prossima azione è tua: review da fare, risposte, riallineamenti"><b id="mAttention">0</b><span>mosse tue</span></div>
-    <div class="metric amber tipUnder" data-tip="Scelte che può fare solo l'autore/tu: draft da chiudere, decisioni di design"><b id="mDecision">0</b><span>decisioni tue</span></div>
-    <div class="metric tipUnder" data-tip="PR ferme in attesa di qualcun altro: le trovi raggruppate nel tab Solleciti"><b id="mWaiting">0</b><span>in attesa di altri</span></div>
-    <div class="metric green tipUnder" data-tip="Approvate, CLEAN, zero richieste pendenti: pronte al merge"><b id="mReady">0</b><span>mergiabili ora</span></div>
+    <div class="summaryLead"><span class="eyebrow" id="leadEyebrow">coda review</span><strong id="leadTitle">carico…</strong><small id="leadSub">&nbsp;</small></div>
+    <button class="metric hot" data-filter="attention" title="La prossima mossa è tua: review da fare, risposte, riallineamenti"><b id="mAttention">—</b><span>mosse tue</span></button>
+    <button class="metric amber" data-filter="decision" title="Scelte che può fare solo tu: draft da chiudere, decisioni di design"><b id="mDecision">—</b><span>decisioni tue</span></button>
+    <button class="metric" data-filter="waiting" title="Ferme in attesa di qualcun altro"><b id="mWaiting">—</b><span>in attesa</span></button>
+    <button class="metric green" data-filter="ready" title="Approvate, CLEAN, zero richieste pendenti: pronte al merge"><b id="mReady">—</b><span>mergiabili</span></button>
   </section>
 
-  <div class="err" id="errBox"></div>
-  <div class="err" id="watcherBox" style="border-color:var(--red)"></div>
-  <div class="testBox" id="testBox" style="display:none"></div>
-  <div class="feed" id="feedBox" style="display:none"></div>
+  <div class="banner err" id="errBox"></div>
+  <div class="banner warn" id="watcherBox"></div>
+  <div class="banner info" id="noteBox"></div>
+  <div class="testBox" id="testBox"></div>
+  <div class="feed" id="feedBox"></div>
 
   <section class="queue">
     <div class="queueTools">
       <div class="tabs" id="tabs"></div>
-      <div style="display:flex;gap:6px;align-items:center">
-        <button class="btn tipUnder" id="btnTriage"></button>
-        <button class="btn tipUnder tipRight" id="btnAction"></button>
+      <div class="tools">
+        <button class="btn" id="btnTriage"></button>
+        <button class="btn" id="btnRun"></button>
         <label class="search"><span>⌕</span><input id="q" placeholder="Filtra numero, titolo, autore…"></label>
       </div>
     </div>
-    <div class="tableWrap" id="tableWrap"><table>
-      <thead id="thead"></thead><tbody id="tbody"></tbody>
-    </table><div class="empty" id="empty" style="display:none"><b>Niente in questa vista</b><span>Prova un altro filtro o un altro tab.</span></div></div>
-    <div class="chaseWrap" id="chaseWrap" style="display:none"></div>
-    <div class="gridWrap" id="gridWrap" style="display:none"></div>
+    <div class="tableWrap" id="tableWrap"><table><thead id="thead"></thead><tbody id="tbody"></tbody></table>
+      <div class="empty" id="empty" style="display:none"></div></div>
+    <div class="chaseWrap" id="chaseWrap"></div>
   </section>
 
+  <section class="detail" id="detail"></section>
 </main>
-<dialog id="dlg">
-  <div class="dlgHead"><div id="dlgTitle"></div><button class="btn" id="dlgClose">✕ chiudi</button></div>
-  <div class="dlgBody" id="dlgBody"></div>
-  <div class="dlgActions" id="dlgActions"></div>
-</dialog>
 <script>
 "use strict";
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const MARK={ready:"✓",attention:"!",waiting:"○",decision:"◆"};
 const STATE_LABEL={ready:"mergiabile",attention:"mossa tua",waiting:"in attesa",decision:"decisione tua"};
-let meta={},DESK="pr",prs=[],issues=[],chase={},grid=null,situa=null,session=null,loaded=false,view="grid",query="",watcherAlive=false,lastPong=null;
+const AUTORUN_TIP="Cosa può fare pr-run da solo: A1 merge (tua PR approvata e CLEAN) · A2 edit banale chiesto dal reviewer · A3 riallineo del branch · asks te lo porta in chat · yours decisione solo tua · - tocca ad altri";
+
+let meta={},DESK="pr",prs=[],issues=[],chase={},grid=null,situa=null,session=null;
+let loaded=false,view="todo",query="",stateFilter=null,watcherAlive=false;
+let selected=null,tab="quadro",sort={key:"created",dir:-1},acting={},truncated=null,pendingMerge=false;
+let deskEtag=null,fetching=false,lastGenerated=null,timings={};
 const triageRunning={pr:false,issue:false};
 
-const VIEWS=()=>DESK==="issue"?[
-  {id:"grid",label:"Situa",tip:"L'output di issue-triage: le 10 issue recenti non analizzate, tipo e cross-check di branch e PR. Si aggiorna col bottone ↻.",count:situa?situa.rows.length:0},
-  {id:"issues",label:"Tutte",tip:"Tutte le issue aperte del repo, live dai campi (si caricano col ⟳)",count:loaded?issues.length:"—"},
-]:[
-  {id:"grid",label:"Tutti",tip:"Tutte le PR in cui sei coinvolto, organizzate per blocchi dal triage (parte da solo all'avvio; ↻ per rifarlo)",count:grid?grid.blocks.reduce((a,b)=>a+b.rows.length,0):"—"},
-  {id:"todo",label:"Da fare",tip:"Solo i blocchi che chiedono una tua azione: mergiabili, azioni banali, review da fare, decisioni tue",count:grid?grid.blocks.filter(b=>b.title!=="In attesa di altri").reduce((a,b)=>a+b.rows.length,0):"—"},
-  {id:"chase",label:"Solleciti",tip:"Un messaggio pronto da incollare per ogni persona da sollecitare (verificati, da pr-triage)",count:Object.keys(chase).length},
-];
-
-async function copyText(btn,text){
-  try{await navigator.clipboard.writeText(text);}catch(e){
-    const ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand("copy");ta.remove();
-  }
-  const old=btn.textContent;btn.textContent="copiato ✓";btn.classList.add("copied");
-  setTimeout(()=>{btn.textContent=old;btn.classList.remove("copied");},1400);
-}
+/* ---------- helpers ---------- */
 function ageDays(d){return Math.max(0,Math.round((Date.now()-new Date(d))/864e5));}
-
-function renderTabs(){
-  const onIssues=DESK==="issue";
-  const tri=$("btnTriage");
-  tri.textContent=onIssues?"↻ issue-triage":"↻ pr-triage";
-  tri.dataset.tip=onIssues
-    ?"Rilancia issue-triage nella chat collegata: rifà la situa (batch recenti, tipo, cross-check branch/PR). All'avvio del desk parte da solo."
-    :"Rilancia pr-triage nella chat collegata: rifà la griglia con i gate veri e i solleciti verificati. All'avvio del desk parte da solo.";
-  tri.disabled=!watcherAlive||triageRunning[onIssues?"issue":"pr"];
-  const act=$("btnAction");
-  act.textContent=onIssues?"▶ issue-run in chat":"▶ pr-run in chat";
-  act.dataset.tip=onIssues
-    ?"La skill issue-run lavora il batch in chat: un'analisi a contesto pulito per issue, la scelta di cosa lavorare (in chat), poi branch e PR per le scelte. Ogni passo arriva qui nel feed."
-    :"La skill pr-run svuota la coda in chat: merge delle tue PR approvate, risposte alle review banali, riallineo dei branch, e il resto una PR alla volta. Ogni passo arriva qui nel feed.";
-  act.disabled=!watcherAlive;
-  $("tabs").innerHTML=VIEWS().map(v=>`<button class="${view===v.id?"active":""} tipUnder" data-v="${v.id}" data-tip="${v.tip||""}">${v.label} <b>${v.count}</b></button>`).join("");
-  $("tabs").querySelectorAll("button").forEach(b=>b.onclick=()=>{view=b.dataset.v;render();});
+async function copyText(btn,text){
+  try{await navigator.clipboard.writeText(text);}
+  catch(e){const ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand("copy");ta.remove();}
+  flash(btn,"copiato ✓","copied");
 }
-
-function visiblePrs(){
-  const q=query.toLowerCase();
-  return prs.filter(r=>{
-    const ok=view==="all"||(view==="queue"&&r.state!=="waiting")||(view==="ready"&&r.state==="ready")||(view==="waiting"&&r.state==="waiting");
-    return ok&&(!q||[r.n,r.title,r.author,r.todo].join(" ").toLowerCase().includes(q));
-  });
+function flash(btn,label,cls){
+  if(!btn)return;const old=btn.textContent;btn.textContent=label;btn.classList.add(cls);
+  setTimeout(()=>{btn.textContent=old;btn.classList.remove(cls);},1500);
 }
-function visibleIssues(){
-  const q=query.toLowerCase();
-  return issues.filter(r=>!q||[r.n,r.title,r.author,(r.labels||[]).join(" ")].join(" ").toLowerCase().includes(q));
-}
-
-function gridAllRows(){return grid?grid.blocks.flatMap(b=>b.rows):[];}
-function gridBlockRows(title){const b=grid&&grid.blocks.find(x=>x.title===title);return b?b.rows:[];}
-
-const analyses={};
-
-function analysisBlockHtml(r){
-  const a=analyses[r.n];
-  if(a?.status==="queued")
-    return `<div class="actionText">📨 in lavorazione nella chat collegata — segui il feed in basso; l'esito compare qui ad analisi chiusa.</div>`;
-  if(a?.status==="error")
-    return `<div class="actionText">Errore: ${esc(a.error)}</div><button class="btn" id="dAnalyze">Riprova</button>`;
-  return `<button class="btn primary" id="dAnalyze" data-tip="La skill pr-analyze legge tutto il diff, verifica i claim della descrizione e i thread, e produce il blocco cosa/storia/proposta con l'eventuale bozza di risposta. Read-only: non posta nulla.">▶ pr-analyze in chat</button>
-    <small style="display:block;margin-top:4px">L'analisi gira nella chat collegata, con il suo contesto pieno; il desk mostra solo l'esito e le notifiche.</small>`;
-}
-function wireAnalysis(r){
-  const an=$("dAnalyze");if(an)an.onclick=()=>startAnalysis(r.n);
-}
-async function startAnalysis(n){
-  const prev=prs.find(x=>x.n===n)?.skill?.next||null;
-  try{
-    const resp=await fetch(`/api/pr/${n}/analyze`,{method:"POST"});
-    const {queued,error}=await resp.json();
-    if(error)throw new Error(error);
-    analyses[n]={status:"queued"};render();
-    pollQueueUntil(n,row=>(row.skill?.next||null)!==prev,()=>{delete analyses[n];});
-  }catch(e){analyses[n]={status:"error",error:e.message};render();}
-}
-async function sendOrder(r){
-  const resp=await fetch(`/api/pr/${r.n}/order`,{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({propose:r.todo,draft:(r.skill&&r.skill.draft)||null,instruction:""})});
-  const d=await resp.json();
-  if(d.error){$("errBox").style.display="block";$("errBox").textContent=d.error;return;}
-  r.order=d.order;render();
-  pollQueueUntil(r.n,row=>row.order&&row.order.status!=="pending",()=>{});
-}
-
-function pollQueueUntil(n,test,onDone){
-  const t=setInterval(async()=>{
-    try{
-      const q=await fetch("/api/queue").then(r=>r.json());
-      prs=q.rows;session=q.session;
-      const row=prs.find(x=>x.n===n);
-      if(row&&test(row)){clearInterval(t);onDone(row);}
-      render();
-    }catch(e){}
-  },8000);
-}
-
-let lastStateStamp="";
-async function pollState(){
-  try{
-    const st=await fetch("/api/state").then(r=>r.json());
-    grid=st.grid;situa=st.situa;session=st.session;lastPong=st.pong||null;
-    const w=st.watcher||{};
-    watcherAlive=!!w.alive;
-    const wb=$("watcherBox");
-    if(w.chat&&!w.alive&&w.busy){
-      watcherAlive=true;
-      wb.style.display="block";
-      wb.style.borderColor="var(--amber)";wb.style.color="var(--amber)";
-      wb.innerHTML="<b>Chat occupata.</b> La sessione collegata sta lavorando un evento: i nuovi click si accodano e verranno presi a fine lavoro.";
-    }else if(w.chat&&!w.alive){
-      wb.style.display="block";
-      wb.style.borderColor="var(--red)";wb.style.color="var(--red)";
-      wb.innerHTML="<b>Chat non in ascolto.</b> La sessione collegata non sta guardando l'inbox: i bottoni sono disattivati. Nella chat che ha lanciato il desk rilancia il desk (o chiedi di riavviare il watcher).";
-    }else{wb.style.display="none";}
-    if(Object.keys(st.chase||{}).length||!loaded)chase=st.chase||chase;
-    const box=$("feedBox"),feed=st.feed||[];
-    if(feed.length){
-      box.style.display="";
-      box.innerHTML=feed.slice(-8).reverse().map(f=>`<div><b>${esc(f.at)}</b>${f.pr?`<b>#${f.pr}</b> `:""}${esc(f.msg)}</div>`).join("");
-    }
-    const stamp=JSON.stringify([grid&&grid.generated,situa&&situa.generated,feed.length,lastPong,watcherAlive]);
-    if(stamp!==lastStateStamp){
-      lastStateStamp=stamp;
-      if(grid)triageRunning.pr=false;
-      if(situa)triageRunning.issue=false;
-      render();
-    }
-  }catch(e){}
-}
-setInterval(pollState,5000);
-
-async function loadQueue(refresh){
-  $("syncLabel").textContent="leggo il provider…";$("errBox").style.display="none";
-  try{
-    const suffix=refresh?"?refresh=1":"";
-    const [q,i]=await Promise.all([
-      fetch("/api/queue"+suffix).then(r=>r.json()),
-      fetch("/api/issues"+suffix).then(r=>r.json()),
-    ]);
-    if(q.error||i.error)throw new Error(q.error||i.error);
-    prs=q.rows;issues=i.rows;session=q.session;loaded=true;
-    if(!Object.keys(chase).length)chase=q.chase||{};
-    $("syncLabel").textContent=`aggiornato ${q.generated}`;
-    render();
-  }catch(e){
-    $("errBox").textContent="Errore provider: "+e.message;$("errBox").style.display="block";
-    $("syncLabel").textContent="lettura fallita";
-  }
-}
-
+function banner(id,html,on){const b=$(id);b.innerHTML=html||"";b.classList.toggle("on",!!on&&!!html);}
 function localFeed(msg){
-  const box=$("feedBox");box.style.display="";
+  const box=$("feedBox");box.classList.add("on");
   box.insertAdjacentHTML("afterbegin",`<div><b>${new Date().toTimeString().slice(0,8)}</b>${esc(msg)}</div>`);
 }
-async function startTriage(){
-  const flow=DESK==="issue"?"issue-triage":"pr-triage";
-  const resp=await fetch("/api/triage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({flow})});
-  const d=await resp.json();
-  if(d.error){$("errBox").style.display="block";$("errBox").textContent=d.error;return;}
-  triageRunning[flow==="issue-triage"?"issue":"pr"]=true;
-  localFeed("richiesta "+flow+" inviata alla chat collegata…");
-  view="grid";render();
+
+/* ---------- data ---------- */
+async function loadDesk(refetch){
+  fetching=true;renderSync();
+  try{
+    const resp=refetch
+      ? await fetch("/api/fetch",{method:"POST"})
+      : await fetch("/api/desk",{headers:deskEtag?{"If-None-Match":deskEtag}:{}});
+    if(resp.status===304){fetching=false;renderSync();return;}
+    if(!refetch)deskEtag=resp.headers.get("ETag");
+    const d=await resp.json();
+    if(d.error)throw new Error(d.error);
+    applyDesk(d);
+    banner("errBox","",false);
+  }catch(e){
+    banner("errBox",`<b>Provider:</b> ${esc(e.message)}`,true);
+  }
+  fetching=false;render();
 }
-async function startRun(){
-  const flow=DESK==="issue"?"issue-run":"pr-run";
-  const resp=await fetch("/api/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({flow})});
-  const d=await resp.json();
-  $("errBox").style.display="block";
-  $("errBox").textContent=d.error||flow+" avviato nella chat collegata: segui il feed in basso.";
-  if(!d.error)localFeed("richiesta "+flow+" inviata alla chat collegata…");
+function applyDesk(d){
+  meta=d.meta||meta;DESK=meta.desk||"pr";timings=d.timings||{};
+  prs=d.queue.rows;issues=d.issues.rows;chase=d.queue.chase||{};
+  session=d.queue.session;lastGenerated=d.generated;
+  truncated=d.queue.truncated?d.queue.total:null;
+  pendingMerge=!!d.queue.mergestate_pending;
+  applyState(d.state);
+  loaded=true;
+  // a merged PR, a filter, a desk switch: the old selection may be gone
+  if(!selectedRow())selectFirst();
 }
-async function startIssueAnalysis(n){
-  const resp=await fetch(`/api/issue/${n}/analyze`,{method:"POST"});
-  const d=await resp.json();
-  $("errBox").style.display=d.error?"block":"none";
-  if(d.error)$("errBox").textContent=d.error;
-  else{analyses["i"+n]={status:"queued"};render();}
+function applyState(st){
+  if(!st)return;
+  grid=st.grid;situa=st.situa;session=st.session||session;
+  if(Object.keys(st.chase||{}).length)chase=st.chase;
+  const w=st.watcher||{};
+  watcherAlive=!!w.alive||!!(w.chat&&w.busy);
+  if(w.chat&&!w.alive&&w.busy)
+    banner("watcherBox","<b>Chat occupata.</b> La sessione collegata sta lavorando un evento: i click si accodano.",true);
+  else if(w.chat&&!w.alive)
+    banner("watcherBox","<b>Chat non in ascolto.</b> I bottoni che parlano alla chat sono disattivati — rilancia il desk dalla chat.",true);
+  else banner("watcherBox","",false);
+  const feed=st.feed||[];
+  const box=$("feedBox");
+  box.classList.toggle("on",feed.length>0);
+  if(feed.length)box.innerHTML=feed.slice(-8).reverse().map(f=>`<div><b>${esc(f.at)}</b>${f.pr?`<b>#${f.pr}</b> `:""}${esc(f.msg)}</div>`).join("");
+  if(grid)triageRunning.pr=false;
+  if(situa)triageRunning.issue=false;
+}
+let stateEtag=null;
+async function pollState(){
+  try{
+    const resp=await fetch("/api/state",{headers:stateEtag?{"If-None-Match":stateEtag}:{}});
+    if(resp.status===304)return;
+    stateEtag=resp.headers.get("ETag");
+    applyState(await resp.json());
+    render();
+  }catch(e){}
 }
 
-function gridRowsTable(rows){
-  if(!rows.length)return `<div class="empty1">niente in questo blocco</div>`;
-  const cols=`<colgroup><col style="width:64px"><col style="width:92px"><col style="width:100px"><col><col style="width:190px"><col style="width:64px"><col style="width:86px"></colgroup>`;
-  return `<table>${cols}<tbody>${rows.map(r=>`<tr data-dlg="p${r.n}"><td class="mono">#${r.n}</td><td class="mono">${esc(r.date||"")}</td><td>${esc(r.author||"")}</td><td>${esc(r.what||"")}</td><td><b>${esc(r.todo||"")}</b></td><td class="mono">${esc(r.autorun||"")}</td><td><button class="rowBtn" data-dlg="p${r.n}">Azioni…</button></td></tr>`).join("")}</tbody></table>`;
+/* ---------- selection ---------- */
+function rows(){return DESK==="issue"?visibleIssues():visiblePrs();}
+function selectFirst(){const r=rows();selected=r.length?r[0].n:null;tab="quadro";}
+function select(n){if(selected!==n){selected=n;tab="quadro";}render();}
+function selectedRow(){
+  const list=DESK==="issue"?issues:prs;
+  return list.find(r=>r.n===selected)||null;
 }
-function renderGrid(){
-  const wrap=$("gridWrap"),on=view==="grid"||view==="todo";
-  wrap.style.display=on?"flex":"none";
-  if(!on)return;
-  let html="";
-  if(DESK==="pr"){
-  html+=`<div class="gridBlock"><h2 style="font-size:12px">Pull request ${grid?`<span class="skillStamp">— ${esc(session||"")} · ${esc(grid.generated||"")}</span>`:""}</h2>`;
-  if(grid){
-    const blocks=view==="todo"?grid.blocks.filter(b=>b.title!=="In attesa di altri"):grid.blocks;
-    html+=blocks.map(b=>`<div class="gridBlock"><h2>${esc(b.title)} (${b.rows.length})</h2>${gridRowsTable(b.rows)}</div>`).join("");
-    const names=view==="todo"?[]:Object.keys(chase);
-    if(names.length)html+=`<div class="gridBlock"><h2>Da sollecitare (${names.length})</h2><div class="chaseWrap" style="padding:0">${names.map(w=>`<div class="chaseCard"><h2>@${esc(w)}</h2><pre>${esc(chase[w])}</pre><button class="btn" data-copy="${esc(chase[w])}">Copia messaggio</button></div>`).join("")}</div></div>`;
-  }else if(triageRunning.pr){
-    html+=`<div class="actionText">⏳ pr-triage in corso nella chat collegata — segui il feed in basso; la griglia comparirà qui.</div>`;
-  }else{
-    html+=`<div class="actionText">⏳ pr-triage parte con il desk — segui il feed in basso; la griglia comparirà qui. Se non arriva, controlla 🧪.</div>`;
-  }
-  html+=`</div>`;
-  }else{
-  html+=`<div class="gridBlock"><h2 style="font-size:12px">Issue ${situa?`<span class="skillStamp">— ${esc(situa.generated||"")}</span>`:""}</h2>`;
-  if(situa){
-    const scols=`<colgroup><col style="width:64px"><col style="width:92px"><col style="width:100px"><col style="width:110px"><col><col style="width:110px"><col style="width:86px"></colgroup>`;
-    html+=`<table>${scols}<tbody>${situa.rows.map(r=>`<tr data-dlg="i${r.n}"><td class="mono">#${r.n}</td><td class="mono">${esc(r.date||"")}</td><td>${esc(r.author||"")}</td><td><span class="tag ${esc(r.type||"")}">${esc(r.type||"")}</span></td><td title="${esc(r.note||"")}">${esc(r.title||"")}</td><td>${esc(r.assignee||"—")}</td><td><button class="rowBtn" data-dlg="i${r.n}">Azioni…</button></td></tr>`).join("")}</tbody></table>`;
-  }else if(triageRunning.issue){
-    html+=`<div class="actionText">⏳ issue-triage in corso nella chat collegata — segui il feed in basso; la situa comparirà qui.</div>`;
-  }else{
-    html+=`<div class="actionText">⏳ issue-triage parte con il desk — segui il feed in basso; la situa comparirà qui. Se non arriva, controlla 🧪.</div>`;
-  }
-  html+=`</div>`;
-  }
-  wrap.innerHTML=html;
-  wrap.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>copyText(b,b.dataset.copy));
-  wrap.querySelectorAll("[data-dlg]").forEach(el=>{el.onclick=e=>{e.stopPropagation();openDialog(el.dataset.dlg);};});
+function moveSelection(delta){
+  const r=rows();if(!r.length)return;
+  const i=r.findIndex(x=>x.n===selected);
+  const next=r[Math.max(0,Math.min(r.length-1,(i<0?0:i+delta)))];
+  selected=next.n;tab="quadro";render();
+  const tr=document.querySelector("tr.selected");if(tr)tr.scrollIntoView({block:"nearest"});
 }
 
-function renderChase(){
-  const wrap=$("chaseWrap"),onChase=view==="chase";
-  $("tableWrap").style.display=(onChase||view==="grid"||view==="todo")?"none":"";
-  wrap.style.display=onChase?"grid":"none";
-  if(!onChase)return;
-  const names=Object.keys(chase);
-  wrap.innerHTML=(names.length?`<div class="chaseNote">${grid
-    ?`Blocchi verificati da pr-triage${session?` — ${esc(session)}`:""}. Pronti da incollare.`
-    :"Blocchi grezzi, raggruppati dai soli campi del provider. Quelli verificati arrivano da ▶ pr-triage."}</div>`:"")
-    +names.map(w=>`<div class="chaseCard"><h2>@${esc(w)}</h2><pre>${esc(chase[w])}</pre><button class="btn" data-copy="${esc(chase[w])}">Copia messaggio</button></div>`).join("")
-    ||`<div class="chaseNote">${loaded?"Nessuno da sollecitare.":"Ancora niente qui: lancia ▶ pr-triage per i solleciti verificati, o ⟳ per il raggruppamento grezzo dai campi."}</div>`;
-  wrap.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>copyText(b,b.dataset.copy));
+/* ---------- filtering ---------- */
+function matches(r,fields){
+  const q=query.trim().toLowerCase();
+  return !q||fields.filter(Boolean).join(" ").toLowerCase().includes(q);
+}
+function visiblePrs(){
+  let list=prs.filter(r=>matches(r,[r.n,r.title,r.author,r.todo,r.base]));
+  if(stateFilter)list=list.filter(r=>r.state===stateFilter);
+  else if(view==="todo")list=list.filter(r=>r.state!=="waiting");
+  else if(view==="waiting")list=list.filter(r=>r.state==="waiting");
+  return sortRows(list);
+}
+function visibleIssues(){
+  let list=issues.filter(r=>matches(r,[r.n,r.title,r.author,(r.labels||[]).join(" "),r.type]));
+  if(view==="free")list=list.filter(r=>!r.assignees.length);
+  if(view==="situa"&&situa){const keep=new Set(situa.rows.map(x=>x.n));list=list.filter(r=>keep.has(r.n));}
+  return sortRows(list);
+}
+const SORTERS={
+  n:r=>r.n,created:r=>r.created,author:r=>r.author||"",title:r=>(r.title||"").toLowerCase(),
+  state:r=>["attention","decision","ready","waiting"].indexOf(r.state),
+  merge:r=>r.merge||"",unresolved:r=>r.unresolved||0,decision:r=>r.decision||"",
+  todo:r=>r.todo||"",autorun:r=>r.autorun||"",type:r=>r.type||"",
+  comments:r=>r.comments||0,assignees:r=>(r.assignees||[]).join(","),
+};
+function sortRows(list){
+  const get=SORTERS[sort.key]||SORTERS.created;
+  return list.slice().sort((a,b)=>{const x=get(a),y=get(b);return (x>y?1:x<y?-1:0)*sort.dir;});
+}
+function setSort(key){
+  if(sort.key===key)sort.dir=-sort.dir;else sort={key,dir:key==="created"||key==="n"?-1:1};
+  render();
 }
 
+/* ---------- header / tabs ---------- */
+const VIEWS=()=>DESK==="issue"?[
+  {id:"situa",label:"Situa",count:situa?situa.rows.length:"—",tip:"Il batch di issue-triage: le più recenti non analizzate, con tipo e cross-check di branch e PR"},
+  {id:"free",label:"Senza assegnatario",count:issues.filter(r=>!r.assignees.length).length,tip:"Le candidate per issue-run: nessuno le ha ancora prese"},
+  {id:"all",label:"Tutte",count:loaded?issues.length:"—",tip:"Tutte le issue aperte del repo"},
+]:[
+  {id:"todo",label:"Da fare",count:prs.filter(r=>r.state!=="waiting").length,tip:"Le PR dove la prossima mossa è tua"},
+  {id:"waiting",label:"In attesa",count:prs.filter(r=>r.state==="waiting").length,tip:"Ferme in attesa di altri"},
+  {id:"all",label:"Tutte",count:loaded?prs.length:"—",tip:"Tutte le PR aperte in cui sei coinvolto"},
+  {id:"chase",label:"Solleciti",count:Object.keys(chase).length,tip:"Un messaggio pronto per ogni persona da sollecitare"},
+];
+function renderTabs(){
+  $("tabs").innerHTML=VIEWS().map(v=>`<button class="${view===v.id?"active":""}" data-v="${v.id}" title="${esc(v.tip)}">${v.label} <b>${v.count}</b></button>`).join("");
+  $("tabs").querySelectorAll("button").forEach(b=>b.onclick=()=>{view=b.dataset.v;stateFilter=null;selectFirst();render();});
+  const onIssue=DESK==="issue";
+  const tri=$("btnTriage");
+  tri.textContent=(triageRunning[onIssue?"issue":"pr"]?"⏳ ":"↻ ")+(onIssue?"issue-triage":"pr-triage");
+  tri.title=(onIssue
+    ?"Lancia issue-triage nella chat collegata sulle issue GIÀ scaricate qui (nessuna nuova query al provider)."
+    :"Lancia pr-triage nella chat collegata sulle PR GIÀ scaricate qui: il desk gli passa il JSON, la skill non rifà le query.");
+  tri.disabled=!watcherAlive||triageRunning[onIssue?"issue":"pr"]||!loaded;
+  const run=$("btnRun");
+  run.textContent="▶ "+(onIssue?"issue-run":"pr-run");
+  run.title=onIssue
+    ?"issue-run lavora il batch in chat: un'analisi a contesto pulito per issue, la scelta, poi branch e PR."
+    :"pr-run svuota la coda in chat: merge delle tue PR approvate, risposte banali, riallineo dei branch, il resto una PR alla volta.";
+  run.disabled=!watcherAlive;
+  document.querySelectorAll(".metric").forEach(m=>m.classList.toggle("on",stateFilter===m.dataset.filter));
+}
+function renderSync(){
+  const el=$("btnFetch"),lab=$("syncLabel");
+  el.classList.toggle("loading",fetching);
+  el.classList.toggle("ko",!fetching&&!loaded);
+  const t=timings.queue;
+  lab.textContent=fetching?"leggo…":(loaded?`⟳ ${lastGenerated||""}`:"⟳ ricarica");
+  el.title=t?`ultimo giro: ${t.source} (${t.ms} ms, dato di ${t.age}s fa) — clic per rileggere il provider`
+             :"clic per rileggere il provider";
+}
+
+/* ---------- table ---------- */
+function th(key,label,extra){
+  const arrow=sort.key===key?`<span class="dir">${sort.dir>0?"▲":"▼"}</span>`:"";
+  return `<th data-sort="${key}" ${extra||""}>${label} ${arrow}</th>`;
+}
 function renderTable(){
-  const tb=$("tbody"),th=$("thead");
-  renderChase();renderGrid();
-  if(view==="chase"||view==="grid"||view==="todo"){$("empty").style.display="none";tb.innerHTML="";th.innerHTML="";return;}
-  if(!loaded&&view==="all"&&DESK==="pr"&&grid){
-    th.innerHTML=`<tr><th style="width:64px">#</th><th style="width:92px">data</th><th style="width:100px">autore</th><th>titolo</th><th style="width:190px">prossima mossa</th><th style="width:64px">autorun</th><th style="width:86px"></th></tr>`;
-    const q=query.toLowerCase();
-    const rows=gridAllRows().filter(r=>!q||[r.n,r.what,r.author,r.todo].join(" ").toLowerCase().includes(q));
-    tb.innerHTML=rows.map(r=>`<tr data-dlg="p${r.n}"><td class="mono">#${r.n}</td><td class="mono">${esc(r.date||"")}</td><td>${esc(r.author||"")}</td><td class="next" style="max-width:none">${esc(r.what||"")}</td><td><b>${esc(r.todo||"")}</b></td><td class="mono">${esc(r.autorun||"")}</td><td><button class="rowBtn" data-dlg="p${r.n}">Azioni…</button></td></tr>`).join("");
-    $("empty").style.display=rows.length?"none":"flex";
-    $("empty").innerHTML=`<b>Ancora nessun dato</b><span>Il triage riempie questa lista all'avvio; ⟳ la raffina coi campi live.</span>`;
-    tb.querySelectorAll("[data-dlg]").forEach(el=>el.onclick=e=>{e.stopPropagation();openDialog(el.dataset.dlg);});
-    return;
-  }
+  const tb=$("tbody"),head=$("thead"),onChase=view==="chase";
+  $("tableWrap").style.display=onChase?"none":"";
+  $("chaseWrap").classList.toggle("on",onChase);
+  if(onChase){renderChase();return;}
   if(!loaded){
-    th.innerHTML="";tb.innerHTML="";
-    $("empty").style.display="flex";
-    $("empty").innerHTML=`<b>Non ancora caricato</b><span>Premi ⟳ in alto per leggere i campi live dal provider.</span>`;
-    return;
+    head.innerHTML="";
+    tb.innerHTML=`<tr><td colspan="9" class="skel">${"<div></div>".repeat(6)}</td></tr>`;
+    $("empty").style.display="none";return;
   }
-  $("empty").innerHTML=`<b>Niente in questa vista</b><span>Prova un altro filtro o un altro tab.</span>`;
-  if(view==="issues"){
-    th.innerHTML=`<tr><th class="markCol"></th><th>issue</th><th title="DEFECT bug reale · REQUEST nuova funzione · QUESTION domanda · DOCS documentazione — letto da label e titolo">tipo</th><th>autore</th><th>label</th><th>assegnatari</th><th class="num">commenti</th><th class="num">età</th><th></th></tr>`;
-    const rows=visibleIssues();
-    tb.innerHTML=rows.map(r=>`<tr data-n="${r.n}" data-kind="issue" class="${r.assignees.length?"waiting":"attention"}">
-      <td class="mark"><span>${r.assignees.length?"○":"!"}</span></td>
-      <td class="prTitle"><b>#${r.n}</b><span>${esc(r.title)}</span></td>
-      <td><span class="tag ${r.type}">${r.type}</span></td>
-      <td><span class="avatar">${esc((r.author||"??").slice(0,2).toUpperCase())}</span>${esc(r.author)}</td>
-      <td class="next">${(r.labels||[]).map(l=>`<span class="tag">${esc(l)}</span>`).join(" ")||"—"}</td>
-      <td>${r.assignees.join(", ")||"—"}</td>
-      <td class="num">${r.comments||"—"}</td>
-      <td class="num mono">${ageDays(r.created)}d</td>
-      <td><button class="rowBtn" data-dlg="i${r.n}">Azioni…</button></td></tr>`).join("");
-    $("empty").style.display=rows.length?"none":"flex";
+  const list=rows();
+  if(DESK==="issue"){
+    head.innerHTML=`<tr><th class="markCol"></th>${th("n","#")}${th("title","issue")}${th("type","tipo",'title="DEFECT bug reale · REQUEST nuova funzione · QUESTION domanda · DOCS documentazione"')}${th("author","autore")}<th>label</th>${th("assignees","assegnatari")}${th("comments","commenti",'class="num"')}${th("created","età",'class="num"')}</tr>`;
+    tb.innerHTML=list.map(r=>{
+      const note=situa&&situa.rows.find(x=>x.n===r.n);
+      return `<tr data-n="${r.n}" class="${r.assignees.length?"waiting":"attention"}${selected===r.n?" selected":""}">
+        <td class="mark"><span title="${r.assignees.length?"presa":"libera"}">${r.assignees.length?"○":"!"}</span></td>
+        <td class="mono">#${r.n}</td>
+        <td class="prTitle"><span>${esc(r.title)}</span>${r.skill||note?'<small class="dot" title="analisi disponibile">●</small>':""}</td>
+        <td><span class="tag ${esc(r.type)}">${esc(r.type)}</span></td>
+        <td><span class="avatar">${esc((r.author||"??").slice(0,2).toUpperCase())}</span>${esc(r.author)}</td>
+        <td class="next">${(r.labels||[]).map(l=>`<span class="tag">${esc(l)}</span>`).join(" ")||"—"}</td>
+        <td>${esc(r.assignees.join(", ")||"—")}</td>
+        <td class="num">${r.comments||"—"}</td>
+        <td class="num mono">${ageDays(r.created)}g</td></tr>`;}).join("");
   }else{
-    const AUTORUN_TIP="Cosa può fare pr-run da solo: A1 = merge automatico (tua PR approvata e CLEAN), A2 = edit banale chiesto dal reviewer, A3 = riallineo del branch. asks = te lo porta in chat, yours = decisione solo tua, - = tocca ad altri";
-    th.innerHTML=`<tr><th class="markCol"></th><th>pull request</th><th>autore</th><th>review</th><th>stato merge</th><th class="num" title="Thread di review non risolti">aperti</th><th>base</th><th title="La prossima azione, dal vocabolario di pr-triage">prossima mossa</th><th title="${AUTORUN_TIP}">autorun</th><th></th></tr>`;
-    const rows=visiblePrs();
-    tb.innerHTML=rows.map(r=>`<tr data-n="${r.n}" data-kind="pr" class="${r.state}" tabindex="0">
+    head.innerHTML=`<tr><th class="markCol"></th>${th("title","pull request")}${th("author","autore")}${th("decision","review")}${th("merge","merge")}${th("unresolved","aperti",'class="num" title="Thread di review non risolti"')}<th>base</th>${th("todo","prossima mossa")}${th("autorun","autorun",`title="${esc(AUTORUN_TIP)}"`)}</tr>`;
+    tb.innerHTML=list.map(r=>`<tr data-n="${r.n}" class="${r.state}${selected===r.n?" selected":""}">
       <td class="mark"><span title="${STATE_LABEL[r.state]}">${MARK[r.state]}</span></td>
-      <td class="prTitle"><b>#${r.n}</b><span>${esc(r.title)}</span><small>${ageDays(r.created)}d</small></td>
+      <td class="prTitle"><b>#${r.n}</b><span>${esc(r.title)}</span>${r.skill?'<small class="dot" title="analisi disponibile">●</small>':""}<small>${ageDays(r.created)}g</small></td>
       <td><span class="avatar">${esc((r.author||"??").slice(0,2).toUpperCase())}</span>${esc(r.author)}</td>
       <td><span class="status ${r.state}">${esc(r.decision||(r.draft?"draft":"no review"))}</span></td>
-      <td><span class="check ${r.merge}">●</span> ${esc(r.merge)}</td>
+      <td><span class="check ${r.merge||"pending"}">●</span> <span class="mono">${esc(r.merge||"…")}</span></td>
       <td class="num">${r.unresolved||"—"}</td>
       <td class="mono">${esc(r.base)}</td>
       <td class="next">${esc(r.todo)}</td>
-      <td class="mono" title="${AUTORUN_TIP}">${esc(r.autorun)}</td>
-      <td><button class="rowBtn" data-dlg="p${r.n}">Azioni…</button></td></tr>`).join("");
-    $("empty").style.display=rows.length?"none":"flex";
+      <td class="mono" title="${esc(AUTORUN_TIP)}">${esc(r.autorun)}</td></tr>`).join("");
   }
-  tb.querySelectorAll("tr").forEach(tr=>tr.onclick=()=>openDialog((tr.dataset.kind==="pr"?"p":"i")+tr.dataset.n));
+  head.querySelectorAll("[data-sort]").forEach(el=>el.onclick=()=>setSort(el.dataset.sort));
+  tb.querySelectorAll("tr[data-n]").forEach(tr=>tr.onclick=()=>select(+tr.dataset.n));
+  $("empty").style.display=list.length?"none":"flex";
+  $("empty").innerHTML=`<b>Niente in questa vista</b><span>Prova un altro tab, azzera il filtro o rileggi il provider con ⟳.</span>`;
+}
+function renderChase(){
+  const names=Object.keys(chase),wrap=$("chaseWrap");
+  wrap.innerHTML=(names.length?`<div class="chaseNote">${grid
+      ?`Blocchi verificati da ${esc(DESK==="issue"?"issue-triage":"pr-triage")}${session?` — ${esc(session)}`:""}.`
+      :"Raggruppamento grezzo dai soli campi del provider. Quelli verificati arrivano lanciando il triage."}</div>`:"")
+    +(names.map(w=>`<div class="chaseCard"><h2>@${esc(w)}</h2><pre>${esc(chase[w])}</pre><button class="btn" data-copy="${esc(chase[w])}">Copia messaggio</button></div>`).join("")
+      ||`<div class="chaseNote">Nessuno da sollecitare.</div>`);
+  wrap.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>copyText(b,b.dataset.copy));
 }
 
-let dlgTarget=null;
+/* ---------- detail panel ---------- */
+const PR_TABS=r=>[["quadro","Quadro"],["analisi","Analisi"],
+                  ["thread",`Thread${r.unresolved?" "+r.unresolved:""}`],["bozza","Bozza"]];
+const ISSUE_TABS=()=>[["quadro","Quadro"],["analisi","Analisi"]];
 
-async function openDialog(id){
-  dlgTarget=id;
-  renderDialog();
-  const d=$("dlg");if(!d.open)d.showModal();
+function renderDetail(){
+  const box=$("detail"),r=selectedRow();
+  if(!r){
+    box.innerHTML=`<div class="empty">${loaded
+      ?"<b>Nessuna riga selezionata</b><span>Clicca una riga, o usa <span class=\"kbd\">↑</span> <span class=\"kbd\">↓</span>.</span>"
+      :"<b>Carico la coda…</b><span>Il desk legge il provider e dipinge; il triage è un bottone, non un'attesa.</span>"}</div>`;
+    return;
+  }
+  const isPr=DESK!=="issue";
+  const tabs=isPr?PR_TABS(r):ISSUE_TABS();
+  if(!tabs.some(t=>t[0]===tab))tab="quadro";
+  box.innerHTML=`
+    <div class="detailHead">
+      <div>
+        <span class="largeMark ${isPr?r.state:(r.assignees.length?"waiting":"attention")}">${isPr?MARK[r.state]:(r.assignees.length?"○":"!")}</span>
+        <span class="detailKicker">${isPr
+          ?`PR #${r.n} · ${esc(r.author)} · aperta ${esc(r.created)} (${ageDays(r.created)}g) · base ${esc(r.base)} · <span class="status ${r.state}">${esc(STATE_LABEL[r.state])}</span>`
+          :`issue #${r.n} · ${esc(r.author)} · aperta ${esc(r.created)} (${ageDays(r.created)}g) · <span class="tag ${esc(r.type)}">${esc(r.type)}</span>`}</span>
+        <h1>${esc(r.title)}</h1>
+      </div>
+      <div class="detailActions" id="detailActions"></div>
+    </div>
+    <nav class="detailTabs" id="detailTabs">${tabs.map(([id,label])=>
+      `<button data-t="${id}" aria-selected="${tab===id}">${label}</button>`).join("")}</nav>
+    <div class="detailGrid" id="detailGrid"></div>`;
+  $("detailTabs").querySelectorAll("button").forEach(b=>b.onclick=()=>{tab=b.dataset.t;renderDetail();});
+  (isPr?renderPrActions:renderIssueActions)(r);
+  (isPr?renderPrTab:renderIssueTab)(r);
 }
-function closeDialog(){dlgTarget=null;const d=$("dlg");if(d.open)d.close();}
 
-function renderDialog(){
-  if(!dlgTarget)return;
-  const kind=dlgTarget[0],n=+dlgTarget.slice(1);
-  let r=(kind==="p"?prs:issues).find(x=>x.n===n);
-  if(!r&&kind==="p"&&grid){
-    for(const b of grid.blocks){const g=b.rows.find(x=>x.n===n);
-      if(g){r={n:g.n,title:g.what,author:g.author,created:g.date,base:"",state:"attention",todo:g.todo,autorun:g.autorun,decision:"",req:[],merge:"—",unresolved:"—",threads:"—",last:null,reviews:[],url:"https://github.com/"+meta.repo+"/pull/"+n};break;}}
-  }
-  if(!r&&kind==="i"&&situa){
-    const g=situa.rows.find(x=>x.n===n);
-    if(g)r={n:g.n,title:g.title,author:g.author,created:g.date,type:g.type,labels:[],assignees:g.assignee?[g.assignee]:[],comments:"—",url:"https://github.com/"+meta.repo+"/issues/"+n,skill:{finding:g.note}};
-  }
-  if(!r){$("dlgBody").innerHTML=`<p>#${n}: dettagli non nella coda caricata — usa ⟳ o apri nel browser.</p>`;$("dlgActions").innerHTML=`<a class="btn" href="${kind==="p"?("https://github.com/"+meta.repo+"/pull/"+n):("https://github.com/"+meta.repo+"/issues/"+n)}" target="_blank" rel="noreferrer">Apri nel browser ↗</a><button class="btn" onclick="closeDialog()">Chiudi</button>`;return;}
-  if(kind==="p"){
-    $("dlgTitle").innerHTML=`<span class="detailKicker">PR #${r.n} · ${esc(r.author)} · aperta ${esc(r.created)} · base ${esc(r.base)} · <span class="status ${r.state}">${esc(STATE_LABEL[r.state])}</span></span><h1>${esc(r.title)}</h1>`;
-    const reviews=(r.reviews||[]).map(v=>`<div class="signal"><b>${esc(v.who)}</b><span>${esc(v.state)} · ${esc(v.on)}</span></div>`).join("")||`<div class="signal"><span>ancora nessuna review</span></div>`;
-    const a=analyses[r.n];
-    $("dlgBody").innerHTML=`
-      <dl><div><dt>Prossima mossa</dt><dd>${esc(r.todo)} <span class="mono">(${esc(r.autorun)})</span></dd></div>
-      <div><dt>Decisione review</dt><dd>${esc(r.decision||"—")}</dd></div>
-      <div><dt>Review richieste a</dt><dd>${r.req.join(", ")||"nessuno"}</dd></div>
-      <div><dt>Stato merge</dt><dd>${esc(r.merge)}</dd></div>
-      <div><dt>Thread</dt><dd>${r.unresolved}/${r.threads} aperti</dd></div>
-      <div><dt>Ultimo a parlare</dt><dd>${r.last?esc(`${r.last.who} · ${r.last.ch} · ${r.last.t.slice(0,10)}`):"—"}</dd></div></dl>
-      <div style="margin-top:10px"><h2>Review</h2>${reviews}</div>
-      ${r.order?`<div class="actionText">Ordine ${esc(r.order.status)}: ${esc(r.order.propose)}${r.order.report?` — ${esc(r.order.report)}`:""}${r.order.status==="pending"?" · lo esegue la chat collegata (Lane 0), senza altre conferme.":""}</div>`:""}
-      ${a?.status==="queued"?`<div class="actionText">📨 pr-analyze in lavorazione nella chat collegata — segui il feed; l'esito comparirà qui.</div>`:""}
-      ${a?.status==="error"?`<div class="actionText">Errore: ${esc(a.error)}</div>`:""}
-      ${r.skill?`<div style="margin-top:10px"><h2>Analisi della skill <span class="skillStamp">${esc(session||"")}</span></h2>
-        ${r.skill.analysis?`<p>${esc(r.skill.analysis)}</p>`:""}
-        ${r.skill.next?`<p><b>Proposta:</b> ${esc(r.skill.next)}</p>`:""}
-        ${r.skill.draft?`<div class="draft"><span>BOZZA REVIEW</span><p>${esc(r.skill.draft)}</p></div>`:""}
-      </div>`:""}`;
-    const execLabel=r.autorun==="A1"?"▶ merge in chat":(r.autorun==="A3"?"▶ riallinea in chat":null);
-    $("dlgActions").innerHTML=`
-      ${(!r.order&&execLabel)?`<button class="btn primary" id="dlgExec" ${watcherAlive?"":"disabled"} data-tip="${r.autorun==="A1"?"Ordina il merge alla chat collegata: pr-run riverifica i 5 gate freschi (autore, approvazioni sull'ultimo head, CLEAN su base protetta) e solo allora esegue squash + delete branch.":"Ordina il riallineo alla chat collegata: merge della base nel branch (mai rebase), con le regole A3 di pr-run."}">${execLabel}</button>`:``}
-      <button class="btn ${execLabel?"":"primary"}" id="dlgAnalyze" ${watcherAlive?"":"disabled"} data-tip="La skill pr-analyze legge tutto il diff, verifica i claim della descrizione e i thread, e produce il blocco cosa/storia/proposta con l'eventuale bozza di risposta. Read-only.">▶ pr-analyze in chat</button>
-      ${r.skill?.draft?`<button class="btn" id="dlgDraft">Copia bozza</button>`:""}
-      <a class="btn" href="${r.url}" target="_blank" rel="noreferrer">Apri nel browser ↗</a>
-      ${r.action?`<button class="btn" id="dlgCopy" style="color:var(--muted)">copia ${r.action.kind==="command"?"comando":"prompt"} (ultima spiaggia)</button>`:""}
-      <button class="btn" id="dlgX">Chiudi</button>`;
-    const ex=$("dlgExec");if(ex)ex.onclick=()=>sendOrder(r);
-    const an=$("dlgAnalyze");if(an)an.onclick=()=>startAnalysis(r.n);
-    const dr=$("dlgDraft");if(dr)dr.onclick=()=>copyText(dr,r.skill.draft);
-    const cp=$("dlgCopy");if(cp)cp.onclick=()=>copyText(cp,r.action.text);
+function actBadge(r){
+  const a=acting[(DESK==="issue"?"i":"p")+r.n];
+  if(!a)return "";
+  if(a.status==="queued")return `<div class="actionText">📨 ${esc(a.what)} — la chat collegata la sta prendendo; l'esito arriva qui e nel feed.</div>`;
+  if(a.status==="error")return `<div class="actionText" style="color:var(--red)">Errore: ${esc(a.error)}</div>`;
+  return "";
+}
+function renderPrActions(r){
+  const exec=r.autorun==="A1"?{label:"▶ Merge",tip:"Ordina il merge alla chat collegata: pr-run riverifica i 5 gate freschi (autore, approvazioni sull'ultimo head, CLEAN su base protetta) e solo allora fa squash + delete branch."}
+           :r.autorun==="A3"?{label:"▶ Riallinea",tip:"Ordina il riallineo alla chat collegata: merge della base nel branch (mai rebase), regole A3 di pr-run."}:null;
+  const done=r.order&&r.order.status!=="pending";
+  $("detailActions").innerHTML=`
+    ${exec&&!r.order?`<button class="btn primary" id="aExec" ${watcherAlive?"":"disabled"} title="${esc(exec.tip)}">${exec.label}</button>`:""}
+    ${r.order?`<span class="btn ${done?"done":"working"}" title="Ordine registrato: lo esegue la chat collegata senza altre conferme">${done?"✓ "+esc(r.order.status):"⏳ ordine inviato"}</span>`:""}
+    <button class="btn ${exec&&!r.order?"":"primary"}" id="aAnalyze" ${watcherAlive?"":"disabled"} title="pr-analyze legge tutto il diff, verifica i claim della descrizione e i thread, e produce cosa/storia/proposta con l'eventuale bozza. Read-only.">▶ Analizza</button>
+    <a class="btn" href="${r.url}" target="_blank" rel="noreferrer">GitHub ↗</a>`;
+  const ex=$("aExec");if(ex)ex.onclick=()=>doOrder(r,ex);
+  const an=$("aAnalyze");if(an)an.onclick=()=>doAnalyze(r,an);
+}
+function renderIssueActions(r){
+  $("detailActions").innerHTML=`
+    <button class="btn primary" id="aWork" ${watcherAlive?"":"disabled"} title="Prepara una sessione dedicata: nella chat primaria compare una chip, un click apre la sessione che analizza fresca e — se è una modifica coerente singola — fixa in un worktree e apre la PR.">▶ Lavora</button>
+    <a class="btn" href="${r.url}" target="_blank" rel="noreferrer">GitHub ↗</a>`;
+  const w=$("aWork");if(w)w.onclick=()=>doIssueWork(r,w);
+}
+
+function renderPrTab(r){
+  const g=$("detailGrid"),sk=r.skill||{};
+  if(tab==="quadro"){
+    const reviews=(r.reviews||[]).map(v=>`<div class="signal"><b>${esc(v.who)}</b><span>${esc(v.state)} · ${esc(v.on)}</span></div>`).join("")
+      ||`<div class="signal"><span>ancora nessuna review</span></div>`;
+    g.innerHTML=`
+      <article><h2>Quadro</h2>
+        <dl>
+          <div><dt>Decisione review</dt><dd>${esc(r.decision||"—")}</dd></div>
+          <div><dt>Richieste a</dt><dd>${esc(r.req.join(", ")||"nessuno")}</dd></div>
+          <div><dt>Stato merge</dt><dd>${esc(r.merge||"in arrivo…")}</dd></div>
+          <div><dt>Thread</dt><dd>${r.unresolved}/${r.threads} aperti</dd></div>
+          <div><dt>Ultimo a parlare</dt><dd>${r.last?esc(`${r.last.who} · ${r.last.ch} · ${r.last.t.slice(0,10)}`):"—"}</dd></div>
+          <div><dt>Chiude</dt><dd>${(r.closes||[]).map(c=>"#"+c.issue).join(" ")||"nessuna issue"}</dd></div>
+        </dl>${actBadge(r)}</article>
+      <article class="nextCard"><h2>Prossima mossa</h2><p>${esc(r.todo)}</p>
+        <small>autorun <b>${esc(r.autorun)}</b> — ${esc(AUTORUN_TIP)}</small>${
+        r.closes&&r.closes.some(c=>!c.assignees.length)
+          ? `<div class="actionText">Issue collegata senza assegnatario (${r.closes.filter(c=>!c.assignees.length).map(c=>"#"+c.issue).join(" ")}): nel workflow Softwell legge come da fare a tutti.</div>`:""}</article>
+      <aside><h2>Review</h2>${reviews}</aside>`;
+  }else if(tab==="analisi"){
+    g.innerHTML=`
+      <article class="wideArticle"><h2>Analisi ${sk.analysis?`<span class="mono">${esc(session||"")}</span>`:""}</h2>
+        ${sk.analysis?`<p>${esc(sk.analysis)}</p>`:`<div class="tabEmpty">Nessuna analisi ancora. <b>▶ Analizza</b> manda pr-analyze nella chat collegata: legge tutto il diff, verifica i claim e i thread, e riempie questo tab.</div>`}
+        ${sk.next?`<h2>Proposta</h2><p>${esc(sk.next)}</p>`:""}${actBadge(r)}</article>
+      <aside><h2>Segnali</h2>
+        <div class="signal"><b>merge</b><span>${esc(r.merge||"in arrivo…")}</span></div>
+        <div class="signal"><b>review</b><span>${esc(r.decision||"nessuna")}</span></div>
+        <div class="signal"><b>thread</b><span>${r.unresolved}/${r.threads}</span></div>
+        <div class="signal"><b>autorun</b><span>${esc(r.autorun)}</span></div></aside>`;
+  }else if(tab==="thread"){
+    g.innerHTML=`
+      <article class="wideArticle"><h2>Thread di review</h2>
+        ${r.threads?`<div class="thread"><span>${r.unresolved}</span><div><b>${r.unresolved?"non risolti":"tutti risolti"}</b>
+            <p>${r.threads} thread in totale su questa PR${r.unresolved?`, ${r.unresolved} ancora aperti.`:"."}</p></div></div>
+          ${(r.reviews||[]).map(v=>`<div class="thread"><span>${esc((v.who||"?")[0].toUpperCase())}</span><div><b>${esc(v.who)}</b><p>${esc(v.state)} il ${esc(v.on)}</p></div></div>`).join("")}`
+          :`<div class="tabEmpty">Nessun thread di review su questa PR.</div>`}</article>
+      <aside><h2>Regola merge</h2><p>Tutti i thread devono essere risolti prima del merge, anche quando una risposta è già presente.</p>
+        <p>Il conteggio viene dai campi del provider; il contenuto lo legge <b>▶ Analizza</b>.</p></aside>`;
   }else{
-    $("dlgTitle").innerHTML=`<span class="detailKicker">issue #${r.n} · ${esc(r.author)} · aperta ${esc(r.created)} · <span class="tag ${esc(r.type)}">${esc(r.type)}</span></span><h1>${esc(r.title)}</h1>`;
-    const a=analyses["i"+r.n];
-    $("dlgBody").innerHTML=`
-      <dl><div><dt>Label</dt><dd>${r.labels.join(", ")||"nessuna"}</dd></div>
-      <div><dt>Assegnatari</dt><dd>${r.assignees.join(", ")||"nessuno — candidata per issue-run"}</dd></div>
-      <div><dt>Commenti</dt><dd>${r.comments}</dd></div>
-      <div><dt>Età</dt><dd>${ageDays(r.created)} giorni (dal ${esc(r.created)})</dd></div></dl>
-      ${a?.status==="queued"?`<div class="actionText">📨 chip in preparazione nella chat primaria — clicca la chip lì per aprire la sessione dedicata.</div>`:""}
-      ${r.skill?`<div style="margin-top:10px"><h2>Analisi della skill</h2><p>${esc(r.skill.finding||"")}</p>
-        <p class="mono">${esc([r.skill.type,r.skill.phase,r.skill.size].filter(Boolean).join(" · "))}</p></div>`:""}`;
-    $("dlgActions").innerHTML=`
-      <button class="btn primary" id="dlgIssueWork" ${watcherAlive?"":"disabled"} data-tip="Prepara una SESSIONE DEDICATA per questa issue: nella chat primaria compare una chip, un tuo click apre la sessione che analizza fresca e — se è una modifica coerente singola — fixa in un worktree e apre la PR. Se è tosta, disegna le fasi (e propone un phased workflow solo se quel plugin è installato).">▶ lavora in sessione dedicata</button>
-      <a class="btn" href="${r.url}" target="_blank" rel="noreferrer">Apri nel browser ↗</a>
-      <button class="btn" id="dlgX">Chiudi</button>`;
-    const iw=$("dlgIssueWork");if(iw)iw.onclick=()=>startIssueAnalysis(r.n);
+    const text=sk.draft||"";
+    g.innerHTML=`
+      <article class="wideArticle"><h2>Bozza di risposta</h2>
+        ${text?`<div class="draft"><span>DA PR-ANALYZE</span><p>${esc(text)}</p></div>
+          <div class="draftActions"><button class="btn" id="bCopy">Copia testo</button>
+            <button class="btn primary" id="bSend" ${watcherAlive?"":"disabled"} title="Registra l'ordine: la chat collegata posta questa bozza sulla PR seguendo le regole di pr-run.">▶ Manda in chat</button></div>`
+          :`<div class="tabEmpty">Nessuna bozza. La produce <b>▶ Analizza</b> quando la PR ne ha bisogno.</div>`}
+        ${r.action?`<div class="draftActions"><button class="btn" id="bFallback" title="Ultima spiaggia: il testo pronto da incollare a mano">Copia ${r.action.kind==="command"?"comando":"prompt"}</button></div>`:""}
+        ${actBadge(r)}</article>
+      <aside><h2>Prima di mandare</h2><ul>
+        <li>il diff è stato letto da pr-analyze</li><li>i thread aperti sono stati letti</li>
+        <li>il testo è visibile qui sopra</li><li>l'ordine passa comunque dai gate di pr-run</li></ul></aside>`;
+    const c=$("bCopy");if(c)c.onclick=()=>copyText(c,text);
+    const s=$("bSend");if(s)s.onclick=()=>doOrder(r,s,text);
+    const f=$("bFallback");if(f)f.onclick=()=>copyText(f,r.action.text);
   }
-  const x=$("dlgX");if(x)x.onclick=closeDialog;
+}
+function renderIssueTab(r){
+  const g=$("detailGrid"),sk=r.skill||{};
+  const note=situa&&situa.rows.find(x=>x.n===r.n);
+  if(tab==="quadro"){
+    g.innerHTML=`
+      <article><h2>Quadro</h2>
+        <dl><div><dt>Tipo</dt><dd>${esc(r.type)}</dd></div>
+        <div><dt>Label</dt><dd>${esc(r.labels.join(", ")||"nessuna")}</dd></div>
+        <div><dt>Assegnatari</dt><dd>${esc(r.assignees.join(", ")||"nessuno")}</dd></div>
+        <div><dt>Commenti</dt><dd>${r.comments}</dd></div>
+        <div><dt>Età</dt><dd>${ageDays(r.created)} giorni</dd></div></dl>${actBadge(r)}</article>
+      <article class="nextCard"><h2>Prossima mossa</h2>
+        <p>${r.assignees.length?esc("in mano a "+r.assignees.join(", ")):"da assegnare — candidata per issue-run"}</p>
+        <small>${r.assignees.length
+          ?"Nel workflow Softwell non si lavora su una issue di qualcun altro: chiedi prima."
+          :"Un'issue nuova la assegna l'Owner: chiedi, non prenderla — a meno che sia backlog."}</small></article>
+      <aside><h2>Cross-check dal triage</h2>${note
+        ?`<div class="evidence"><code>${esc(note.note||"—")}</code><span>${esc(note.assignee||"nessun assegnatario")}</span></div>`
+        :`<div class="tabEmpty">Lancia ↻ issue-triage per branch e PR già esistenti su questa issue.</div>`}</aside>`;
+  }else{
+    g.innerHTML=`
+      <article class="wideArticle"><h2>Analisi</h2>
+        ${sk.finding?`<p>${esc(sk.finding)}</p><p class="mono">${esc([sk.type,sk.phase,sk.size].filter(Boolean).join(" · "))}</p>`
+          :`<div class="tabEmpty">Nessuna analisi ancora. <b>▶ Lavora</b> apre una sessione dedicata che verifica la causa nel codice e propone la mossa minima.</div>`}
+        ${actBadge(r)}</article>
+      <aside><h2>Cosa fa la sessione dedicata</h2><ul>
+        <li>analizza a contesto pulito</li><li>verifica la causa nel codice vero</li>
+        <li>se è un cambio coerente: worktree, fix, PR</li><li>se è tosta: disegna le fasi</li></ul></aside>`;
+  }
 }
 
+/* ---------- actions: the button does the thing ---------- */
+async function post(path,body){
+  const resp=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},
+                              body:JSON.stringify(body||{})});
+  const d=await resp.json().catch(()=>({}));
+  if(d.error)throw new Error(d.error);
+  return d;
+}
+function markActing(kind,n,what){acting[kind+n]={status:"queued",what};}
+async function doOrder(r,btn,draft){
+  btn.disabled=true;btn.classList.add("working");
+  try{
+    const d=await post(`/api/pr/${r.n}/order`,{propose:r.todo,draft:draft||(r.skill&&r.skill.draft)||null});
+    r.order=d.order;markActing("p",r.n,"ordine: "+r.todo);
+    localFeed(`ordine su #${r.n} inviato alla chat: ${r.todo}`);
+  }catch(e){acting["p"+r.n]={status:"error",error:e.message};}
+  render();
+}
+async function doAnalyze(r,btn){
+  btn.disabled=true;btn.classList.add("working");
+  try{
+    await post(`/api/pr/${r.n}/analyze`);
+    markActing("p",r.n,"pr-analyze");
+    localFeed(`pr-analyze su #${r.n} inviata alla chat collegata`);
+  }catch(e){acting["p"+r.n]={status:"error",error:e.message};}
+  render();
+}
+async function doIssueWork(r,btn){
+  btn.disabled=true;btn.classList.add("working");
+  try{
+    await post(`/api/issue/${r.n}/analyze`);
+    markActing("i",r.n,"sessione dedicata");
+    localFeed(`sessione dedicata per la issue #${r.n} richiesta alla chat`);
+  }catch(e){acting["i"+r.n]={status:"error",error:e.message};}
+  render();
+}
+async function doTriage(){
+  const flow=DESK==="issue"?"issue-triage":"pr-triage";
+  try{
+    await post("/api/triage",{flow});
+    triageRunning[DESK==="issue"?"issue":"pr"]=true;
+    localFeed(`${flow} lanciato sul JSON già scaricato — nessuna nuova query al provider`);
+  }catch(e){banner("errBox",esc(e.message),true);}
+  render();
+}
+async function doRun(){
+  const flow=DESK==="issue"?"issue-run":"pr-run";
+  try{await post("/api/run",{flow});localFeed(`${flow} avviato nella chat collegata`);}
+  catch(e){banner("errBox",esc(e.message),true);}
+}
+
+/* ---------- summary ---------- */
 function renderSummary(){
-  if(!loaded&&DESK==="pr"&&grid){
-    const merg=gridBlockRows("Da mergiare subito").length;
-    const mine=merg+gridBlockRows("Azione banale").length+gridBlockRows("Review da fare").length;
-    const dec=gridBlockRows("Solo tue").length;
-    const wait=gridBlockRows("In attesa di altri").length;
-    $("mAttention").textContent=mine;$("mDecision").textContent=dec;
-    $("mWaiting").textContent=wait;$("mReady").textContent=merg;
-    $("cPrs").textContent=gridAllRows().length;$("cIssues").textContent="—";
-    const tot=mine+dec;
-    $("leadTitle").textContent=tot?`${tot} pull request aspettano una mossa tua`:"nessuna PR aspetta una mossa tua";
-    $("leadSub").textContent=`dal triage delle ${grid.generated.slice(11,16)} · ↻ per rifarlo · ⟳ per i campi live · provider ${meta.provider||"—"}`;
-    return;
-  }
-  if(!loaded&&DESK==="issue"&&situa){
-    ["mAttention","mDecision","mWaiting","mReady"].forEach(id=>$(id).textContent="—");
-    $("cIssues").textContent=situa.rows.length;$("cPrs").textContent="—";
-    $("leadTitle").textContent=`${situa.rows.length} issue in situa`;
-    $("leadSub").textContent=`dal triage delle ${situa.generated.slice(11,16)} · ↻ per rifarlo · ⟳ per tutte le issue live · provider ${meta.provider||"—"}`;
-    return;
-  }
+  $("deskName").textContent=DESK==="issue"?"issue desk":"pr desk";
+  document.title=DESK==="issue"?"Issue desk":"PR desk";
+  $("repoLabel").textContent=meta.repo?`${meta.repo} · ${meta.me}`:"…";
+  $("leadEyebrow").textContent=DESK==="issue"?"issue aperte":"coda review";
   if(!loaded){
-    ["mAttention","mDecision","mWaiting","mReady","cPrs","cIssues"].forEach(id=>$(id).textContent="—");
-    $("leadTitle").textContent=DESK==="issue"?"issue desk":"pr desk";
-    $("leadSub").textContent=`il triage parte da solo all'avvio · ↻ per rifarlo · ⟳ per i campi live · provider ${meta.provider||"—"}`;
+    $("leadTitle").textContent="carico la coda…";
+    $("leadSub").textContent="il desk legge il provider e dipinge subito; il triage è un bottone";
     return;
   }
-  const c={ready:0,attention:0,waiting:0,decision:0};
-  prs.forEach(r=>c[r.state]++);
-  $("mAttention").textContent=c.attention;$("mDecision").textContent=c.decision;
-  $("mWaiting").textContent=c.waiting;$("mReady").textContent=c.ready;
-  const mine=c.attention+c.decision+c.ready;
-  $("leadTitle").textContent=mine?`${mine} pull request aspettano una mossa tua`:"nessuna PR aspetta una mossa tua";
-  $("leadSub").textContent=`${prs.length} PR aperte in cui sei coinvolto · ${issues.length} issue aperte · provider ${meta.provider||"—"}`;
-  $("cPrs").textContent=prs.length;$("cIssues").textContent=issues.length;
+  if(DESK==="issue"){
+    const free=issues.filter(r=>!r.assignees.length).length;
+    ["mAttention","mDecision","mWaiting","mReady"].forEach((id,i)=>{
+      $(id).textContent=[free,issues.filter(r=>r.type==="DEFECT").length,
+                         issues.length-free,situa?situa.rows.length:"—"][i];});
+    document.querySelectorAll(".metric span").forEach((el,i)=>{
+      el.textContent=["senza assegnatario","difetti","assegnate","in situa"][i];});
+    $("cIssues").textContent=issues.length;$("cPrs").textContent="—";
+    $("leadTitle").textContent=free?`${free} issue senza assegnatario`:"tutte le issue hanno un assegnatario";
+    $("leadSub").textContent=`${issues.length} aperte · provider ${meta.provider||"—"}`;
+  }else{
+    const c={ready:0,attention:0,waiting:0,decision:0};
+    prs.forEach(r=>c[r.state]++);
+    $("mAttention").textContent=c.attention;$("mDecision").textContent=c.decision;
+    $("mWaiting").textContent=c.waiting;$("mReady").textContent=c.ready;
+    const mine=c.attention+c.decision+c.ready;
+    $("cPrs").textContent=prs.length;$("cIssues").textContent=issues.length;
+    $("leadTitle").textContent=mine?`${mine} pull request aspettano una mossa tua`:"nessuna PR aspetta una mossa tua";
+    $("leadSub").textContent=`${prs.length} aperte in cui sei coinvolto · ${issues.length} issue · provider ${meta.provider||"—"}`;
+  }
+  const notes=[];
+  if(truncated)notes.push(`<b>Coda troncata:</b> il provider dichiara ${truncated} PR e la pagina ne porta ${prs.length}. Le mancanti non sono in tabella.`);
+  if(pendingMerge)notes.push("Lo stato di merge è la lettura più costosa del provider: arriva un attimo dopo, la tabella si riempie da sola.");
+  banner("noteBox",notes.join(" · "),notes.length);
+  renderSync();
 }
 
-function render(){renderTabs();renderTable();renderDialog();renderSummary();}
+function render(){renderSummary();renderTabs();renderTable();renderDetail();}
 
-$("q").oninput=e=>{query=e.target.value;render();};
-$("dlgClose").onclick=closeDialog;
-$("dlg").addEventListener("click",e=>{if(e.target===$("dlg"))closeDialog();});
-$("refresh").onclick=()=>loadQueue(true);
-$("btnAction").onclick=startRun;
+/* ---------- wiring ---------- */
+$("q").oninput=e=>{query=e.target.value;selectFirst();render();};
+$("btnFetch").onclick=()=>loadDesk(true);
+$("btnTriage").onclick=doTriage;
+$("btnRun").onclick=doRun;
+document.querySelectorAll(".metric").forEach(m=>m.onclick=()=>{
+  stateFilter=stateFilter===m.dataset.filter?null:m.dataset.filter;
+  if(stateFilter)view="all";
+  selectFirst();render();});
+document.addEventListener("keydown",e=>{
+  if(e.target.tagName==="INPUT")     {if(e.key==="Escape")e.target.blur();return;}
+  if(e.key==="ArrowDown"||e.key==="j"){e.preventDefault();moveSelection(1);}
+  else if(e.key==="ArrowUp"||e.key==="k"){e.preventDefault();moveSelection(-1);}
+  else if(e.key==="/"){e.preventDefault();$("q").focus();}
+  else if(e.key==="Enter"){const b=$("aExec")||$("aAnalyze")||$("aWork");if(b&&!b.disabled)b.click();}
+  else if(e.key>="1"&&e.key<="4"){const t=$("detailTabs");if(t&&t.children[+e.key-1])t.children[+e.key-1].click();}
+});
+
 $("btnTest").onclick=runTestMode;
 async function runTestMode(){
-  const box=$("testBox");box.style.display="block";
-  const t0=Date.now();
-  const line=(id,label)=>{box.insertAdjacentHTML("beforeend",`<div id="${id}" data-label="${label}"><span class="pending">…</span> ${label}</div>`);};
+  const box=$("testBox");box.classList.add("on");
+  const line=(id,label)=>box.insertAdjacentHTML("beforeend",`<div id="${id}" data-label="${label}"><span class="pending">…</span> ${label}</div>`);
   const setLine=(id,ok,extra)=>{const el=$(id);el.innerHTML=`<span class="${ok?"ok":"ko"}">${ok?"✓":"✗"}</span> ${esc(el.dataset.label)}${extra?` <span class="${ok?"pending":"ko"}">— ${esc(extra)}</span>`:""}`;};
-  box.innerHTML=`<div><b>Modalità test</b> — comunicazione desk → server → chat → desk</div>`;
-  line("tServer","server del desk raggiungibile");
-  line("tProvider","provider (gh) autenticato");
-  line("tState","file di stato scrivibile");
-  line("tWatcher","watcher della chat in ascolto");
-  line("tPing","ping roundtrip: desk → inbox → chat → stato → desk");
+  box.innerHTML=`<div><b>Modalità test</b> — desk → server → chat → desk</div>`;
+  ["server del desk raggiungibile","provider autenticato","cache su disco","file di stato scrivibile","watcher della chat in ascolto","ping roundtrip"]
+    .forEach((l,i)=>line("t"+i,l));
   try{
     const st=await fetch("/api/selftest").then(r=>r.json());
-    setLine("tServer",true);
-    setLine("tProvider",st.provider.ok,st.provider.ok?("login "+st.provider.login):st.provider.error);
-    setLine("tState",st.state_file.ok,st.state_file.ok?"":st.state_file.error);
-    setLine("tWatcher",st.watcher.ok,st.watcher.chat?(st.watcher.age==null?"mai visto":("ultimo poll "+Math.round(st.watcher.age)+"s fa")):"desk non in modalità chat");
-    if(!st.watcher.ok){setLine("tPing",false,"saltato: nessuna chat in ascolto");return;}
-    const token="t"+t0;
-    await fetch("/api/ping",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token})});
+    setLine("t0",true,`timings: ${Object.entries(timings).map(([k,v])=>`${k} ${v.source} ${v.ms}ms`).join(" · ")||"—"}`);
+    setLine("t1",st.provider.ok,st.provider.ok?"login "+st.provider.login:st.provider.error);
+    setLine("t2",st.cache.ok,st.cache.ok?`dato di ${st.cache.age}s fa`:"vuota");
+    setLine("t3",st.state_file.ok,st.state_file.ok?"":st.state_file.error);
+    setLine("t4",st.watcher.ok,st.watcher.chat?(st.watcher.age==null?"mai visto":`ultimo poll ${Math.round(st.watcher.age)}s fa`):"desk non in modalità chat");
+    if(!st.watcher.ok){setLine("t5",false,"saltato: nessuna chat in ascolto");return;}
+    const token="t"+Date.now();
+    await post("/api/ping",{token});
     const started=Date.now();
     const timer=setInterval(async()=>{
-      const stt=await fetch("/api/state").then(r=>r.json());
-      if(stt.pong===token){clearInterval(timer);setLine("tPing",true,((Date.now()-started)/1000).toFixed(1)+"s");}
-      else if(Date.now()-started>90000){clearInterval(timer);setLine("tPing",false,"nessuna risposta in 90s");}
+      const stt=await fetch("/api/state").then(r=>r.status===304?{}:r.json()).catch(()=>({}));
+      if(stt.pong===token){clearInterval(timer);setLine("t5",true,((Date.now()-started)/1000).toFixed(1)+"s");}
+      else if(Date.now()-started>90000){clearInterval(timer);setLine("t5",false,"nessuna risposta in 90s");}
     },2000);
-  }catch(e){setLine("tServer",false,e.message);}
+  }catch(e){setLine("t0",false,e.message);}
 }
 let stopArmed=null;
 $("btnStop").onclick=async()=>{
   const b=$("btnStop");
   if(!stopArmed){
-    b.textContent="confermi lo stop?";b.style.color="var(--red)";b.style.borderColor="var(--red)";
-    stopArmed=setTimeout(()=>{stopArmed=null;b.textContent="⏻ stop";b.style.color="";b.style.borderColor="";},4000);
+    b.textContent="confermi?";b.style.color="var(--red)";b.style.borderColor="var(--red)";
+    stopArmed=setTimeout(()=>{stopArmed=null;b.textContent="⏻";b.style.color="";b.style.borderColor="";},4000);
     return;
   }
-  clearTimeout(stopArmed);stopArmed=null;
-  b.textContent="fermo…";b.disabled=true;
+  clearTimeout(stopArmed);stopArmed=null;b.textContent="fermo…";b.disabled=true;
   try{await fetch("/api/shutdown",{method:"POST"});}catch(e){}
-  document.body.innerHTML='<div style="padding:40px;font:14px system-ui;color:var(--ink)"><b>Server fermato.</b><br>La chat collegata è stata avvisata. Per ripartire: <code>/review-desk</code> in chat.</div>';
+  document.body.innerHTML='<div style="padding:40px;font:14px system-ui"><b>Server fermato.</b><br>Per ripartire: <code>/pr-desk</code> o <code>/issue-desk</code> in chat.</div>';
 };
 
-fetch("/api/meta").then(r=>r.json()).then(m=>{
-  meta=m;DESK=m.desk||"pr";
-  document.title=(DESK==="issue"?"Issue desk":"PR desk");
-  document.querySelector(".brand strong").textContent=DESK==="issue"?"issue desk":"pr desk";
-  $("repoLabel").textContent=`${m.repo} · ${m.me}`;
-  if(DESK==="pr")triageRunning.pr=true;else triageRunning.issue=true;
-  render();
-});
-$("btnTriage").onclick=startTriage;
-$("syncLabel").textContent="coda non caricata — ⟳ per leggerla";
-pollState();
 render();
+loadDesk(false);
+setInterval(()=>loadDesk(false),30000);
+setInterval(pollState,4000);
 </script>
 </body>
 </html>

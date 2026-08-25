@@ -1,26 +1,49 @@
 """GitHub provider — shells out to the authenticated `gh` CLI.
 
-Reuses the exact GraphQL document of the pr-triage skill
-(skills/pr-triage/queue.graphql) and ports its queue.jq transform to Python,
-so the dashboard and the skill read the very same fields.
+Two measured facts shape this file (reproduce them with tests/bench.py):
+
+1. The search itself is cheap (`issueCount` alone answers in 0.7s). What
+   costs is resolving the NODES — the nested reviews/threads/closes
+   connections, per PR. So the way to be fast is to resolve each PR once.
+   `involves:<me>` is a superset of author, assignee, commenter, mentions,
+   review-requested and reviewed-by (verified: the union of all six is
+   exactly the involves set), so ONE search replaces the four the desk used
+   to run, and no PR is resolved twice.
+
+2. `mergeStateStatus` is the single expensive field: GitHub computes a test
+   merge per PR, and asking for it costs more than the whole rest of the
+   query (5.4s for 35 PRs vs 4.3s for 51 PRs without it). Widening the
+   parallelism does not help — eight concurrent searches on one token
+   measure SLOWER than four (7.8s vs 4.9s), and aliases inside one document
+   resolve serially (7.8s).
+
+Hence the two-phase read: `queue()` returns the rows without merge state,
+and `mergestates()` fills it in a second call the desk runs behind the
+browser. The verdict engine only reads `merge` for the user's own PRs, so
+that is the only search phase two needs.
 """
 
 import json
 import subprocess
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from .base import Provider
 
-QUERY_FILE = Path(__file__).resolve().parents[2] / "skills" / "pr-triage" / "queue.graphql"
-RELATIONSHIPS = ("author", "review-requested", "reviewed-by", "assignee")
+GQL = Path(__file__).resolve().parents[1] / "gql"
 
 
-def _gh(*args, timeout=60):
+def _gh(*args, timeout=90):
     out = subprocess.run(("gh",) + args, capture_output=True, text=True, timeout=timeout)
     if out.returncode:
         raise RuntimeError("gh %s failed: %s" % (args[0], out.stderr.strip()[:400]))
     return out.stdout
+
+
+def _graphql(doc, **variables):
+    args = ["api", "graphql", "-F", "query=@%s" % (GQL / doc)]
+    for key, value in variables.items():
+        args += ["-f", "%s=%s" % (key, value)]
+    return json.loads(_gh(*args))["data"]
 
 
 class GitHubProvider(Provider):
@@ -29,22 +52,19 @@ class GitHubProvider(Provider):
     def whoami(self):
         return _gh("api", "user", "--jq", ".login").strip()
 
-    def _search(self, repo, rel, login):
-        q = "repo:%s is:open is:pr %s:%s" % (repo, rel, login)
-        raw = _gh("api", "graphql", "-F", "query=@%s" % QUERY_FILE, "-f", "q=%s" % q)
-        return json.loads(raw)["data"]["search"]["nodes"]
-
     def queue(self, repo, me):
-        with ThreadPoolExecutor(max_workers=4) as pool:
-            batches = pool.map(lambda rel: self._search(repo, rel, me), RELATIONSHIPS)
-        seen = {}
-        for nodes in batches:
-            for node in nodes:
-                if node and node.get("number") not in seen:
-                    seen[node["number"]] = node
-        rows = [self._row(repo, node) for node in seen.values()]
+        q = "repo:%s is:open is:pr involves:%s" % (repo, me)
+        search = _graphql("pr_core.graphql", q=q)["search"]
+        rows = [self._row(repo, node) for node in search["nodes"] if node]
         rows.sort(key=lambda r: r["created"], reverse=True)
-        return rows
+        return {"rows": rows, "total": search["issueCount"],
+                "truncated": search["pageInfo"]["hasNextPage"]}
+
+    def mergestates(self, repo, me):
+        """Phase two: the expensive field, for the user's own PRs only."""
+        q = "repo:%s is:open is:pr author:%s" % (repo, me)
+        nodes = _graphql("pr_mergestate.graphql", q=q)["search"]["nodes"]
+        return {str(n["number"]): n["mergeStateStatus"] for n in nodes if n}
 
     def _row(self, repo, node):
         spoke = []
@@ -66,10 +86,10 @@ class GitHubProvider(Provider):
             "n": node["number"],
             "title": node["title"],
             "created": node["createdAt"][:10],
-            "author": node["author"]["login"],
+            "author": (node.get("author") or {}).get("login") or "ghost",
             "draft": node["isDraft"],
             "base": node["baseRefName"],
-            "merge": node["mergeStateStatus"],
+            "merge": None,
             "decision": node["reviewDecision"],
             "req": [r["requestedReviewer"]["login"]
                     for r in node["reviewRequests"]["nodes"]
@@ -88,18 +108,18 @@ class GitHubProvider(Provider):
         return "gh pr merge %s --repo %s --squash --delete-branch" % (n, repo)
 
     def issues(self, repo):
-        raw = _gh("issue", "list", "--repo", repo, "--state", "open", "--limit", "100",
-                  "--json", "number,title,labels,url,author,assignees,createdAt,comments")
+        owner, name = repo.split("/", 1)
+        nodes = _graphql("issues.graphql", o=owner, r=name)["repository"]["issues"]["nodes"]
         rows = []
-        for issue in json.loads(raw):
+        for issue in nodes:
             rows.append({
                 "n": issue["number"],
                 "title": issue["title"],
                 "created": issue["createdAt"][:10],
-                "author": issue["author"]["login"],
-                "labels": [label["name"] for label in issue["labels"]],
-                "assignees": [a["login"] for a in issue["assignees"]],
-                "comments": len(issue["comments"]),
+                "author": (issue.get("author") or {}).get("login") or "ghost",
+                "labels": [label["name"] for label in issue["labels"]["nodes"]],
+                "assignees": [a["login"] for a in issue["assignees"]["nodes"]],
+                "comments": issue["comments"]["totalCount"],
                 "url": issue["url"],
             })
         rows.sort(key=lambda r: r["created"], reverse=True)

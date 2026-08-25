@@ -15,5 +15,9 @@ Launch the issue desk server in chat mode (browser preview, `launch.json`):
 
 Then follow `../review-desk/SKILL.md` sections 2–3: park the watcher
 (**one per repo** — skip if a sibling desk already parked it) and process
-the events it prints. The desk enqueues its own `issue-triage` at startup:
-expect that event immediately and run it report-only with the export.
+the events it prints.
+
+The desk does **not** triage at startup: it fetches the provider itself and
+paints in seconds. `issue-triage` arrives only when the user presses ↻, and the
+event carries `rows` — the path of the JSON the desk has already downloaded.
+Run the skill on that file rather than re-querying.

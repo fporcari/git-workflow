@@ -1,9 +1,11 @@
 from .github import GitHubProvider
 from .forgejo import ForgejoProvider
+from .fixture import FixtureProvider
 
 PROVIDERS = {
     "github": GitHubProvider,
     "forgejo": ForgejoProvider,
+    "fixture": FixtureProvider,
 }
 
 

@@ -33,7 +33,43 @@ date +%F && gh repo view --json name --jq .name
 date from `date`, never from memory or the context block. Leave a hand-written
 title alone.
 
-## 2 · Read the queue — four parallel calls, no loops
+## 2 · Read the queue
+
+**If a desk handed you a `rows` path** (the `triage` event carries it), the
+queue is already downloaded — use it and skip the calls below:
+
+```bash
+jq '.queue' <rows path> > /tmp/rows.json
+jq -r '.[]|"\(.n)\t\(.created)\t\(.author)\tdraft=\(.draft)\t\(.merge)/\(.decision)\treq=\(.req|join(","))\tunres=\(.unresolved)/\(.threads)\tlast=\(if .last then "\(.last.t[0:10]) \(.last.who) \(.last.ch)" else "-" end)"' /tmp/rows.json
+```
+
+Same shape, same fields, one `jq` instead of ~6s of GitHub search. A `merge`
+of `null` means the desk's second phase had not landed yet: press ⟳ on the
+desk, or fall back to the calls below for that field alone.
+
+Otherwise, read it yourself — **one call, not four**: `involves:<login>` is a
+superset of author, assignee, commenter, mentions, review-requested and
+reviewed-by, so the four relationship searches resolved the same PRs three
+times over for nothing.
+
+```bash
+R=<owner/repo>; U=<login>; S=${CLAUDE_PLUGIN_ROOT}/skills/pr-triage
+G=${CLAUDE_PLUGIN_ROOT}/gql
+gh api graphql -F query=@$G/pr_core.graphql \
+  -f q="repo:$R is:open is:pr involves:$U" > /tmp/q_involves.json &
+gh api graphql -F query=@$G/pr_mergestate.graphql \
+  -f q="repo:$R is:open is:pr author:$U" > /tmp/q_merge.json &
+wait
+jq -n -f $S/queue.jq /tmp/q_involves.json > /tmp/rows_core.json
+jq -s -f $S/mergein.jq /tmp/q_merge.json /tmp/rows_core.json > /tmp/rows.json
+```
+
+`mergeStateStatus` rides in its own call because it is the single most
+expensive field GitHub serves — asking for it inside the queue search costs
+more than the whole rest of the query — and the verdicts only read it for
+your own PRs.
+
+<details><summary>the previous four-call form, kept for reference</summary>
 
 ```bash
 R=<owner/repo>; U=<login>; S=${CLAUDE_PLUGIN_ROOT}/skills/pr-triage
@@ -45,8 +81,9 @@ jq -n -f $S/queue.jq /tmp/q_*.json > /tmp/rows.json
 jq -r '.[]|"\(.n)\t\(.created)\t\(.author)\tdraft=\(.draft)\t\(.merge)/\(.decision)\treq=\(.req|join(","))\tunres=\(.unresolved)/\(.threads)\tlast=\(if .last then "\(.last.t[0:10]) \(.last.who) \(.last.ch)" else "-" end)"' /tmp/rows.json
 ```
 
-- Confirm `hasNextPage` is false on each file; if not, follow `endCursor` for that
-  relationship only.
+</details>
+
+- Confirm `hasNextPage` is false; if not, follow `endCursor`.
 - **Never loop per PR.** Everything the verdicts need is in `rows.json`. Open a
   single PR only for a `DIRTY` branch's conflicting paths or an `UNSTABLE` PR's
   failing job.

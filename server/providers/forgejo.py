@@ -55,7 +55,7 @@ class ForgejoProvider(Provider):
             if self._involves(row, me):
                 rows.append(row)
         rows.sort(key=lambda r: r["created"], reverse=True)
-        return rows
+        return {"rows": rows, "total": len(rows), "truncated": len(pulls) >= 50}
 
     def _involves(self, row, me):
         return (row["author"] == me or me in row["req"]

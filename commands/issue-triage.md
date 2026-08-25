@@ -22,6 +22,13 @@ batch is `/issue-run`.
 
 ## Step 1 — Collect, cross-check, rank, classify
 
+**If a desk handed you a `rows` path**, the open issues are already
+downloaded — `jq '.issues' <rows path>` gives the same rows (`n`, `title`,
+`created`, `author`, `labels`, `assignees`, `comments`, `url`) without the
+`gh issue list` call. The one thing it does not carry is who commented, so
+filter by "not analyzed" on the desk's own `skill` notes, or fetch the
+comment authors only for the shortlist you keep.
+
 ```bash
 ME=$(gh api user --jq .login)
 gh issue list --state open --limit 300 \

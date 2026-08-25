@@ -1,0 +1,5 @@
+query($q:String!){
+  search(type:ISSUE,first:50,query:$q){
+    nodes{...on PullRequest{number mergeStateStatus}}
+  }
+}
