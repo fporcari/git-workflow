@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "n": {"type": "integer"},
+    "what": {"type": "string"},
+    "history": {"type": "string"},
+    "propose": {"type": "string"},
+    "draft": {"type": ["string", "null"]},
+    "verified": {"type": "array", "items": {"type": "string"}},
+    "not_verified": {"type": "array", "items": {"type": "string"}}
+  },
+  "required": ["n", "what", "history", "propose", "draft", "verified", "not_verified"]
+}

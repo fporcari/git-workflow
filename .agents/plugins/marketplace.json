@@ -1,0 +1,20 @@
+{
+  "name": "fporcari-git-workflow",
+  "interface": {
+    "displayName": "Francesco Porcari"
+  },
+  "plugins": [
+    {
+      "name": "git-workflow",
+      "source": {
+        "source": "local",
+        "path": "./plugins/git-workflow"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

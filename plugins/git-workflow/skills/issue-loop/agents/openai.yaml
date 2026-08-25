@@ -1,0 +1,6 @@
+interface:
+  display_name: "Issue Loop"
+  short_description: "Work an explicitly selected issue batch safely."
+  default_prompt: "Use $issue-loop on the issues I name."
+policy:
+  allow_implicit_invocation: false

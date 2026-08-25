@@ -1,0 +1,6 @@
+interface:
+  display_name: "Review Desk"
+  short_description: "Open both attached repository dashboards."
+  default_prompt: "Use $review-desk to open both repository dashboards."
+policy:
+  allow_implicit_invocation: false

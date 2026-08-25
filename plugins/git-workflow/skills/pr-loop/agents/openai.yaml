@@ -1,0 +1,6 @@
+interface:
+  display_name: "PR Loop"
+  short_description: "Drain an explicitly selected PR working set."
+  default_prompt: "Use $pr-loop on the pull requests I name."
+policy:
+  allow_implicit_invocation: false

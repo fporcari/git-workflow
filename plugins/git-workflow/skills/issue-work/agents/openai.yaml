@@ -1,0 +1,6 @@
+interface:
+  display_name: "Issue Work"
+  short_description: "Work one authorized issue in an isolated checkout."
+  default_prompt: "Use $issue-work on the authorized issue I name."
+policy:
+  allow_implicit_invocation: false

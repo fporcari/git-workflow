@@ -1,5 +1,6 @@
 {
   "name": "fporcari",
+  "description": "Repository workflow plugins for pull request and issue triage, review, and execution.",
   "owner": {
     "name": "Francesco Porcari",
     "email": "fporcari@softwell.it"
@@ -7,7 +8,7 @@
   "plugins": [
     {
       "name": "git-workflow",
-      "source": "./",
+      "source": "./plugins/git-workflow",
       "description": "PR and issue workflow toolkit: triage skills plus a local review-desk dashboard with pluggable git hosting providers (GitHub, Forgejo)."
     }
   ]

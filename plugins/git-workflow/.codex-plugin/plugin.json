@@ -1,0 +1,38 @@
+{
+  "name": "git-workflow",
+  "version": "0.15.0+codex.20260825193627",
+  "description": "A repository workflow toolkit for pull request and issue triage, review, execution loops, and a local review desk.",
+  "author": {
+    "name": "Francesco Porcari",
+    "email": "fporcari@softwell.it",
+    "url": "https://github.com/fporcari"
+  },
+  "homepage": "https://github.com/fporcari/git-workflow",
+  "repository": "https://github.com/fporcari/git-workflow",
+  "keywords": [
+    "git",
+    "github",
+    "forgejo",
+    "pull-request",
+    "triage",
+    "review"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Git Workflow",
+    "shortDescription": "Drain pull request and issue queues safely.",
+    "longDescription": "Triage pull requests and issues, verify review state, work approved changes, and use a local dashboard backed by deterministic provider reads.",
+    "developerName": "Francesco Porcari",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Pull request and issue triage",
+      "Guarded review and execution loops",
+      "Local PR and issue dashboard"
+    ],
+    "defaultPrompt": [
+      "Use $pr-triage to show what needs my attention.",
+      "Use $issue-triage to shortlist open issues.",
+      "Use $review-desk to open both repository desks."
+    ]
+  }
+}

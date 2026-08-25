@@ -1,0 +1,6 @@
+interface:
+  display_name: "PR Desk"
+  short_description: "Open the attached pull request dashboard."
+  default_prompt: "Use $pr-desk to open the pull request dashboard."
+policy:
+  allow_implicit_invocation: false

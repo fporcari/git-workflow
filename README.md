@@ -1,7 +1,7 @@
 # git-workflow
 
-A Claude Code plugin for working a repository's pull requests and issues as a
-queue: nine skills, one command, and a local dashboard server with no
+A plugin for Claude Code and Codex for working a repository's pull requests
+and issues as a queue: ten shared skills and a local dashboard server with no
 dependencies outside the Python standard library.
 
 The shape of the whole thing is one idea: **the desk computes, the model
@@ -21,10 +21,28 @@ wires the verdicts to the skills below.
 
 ## Install
 
+Claude Code:
+
 ```bash
 claude plugin marketplace add fporcari/git-workflow
 claude plugin install git-workflow@fporcari
 ```
+
+Codex: point it at the marketplace in `.agents/plugins/marketplace.json` of
+this repo; the skills are invoked as `$pr-triage`, `$issue-triage`,
+`$review-desk`, and so on.
+
+## Two hosts, one plugin
+
+The plugin lives in `plugins/git-workflow/`, with a manifest per host
+(`.claude-plugin/plugin.json` and `.codex-plugin/plugin.json`) and one
+`agents/openai.yaml` per skill. The skills themselves are host-agnostic: they
+say `<PLUGIN_ROOT>` instead of any host variable, and `refs/runtime.md` is the
+one place that resolves it and answers the other host-specific questions —
+how to ask the user a question, how to launch a desk, how to spawn a dedicated
+session. The desk's headless Analyze picks its backend with
+`--agent auto|claude|codex`. `server/tests/test_packaging.py` pins the
+cross-host invariants.
 
 ## Quickstart
 
@@ -81,7 +99,7 @@ chat.
 | skill | what it does |
 |---|---|
 | **`pr-triage`** | Every open PR you are involved in, split into five blocks by the kind of work each needs: mergeable now, trivial action, reviews you owe, people to chase (grouped per person, ready to paste), and the calls only you can make. Each row carries number, date, author, what it is, what is to be done, and whether `pr-loop` would handle it unattended — read from the provider's fields, never by reading diffs. Hands over to `pr-loop`. |
-| **`issue-triage`** (command) | The ten most recent open issues nobody has looked at yet, ranked by impact and classified DEFECT / REQUEST / QUESTION / DOCS, with existing branches and PRs cross-checked. Its most valuable find is finished work sitting on a branch with no PR. Takes `batch=N` and `mine`. |
+| **`issue-triage`** | The ten most recent open issues nobody has looked at yet, ranked by impact and classified DEFECT / REQUEST / QUESTION / DOCS, with existing branches and PRs cross-checked. Its most valuable find is finished work sitting on a branch with no PR. Takes `batch=N` and `mine`. |
 
 ### Work the queue — the loops
 
@@ -117,7 +135,8 @@ succeeded.
 | **`issue-desk`** | The same for the open issues (port 8398): the cross-check and the shortlist computed without a model, buttons for dedicated work sessions, `issue-analyze` and `issue-loop`. |
 | **`review-desk`** | Launches both at once, and is the reference for how an attached chat processes desk events. Canonical home of the desk protocol: the live-row marker, the request ledger, and the exact `notify.py` flags. |
 
-`server/` is the code under all three: a zero-dependency Python stdlib server
+`plugins/git-workflow/server/` is the code under all three: a
+zero-dependency Python stdlib server
 that reads the provider, computes the verdicts, and serves one page.
 
 ## The dashboard
@@ -125,8 +144,8 @@ that reads the provider, computes the verdicts, and serves one page.
 The skills launch it; you can also run it by hand:
 
 ```bash
-python3 server/prdesk.py                             # repo from the cwd's origin
-python3 server/prdesk.py --repo owner/repo --desk issue --port 8398
+python3 plugins/git-workflow/server/prdesk.py        # repo from the cwd's origin
+python3 plugins/git-workflow/server/prdesk.py --repo owner/repo --desk issue --port 8398
 ```
 
 Open http://127.0.0.1:8399. Tabs: Queue (needs a move from you), Mergeable,
@@ -152,7 +171,7 @@ Acting belongs to the skills, which log every action on the PR itself.
 
 ## Verdicts
 
-`server/verdicts.py` ports section 7 of the pr-triage skill — the closed
+`plugins/git-workflow/server/verdicts.py` ports section 7 of the pr-triage skill — the closed
 verdict vocabulary (`merge it`, `answer the review`, `realign with the base`,
 `waiting on <login>`, …) — restricted to what the fields can honestly answer:
 anything that would need a diff read is reported as `asks` and left to
@@ -162,11 +181,12 @@ merge, A3 realign) versus what it brings to you for a go-ahead.
 ## Providers
 
 The server, the verdict engine and the UI speak one normalized row shape
-(documented in `server/providers/base.py`). Providers translate a hosting
+(documented in `plugins/git-workflow/server/providers/base.py`). Providers
+translate a hosting
 service into it:
 
 - **github** (default) — shells out to the authenticated `gh` CLI, reusing the
-  exact GraphQL documents in `server/gql/`.
+  exact GraphQL documents in `plugins/git-workflow/server/gql/`.
 - **forgejo** — REST against the Forgejo/Gitea API v1; set `FORGEJO_URL` and
   `FORGEJO_TOKEN`. Written against the published API, not yet exercised
   against a live Forgejo instance: expect to adjust field mappings when the
@@ -181,12 +201,13 @@ speak `gh` directly. The provider layer is where their data reads will land.
 ## Tests
 
 ```bash
-server/tests/run.sh
+plugins/git-workflow/server/tests/run.sh
 ```
 
 No network, no GitHub, no rate limit: a few seconds on the fixture provider.
-100 Python tests over the row contract, the verdict engine, the merge gate,
-the five-block partition, the issue cross-check and the cache; plus 71 checks
-that drive the **real** `static/index.html` against a **real** desk process
-through a small DOM shim, so it is the page's own render path that runs.
-`server/tests/README.md` says what each file is for.
+119 Python tests over the row contract, the verdict engine, the merge gate,
+the five-block partition, the issue cross-check, the cache and the cross-host
+packaging invariants (`test_packaging.py`); plus 73 checks that drive the
+**real** `static/index.html` against a **real** desk process through a small
+DOM shim, so it is the page's own render path that runs.
+`plugins/git-workflow/server/tests/README.md` says what each file is for.
