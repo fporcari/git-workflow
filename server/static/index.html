@@ -175,9 +175,9 @@ const VIEWS=()=>DESK==="issue"?[
   {id:"grid",label:"Situa",tip:"L'output di issue-triage: le 10 issue recenti non analizzate, tipo e cross-check di branch e PR. Si aggiorna col bottone ↻.",count:situa?situa.rows.length:0},
   {id:"issues",label:"Tutte",tip:"Tutte le issue aperte del repo, live dai campi (si caricano col ⟳)",count:loaded?issues.length:"—"},
 ]:[
-  {id:"grid",label:"Triage",tip:"L'output di pr-triage: la coda organizzata per blocchi, con i gate veri. Si aggiorna col bottone ↻.",count:grid?grid.blocks.reduce((a,b)=>a+b.rows.length,0):"—"},
+  {id:"grid",label:"Tutti",tip:"Tutte le PR in cui sei coinvolto, organizzate per blocchi dal triage (parte da solo all'avvio; ↻ per rifarlo)",count:grid?grid.blocks.reduce((a,b)=>a+b.rows.length,0):"—"},
+  {id:"todo",label:"Da fare",tip:"Solo i blocchi che chiedono una tua azione: mergiabili, azioni banali, review da fare, decisioni tue",count:grid?grid.blocks.filter(b=>b.title!=="In attesa di altri").reduce((a,b)=>a+b.rows.length,0):"—"},
   {id:"chase",label:"Solleciti",tip:"Un messaggio pronto da incollare per ogni persona da sollecitare (verificati, da pr-triage)",count:Object.keys(chase).length},
-  {id:"all",label:"Tutte",tip:"Tutte le PR aperte in cui sei coinvolto, in lista piatta: dal triage, raffinata coi campi live se premi ⟳",count:loaded?prs.length:(grid?gridAllRows().length:"—")},
 ];
 
 async function copyText(btn,text){
@@ -356,15 +356,16 @@ function gridRowsTable(rows){
   return `<table>${cols}<tbody>${rows.map(r=>`<tr data-dlg="p${r.n}"><td class="mono">#${r.n}</td><td class="mono">${esc(r.date||"")}</td><td>${esc(r.author||"")}</td><td>${esc(r.what||"")}</td><td><b>${esc(r.todo||"")}</b></td><td class="mono">${esc(r.autorun||"")}</td><td><button class="rowBtn" data-dlg="p${r.n}">Azioni…</button></td></tr>`).join("")}</tbody></table>`;
 }
 function renderGrid(){
-  const wrap=$("gridWrap"),on=view==="grid";
+  const wrap=$("gridWrap"),on=view==="grid"||view==="todo";
   wrap.style.display=on?"flex":"none";
   if(!on)return;
   let html="";
   if(DESK==="pr"){
   html+=`<div class="gridBlock"><h2 style="font-size:12px">Pull request ${grid?`<span class="skillStamp">— ${esc(session||"")} · ${esc(grid.generated||"")}</span>`:""}</h2>`;
   if(grid){
-    html+=grid.blocks.map(b=>`<div class="gridBlock"><h2>${esc(b.title)} (${b.rows.length})</h2>${gridRowsTable(b.rows)}</div>`).join("");
-    const names=Object.keys(chase);
+    const blocks=view==="todo"?grid.blocks.filter(b=>b.title!=="In attesa di altri"):grid.blocks;
+    html+=blocks.map(b=>`<div class="gridBlock"><h2>${esc(b.title)} (${b.rows.length})</h2>${gridRowsTable(b.rows)}</div>`).join("");
+    const names=view==="todo"?[]:Object.keys(chase);
     if(names.length)html+=`<div class="gridBlock"><h2>Da sollecitare (${names.length})</h2><div class="chaseWrap" style="padding:0">${names.map(w=>`<div class="chaseCard"><h2>@${esc(w)}</h2><pre>${esc(chase[w])}</pre><button class="btn" data-copy="${esc(chase[w])}">Copia messaggio</button></div>`).join("")}</div></div>`;
   }else if(triageRunning.pr){
     html+=`<div class="actionText">⏳ pr-triage in corso nella chat collegata — segui il feed in basso; la griglia comparirà qui.</div>`;
@@ -391,7 +392,7 @@ function renderGrid(){
 
 function renderChase(){
   const wrap=$("chaseWrap"),onChase=view==="chase";
-  $("tableWrap").style.display=(onChase||view==="grid")?"none":"";
+  $("tableWrap").style.display=(onChase||view==="grid"||view==="todo")?"none":"";
   wrap.style.display=onChase?"grid":"none";
   if(!onChase)return;
   const names=Object.keys(chase);
@@ -406,7 +407,7 @@ function renderChase(){
 function renderTable(){
   const tb=$("tbody"),th=$("thead");
   renderChase();renderGrid();
-  if(view==="chase"||view==="grid"){$("empty").style.display="none";tb.innerHTML="";th.innerHTML="";return;}
+  if(view==="chase"||view==="grid"||view==="todo"){$("empty").style.display="none";tb.innerHTML="";th.innerHTML="";return;}
   if(!loaded&&view==="all"&&DESK==="pr"&&grid){
     th.innerHTML=`<tr><th style="width:64px">#</th><th style="width:92px">data</th><th style="width:100px">autore</th><th>titolo</th><th style="width:190px">prossima mossa</th><th style="width:64px">autorun</th><th style="width:86px"></th></tr>`;
     const q=query.toLowerCase();
