@@ -74,6 +74,21 @@ tbody tr{cursor:pointer;outline:none}
 tbody tr:hover td{background:#f7f5f0}
 tbody tr.selected td{background:#eeeae1}
 tbody tr.selected td:first-child{box-shadow:inset 3px 0 var(--rust)}
+/* the row the chat is on right now: a moving edge, not a colour swap, so it
+   reads as work in progress and never competes with the selection */
+tbody tr.working td{background:color-mix(in srgb,var(--amber) 9%,var(--panel))}
+tbody tr.working.selected td{background:color-mix(in srgb,var(--amber) 15%,var(--panel))}
+tbody tr.working td:first-child{box-shadow:inset 3px 0 var(--amber);animation:needle 1.4s ease-in-out infinite}
+@keyframes needle{50%{box-shadow:inset 3px 0 color-mix(in srgb,var(--amber) 25%,transparent)}}
+.nowChip{display:inline-flex;align-items:center;gap:5px;font:10px var(--mono);color:var(--amber);
+  border:1px solid var(--amber);border-radius:9px;padding:0 6px;margin-left:6px;white-space:nowrap}
+.nowChip i{width:5px;height:5px;border-radius:50%;background:var(--amber);animation:pulse 1s infinite;flex:none}
+.workingBar{display:none;padding:7px 18px;border-bottom:1px solid var(--line);font-size:11.5px;
+  background:color-mix(in srgb,var(--amber) 8%,var(--panel));color:var(--amber);
+  align-items:center;gap:8px}
+.workingBar.on{display:flex}
+.workingBar b{font:600 11px var(--mono)}
+.workingBar .spin{width:7px;height:7px;border-radius:50%;background:var(--amber);animation:pulse 1s infinite;flex:none}
 .markCol{width:32px}
 .mark{text-align:center;font:700 12px var(--mono)}
 tr.attention .mark{color:var(--red)}tr.decision .mark{color:var(--amber)}
@@ -178,6 +193,7 @@ h2{margin:0 0 7px}
     <button class="metric green" data-filter="ready" title="Approvate, CLEAN, zero richieste pendenti: pronte al merge"><b id="mReady">—</b><span>mergeable</span></button>
   </section>
 
+  <div class="workingBar" id="workingBar"></div>
   <div class="banner err" id="errBox"></div>
   <div class="banner warn" id="watcherBox"></div>
   <div class="banner info" id="noteBox"></div>
@@ -215,6 +231,7 @@ let selected=null,tab="quadro",sort={key:"created",dir:-1},acting={},truncated=n
 let deskEtag=null,fetching=false,lastGenerated=null,timings={};
 const triageRunning={pr:false,issue:false};
 let flows={};   // triage/run outstanding, from the server's ledger
+let workingOn=null;  // the row the chat is on right now
 
 /* ---------- helpers ---------- */
 function ageDays(d){return Math.max(0,Math.round((Date.now()-new Date(d))/864e5));}
@@ -286,6 +303,9 @@ function applyState(st){
   else if(w.chat&&!w.alive)
     banner("watcherBox","<b>Chat non in ascolto.</b> I bottoni che parlano alla chat sono disattivati — rilancia il desk dalla chat.",true);
   else banner("watcherBox","",false);
+  const wasOn=workingOn&&workingOn.n;
+  workingOn=st.working||null;
+  if(workingOn&&workingOn.n!==wasOn)followWorking=true;
   const feed=st.feed||[];
   const box=$("feedBox");
   box.classList.toggle("on",feed.length>0);
@@ -390,6 +410,23 @@ function renderTabs(){
   run.classList.toggle("locked",!!runOut);
   document.querySelectorAll(".metric").forEach(m=>m.classList.toggle("on",stateFilter===m.dataset.filter));
 }
+let followWorking=false;
+function renderWorking(){
+  const bar=$("workingBar");
+  bar.classList.toggle("on",!!workingOn);
+  if(!workingOn)return;
+  const row=(DESK==="issue"?issues:prs).find(r=>r.n===workingOn.n);
+  bar.innerHTML=`<span class="spin"></span><b>#${workingOn.n}</b>
+    <span>${esc(workingOn.msg||"in lavorazione nella chat")}</span>
+    <span style="color:var(--muted)">dalle ${esc(workingOn.at||"")}</span>
+    ${row?`<button class="btn" id="goWorking" style="margin-left:auto">Vai alla riga</button>`:""}`;
+  const go=$("goWorking");
+  if(go)go.onclick=()=>{stateFilter=null;query="";$("q").value="";view="all";select(workingOn.n);scrollToWorking();};
+}
+function scrollToWorking(){
+  const tr=document.querySelector("tr.working")||document.querySelector("tr.selected");
+  if(tr)tr.scrollIntoView({block:"nearest"});
+}
 function renderSync(){
   const el=$("btnFetch"),lab=$("syncLabel");
   el.classList.toggle("loading",fetching);
@@ -422,10 +459,10 @@ function renderTable(){
     head.innerHTML=`<tr><th class="markCol"></th>${th("n","#")}${th("title","issue")}${th("type","tipo",'title="DEFECT bug reale · REQUEST nuova funzione · QUESTION domanda · DOCS documentazione"')}${th("author","autore")}<th>label</th>${th("assignees","assignees")}${th("comments","commenti",'class="num"')}${th("created","età",'class="num"')}</tr>`;
     tb.innerHTML=list.map(r=>{
       const note=shortlist&&shortlist.rows.find(x=>x.n===r.n);
-      return `<tr data-n="${r.n}" class="${r.assignees.length?"waiting":"attention"}${selected===r.n?" selected":""}">
+      return `<tr data-n="${r.n}" class="${r.assignees.length?"waiting":"attention"}${selected===r.n?" selected":""}${workingOn&&workingOn.n===r.n?" working":""}">
         <td class="mark"><span title="${r.assignees.length?"presa":"libera"}">${r.assignees.length?"○":"!"}</span></td>
         <td class="mono">#${r.n}</td>
-        <td class="prTitle"><span>${esc(r.title)}</span>${r.skill||note?'<small class="dot" title="analisi disponibile">●</small>':""}</td>
+        <td class="prTitle"><span>${esc(r.title)}</span>${r.skill||note?'<small class="dot" title="analisi disponibile">●</small>':""}${workingOn&&workingOn.n===r.n?'<span class="nowChip"><i></i>ora</span>':""}</td>
         <td><span class="tag ${esc(r.type)}">${esc(r.type)}</span></td>
         <td><span class="avatar">${esc((r.author||"??").slice(0,2).toUpperCase())}</span>${esc(r.author)}</td>
         <td class="next">${(r.labels||[]).map(l=>`<span class="tag">${esc(l)}</span>`).join(" ")||"—"}</td>
@@ -434,9 +471,9 @@ function renderTable(){
         <td class="num mono">${ageDays(r.created)}g</td></tr>`;}).join("");
   }else{
     head.innerHTML=`<tr><th class="markCol"></th>${th("title","pull request")}${th("author","autore")}${th("decision","review")}${th("merge","merge")}${th("unresolved","unresolved",'class="num" title="Thread di review non risolti"')}<th>base</th>${th("todo","prossima mossa")}${th("autorun","autorun",`title="${esc(AUTORUN_TIP)}"`)}</tr>`;
-    tb.innerHTML=list.map(r=>`<tr data-n="${r.n}" class="${r.state}${selected===r.n?" selected":""}">
+    tb.innerHTML=list.map(r=>`<tr data-n="${r.n}" class="${r.state}${selected===r.n?" selected":""}${workingOn&&workingOn.n===r.n?" working":""}">
       <td class="mark"><span title="${STATE_LABEL[r.state]}">${MARK[r.state]}</span></td>
-      <td class="prTitle"><b>#${r.n}</b><span>${esc(r.title)}</span>${r.skill?'<small class="dot" title="analisi disponibile">●</small>':""}<small>${ageDays(r.created)}g</small></td>
+      <td class="prTitle"><b>#${r.n}</b><span>${esc(r.title)}</span>${r.skill?'<small class="dot" title="analisi disponibile">●</small>':""}${workingOn&&workingOn.n===r.n?'<span class="nowChip"><i></i>ora</span>':""}<small>${ageDays(r.created)}g</small></td>
       <td><span class="avatar">${esc((r.author||"??").slice(0,2).toUpperCase())}</span>${esc(r.author)}</td>
       <td><span class="status ${r.state}">${esc(r.decision||(r.draft?"draft":"no review"))}</span></td>
       <td><span class="check ${r.merge||"pending"}">●</span> <span class="mono">${esc(r.merge||"…")}</span></td>
@@ -528,6 +565,9 @@ function actionButton(id,kind,label,tip,row,primary){
 }
 function actBadge(r){
   const out=[];
+  if(workingOn&&workingOn.n===r.n)
+    out.push(`<div class="actionText" style="color:var(--amber);border-style:solid;border-color:var(--amber)">
+      <span class="nowChip"><i></i>ora</span> la chat sta lavorando questa: ${esc(workingOn.msg||"in corso")} (dalle ${esc(workingOn.at||"")})</div>`);
   for(const [kind,q] of Object.entries(requests(r))){
     const name=REQ_LABEL[kind]||kind;
     if(q.status==="queued")
@@ -758,7 +798,10 @@ function renderSummary(){
   renderSync();
 }
 
-function render(){renderSummary();renderTabs();renderTable();renderDetail();}
+function render(){
+  renderSummary();renderTabs();renderTable();renderWorking();renderDetail();
+  if(followWorking&&workingOn){followWorking=false;scrollToWorking();}
+}
 
 /* ---------- wiring ---------- */
 $("q").oninput=e=>{query=e.target.value;selectFirst();render();};

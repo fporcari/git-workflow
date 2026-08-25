@@ -166,7 +166,7 @@ globalThis.fetch = async () => { throw new Error("network is off in this test");
 
 /* ---- run the page's script ---- */
 const script = html.match(/<script>\n([\s\S]*)\n<\/script>/)[1];
-const page = new Function(`${script}\nreturn {applyDesk,render,renderDetail,select,moveSelection,setSort,visiblePrs,visibleIssues,
+const page = new Function(`${script}\nreturn {applyDesk,applyState,render,renderDetail,select,moveSelection,setSort,visiblePrs,visibleIssues,
   get state(){return {prs,issues,selected,tab,view,loaded,DESK,truncated,pendingMerge,sort};},
   set view(v){view=v;}, set query(v){query=v;}, set watcher(v){watcherAlive=v;}};`)();
 
@@ -335,6 +335,35 @@ const uiText = html.slice(html.indexOf("<body"));
 for (const word of BANNED)
   ok(`the UI does not say "${word}"`, !uiText.includes(word),
      uiText.slice(Math.max(0, uiText.indexOf(word) - 40), uiText.indexOf(word) + 40));
+
+/* ---- 7e. the row under the needle ---- */
+const runner = page.visiblePrs()[1];
+page.applyState({ working: { n: runner.n, msg: "riallineo il branch", at: "19:10:00" },
+                  watcher: { alive: true, chat: true }, feed: [] });
+page.render();
+const tbodyNow = document.getElementById("tbody");
+ok("the row the chat is on is marked in the table",
+   tbodyNow.querySelectorAll("tr").some(
+     tr => +tr.dataset.n === runner.n && tr.classList.contains("working")));
+ok("only that row is marked",
+   tbodyNow.querySelectorAll("tr").filter(tr => tr.classList.contains("working")).length === 1);
+ok("the row carries a live chip, not just a colour",
+   tbodyNow.innerHTML.includes("nowChip"));
+ok("a bar says which PR and what is happening", (() => {
+  const bar = document.getElementById("workingBar");
+  return bar.classList.contains("on") && bar.innerHTML.includes(String(runner.n)) &&
+         /riallineo il branch/.test(bar.innerHTML);
+})());
+ok("the bar offers a jump to the row",
+   document.getElementById("workingBar").innerHTML.includes("goWorking"));
+page.select(runner.n);
+ok("the detail panel says the chat is on this one",
+   /la chat sta lavorando questa/.test(document.getElementById("detailGrid").innerHTML));
+page.applyState({ working: null, watcher: { alive: true, chat: true }, feed: [] });
+page.render();
+ok("when the run ends nothing is left glowing",
+   !document.getElementById("workingBar").classList.contains("on") &&
+   !document.getElementById("tbody").innerHTML.includes("nowChip"));
 
 /* ---- 8. the issue desk uses the same panel ---- */
 page.applyDesk({ ...snapshot, meta: { ...snapshot.meta, desk: "issue" } });

@@ -135,6 +135,20 @@ While working any event, post progress so the desk shows it live:
 python3 ${CLAUDE_PLUGIN_ROOT}/server/notify.py --repo <owner/repo> [--pr <n>] "<one line>"
 ```
 
+### Say which row you are on
+
+Any event that works one PR or issue at a time — a `run` above all, but also
+an `analyze` — should mark it while it lasts, so the desk highlights that row
+and the user can see where the needle is without reading the feed:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/server/notify.py --repo <owner/repo> \
+  --pr <n> --working "cosa stai facendo, in una riga"
+```
+
+One row at a time: setting it again moves it. `--idle` drops it, and so does
+closing a request with `--done`/`--failed`.
+
 ### Close the request when you are done — always
 
 Every button press is recorded in the desk's ledger and **locks that button**

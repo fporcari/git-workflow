@@ -1,7 +1,7 @@
 {
   "name": "git-workflow",
   "description": "PR and issue workflow toolkit: pr-triage / pr-run / issue-triage skills plus a local review-desk dashboard that computes the triage grid, the chase blocks, the merge gate and the issue cross-check itself, calling a model only for what needs judgement. Pluggable git hosting providers (GitHub today, Forgejo ready).",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "author": {
     "name": "Francesco Porcari",
     "email": "fporcari@softwell.it"

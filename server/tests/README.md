@@ -8,13 +8,13 @@ server/tests/run.sh              # server tests + UI tests
 server/tests/run.sh --bench      # plus the live benchmark (needs gh)
 ```
 
-- **`test_desk.py`** (83 tests, stdlib unittest) — the row contract the
+- **`test_desk.py`** (90 tests, stdlib unittest) — the row contract the
   skills read, the verdict engine, the merge gate, the five-block partition,
   the chase grouping, the issue cross-check, the cache's
   stale-while-revalidate and single-flight behaviour, every HTTP endpoint
   including the 304 path, and the guarantee that a cold snapshot pays its
   cache misses in parallel rather than one after the other.
-- **`test_ui.mjs`** (53 checks, plain node) — drives the **real**
+- **`test_ui.mjs`** (60 checks, plain node) — drives the **real**
   `static/index.html` against a **real** desk process on the fixture
   provider, through a small DOM shim. It is the page's own render path that
   runs, so it catches a render that throws, a missing field, a button wired

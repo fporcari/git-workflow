@@ -847,3 +847,66 @@ class SummaryFromData(unittest.TestCase):
         self.assertTrue(closes)
         self.assertTrue(any(c.get("title") for c in closes),
                         "a closed issue's title is what makes the link readable")
+
+
+class WorkingMarker(unittest.TestCase):
+    """pr-run walks the queue one PR at a time; the desk should show which
+    row is under the needle without the user reading the feed line by line."""
+
+    def tearDown(self):
+        deskstate.clear_working(REPO)
+
+    def test_the_marker_names_the_row_and_what_is_happening(self):
+        deskstate.set_working(REPO, 1145, "leggo il diff")
+        got = deskstate.working(REPO)
+        self.assertEqual(got["n"], 1145)
+        self.assertEqual(got["msg"], "leggo il diff")
+        self.assertIn("at", got)
+
+    def test_it_moves_as_the_run_moves(self):
+        deskstate.set_working(REPO, 1145, "primo")
+        deskstate.set_working(REPO, 1128, "secondo")
+        self.assertEqual(deskstate.working(REPO)["n"], 1128)
+
+    def test_a_stale_marker_is_dropped_rather_than_left_glowing(self):
+        """A highlight stuck on a row after the run died reads as work in
+        progress, which is worse than no highlight."""
+        deskstate.set_working(REPO, 1145, "…")
+        state = deskstate.load(REPO)
+        state["working"]["epoch"] -= deskstate.WORKING_STALE + 10
+        deskstate.save(REPO, state)
+        self.assertIsNone(deskstate.working(REPO))
+
+    def test_it_clears_when_the_run_is_over(self):
+        deskstate.set_working(REPO, 1145, "…")
+        deskstate.clear_working(REPO)
+        self.assertIsNone(deskstate.working(REPO))
+
+    def test_it_reaches_the_ui_through_the_state_endpoint(self):
+        deskstate.set_working(REPO, 1145, "riallineo il branch")
+        got = fresh_desk().live_state()["working"]
+        self.assertEqual(got["n"], 1145)
+
+    def test_notify_sets_and_clears_it_from_the_command_line(self):
+        env = dict(os.environ, HOME=_HOME)
+        run = lambda *a: subprocess.run(                       # noqa: E731
+            (sys.executable, str(ROOT / "notify.py"), "--repo", REPO) + a,
+            capture_output=True, text=True, env=env)
+        out = run("--pr", "1145", "--working", "leggo il diff")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(deskstate.working(REPO)["n"], 1145)
+        out = run("--idle", "coda svuotata")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIsNone(deskstate.working(REPO))
+
+    def test_closing_a_request_drops_the_highlight_too(self):
+        """The run ends by closing its request; a marker left behind would
+        keep glowing on a row nobody is touching."""
+        deskstate.request(REPO, "run:pr-run", "run", None, "pr-run")
+        deskstate.set_working(REPO, 1145, "…")
+        out = subprocess.run(
+            (sys.executable, str(ROOT / "notify.py"), "--repo", REPO,
+             "--done", "run:pr-run", "coda svuotata"),
+            capture_output=True, text=True, env=dict(os.environ, HOME=_HOME))
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIsNone(deskstate.working(REPO))

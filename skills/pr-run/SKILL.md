@@ -525,7 +525,28 @@ the end of the run:
   the queue read and re-export the whole grid per pr-triage §10;
 - refresh `analysis`/`next` for what moved, and put the full text of any
   review drafted but not sent in that PR's `draft` key;
-- one feed line per action (`notify.py`), in plain words.
+- one feed line per action (`notify.py`), in plain words;
+- **say which PR you are on, before you start on it**, so the desk puts the
+  needle on that row instead of leaving the user to read the feed:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/server/notify.py --repo <owner/repo> \
+  --pr <n> --working "cosa stai facendo su questa, in una riga"
+```
+
+  Update it as you move to the next PR — the marker is a single row, not a
+  list — and when the queue is empty drop it:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/server/notify.py --repo <owner/repo> \
+  --done run:pr-run "coda svuotata: 2 merge, 1 riallineo"
+```
+
+  That one command closes the run's request (unlocking the ▶ pr-run button
+  and showing the outcome in its place) and clears the highlight. A marker
+  nobody updates for fifteen minutes is dropped by the desk on its own — a
+  row left glowing after the run died reads as work in progress, which is
+  worse than no highlight — but that is a backstop, not a substitute.
 
 ## How to talk about the lanes
 

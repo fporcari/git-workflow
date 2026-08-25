@@ -272,6 +272,7 @@ class Desk:
         flows = {key.split(":", 1)[1]: rec for key, rec in ledger.items()
                  if key.startswith(("triage:", "run:"))}
         return {"feed": (st.get("feed") or [])[-50:], "flows": flows,
+                "working": deskstate.working(self.repo, st),
                 "grid": st.get("grid"), "shortlist": st.get("shortlist"),
                 "chase": st.get("chase") or {},
                 "session": st.get("session"), "pong": st.get("pong"),

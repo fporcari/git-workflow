@@ -124,6 +124,40 @@ def save(repo, state):
 
 
 REQUEST_STALE = 1800
+WORKING_STALE = 900          # a run that stopped saying anything
+
+
+def set_working(repo, n, msg=""):
+    """Mark the PR (or issue) the chat is on RIGHT NOW.
+
+    pr-run walks the queue one PR at a time and the desk is the radar: the
+    user wants to see which row is under the needle without reading the feed
+    line by line.
+    """
+    state = load(repo)
+    state["working"] = {"n": n, "msg": msg, "epoch": time.time(),
+                        "at": time.strftime("%H:%M:%S")}
+    save(repo, state)
+    return state["working"]
+
+
+def clear_working(repo):
+    state = load(repo)
+    if state.pop("working", None) is not None:
+        save(repo, state)
+
+
+def working(repo, state=None):
+    """The live marker, or None. A marker nobody updated for a quarter of an
+    hour is dropped: a highlight stuck on a row after the run died is worse
+    than no highlight, because it reads as work in progress."""
+    state = state if state is not None else load(repo)
+    mark = state.get("working")
+    if not mark:
+        return None
+    if time.time() - mark.get("epoch", 0) > WORKING_STALE:
+        return None
+    return mark
 
 
 def request(repo, key, kind, n=None, label=""):
