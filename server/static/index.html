@@ -177,6 +177,83 @@ function visibleIssues(){
   return issues.filter(r=>!q||[r.n,r.title,r.author,(r.labels||[]).join(" ")].join(" ").toLowerCase().includes(q));
 }
 
+const analyses={};
+
+function analysisBlockHtml(r){
+  const a=analyses[r.n];
+  if(r.order&&!a?.block){
+    return `<div class="actionText">Ordine ${esc(r.order.status)} — ${esc(r.order.instruction||"esegui la proposta")}\n→ ${esc(r.order.propose)}${r.order.report?`\n${esc(r.order.report)}`:""}</div>
+      <small>${r.order.status==="pending"?"Lo esegue <b>/pr-run</b> in chat, senza altre conferme (Lane 0).":""}</small>`;
+  }
+  if(a?.status==="running")
+    return `<div class="actionText">⏳ analisi in corso — pr-analyze sta leggendo diff, thread e claim della PR. Un paio di minuti.</div>`;
+  if(a?.status==="error")
+    return `<div class="actionText">Errore analisi: ${esc(a.error)}</div><button class="btn primary" id="dAnalyze">Riprova analisi</button>`;
+  if(!a?.block&&r.skill?.next&&!r.order){
+    analyses[r.n]={status:"done",block:{what:r.skill.analysis||"",history:"analisi precedente, dal desk state",propose:r.skill.next,draft:r.skill.draft||null,verified:[],not_verified:[]}};
+    return analysisBlockHtml(r);
+  }
+  if(a?.block){
+    const b=a.block;
+    return `<dl>
+      <div><dt>what</dt><dd style="text-align:left">${esc(b.what)}</dd></div>
+      <div><dt>history</dt><dd style="text-align:left">${esc(b.history)}</dd></div>
+      <div><dt>propose</dt><dd style="text-align:left"><b>${esc(b.propose)}</b></dd></div></dl>
+      ${b.draft?`<div class="draft"><span>BOZZA</span><p>${esc(b.draft)}</p></div>`:""}
+      ${(b.verified||[]).length?`<small>verificato: ${esc(b.verified.join("; "))}</small><br>`:""}
+      ${(b.not_verified||[]).length?`<small>NON verificato: ${esc(b.not_verified.join("; "))}</small>`:""}
+      <textarea id="dInstr" rows="2" placeholder="istruzioni per l'esecuzione (vuoto = esegui la proposta così com'è)" style="width:100%;margin:8px 0 6px;font:11px inherit;border:1px solid var(--line);border-radius:6px;padding:6px;background:var(--bg)"></textarea>
+      <button class="btn primary" id="dGo">Vai — registra l'ordine</button>
+      <small style="display:block;margin-top:4px">L'ordine finisce nel desk state: /pr-run in chat lo esegue come Lane 0, senza richiederti conferma.</small>`;
+  }
+  return `<button class="btn primary" id="dAnalyze">Analizza — chunk pr-run</button>
+    <small style="display:block;margin-top:4px">Lancia pr-analyze headless (read-only): diff, thread, verifica dei claim → blocco what/history/propose.</small>`;
+}
+
+function wireAnalysis(r){
+  const an=$("dAnalyze");if(an)an.onclick=()=>startAnalysis(r.n);
+  const go=$("dGo");if(go)go.onclick=()=>sendOrder(r.n);
+}
+
+async function startAnalysis(n){
+  analyses[n]={status:"running"};render();
+  try{
+    const resp=await fetch(`/api/pr/${n}/analyze`,{method:"POST"});
+    const {job,error}=await resp.json();
+    if(error)throw new Error(error);
+    pollJob(n,job);
+  }catch(e){analyses[n]={status:"error",error:e.message};render();}
+}
+
+async function pollJob(n,job){
+  const t=setInterval(async()=>{
+    try{
+      const j=await fetch(`/api/job/${job}`).then(r=>r.json());
+      if(j.status==="running")return;
+      clearInterval(t);
+      if(j.status==="error"){analyses[n]={status:"error",error:j.error};}
+      else{
+        let block;
+        try{block=JSON.parse(j.result.replace(/^```json?\s*|```\s*$/g,""));}
+        catch(e){block={what:"—",history:"—",propose:j.result.slice(0,400)};}
+        analyses[n]={status:"done",block};
+      }
+      render();
+    }catch(e){clearInterval(t);analyses[n]={status:"error",error:e.message};render();}
+  },3000);
+}
+
+async function sendOrder(n){
+  const a=analyses[n];if(!a?.block)return;
+  const instruction=($("dInstr")?.value||"").trim();
+  const resp=await fetch(`/api/pr/${n}/order`,{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({propose:a.block.propose,draft:a.block.draft||null,instruction})});
+  const {order,error}=await resp.json();
+  if(error){analyses[n]={status:"error",error};render();return;}
+  const row=prs.find(x=>x.n===n);if(row)row.order=order;
+  delete analyses[n];render();
+}
+
 function renderChase(){
   const wrap=$("chaseWrap"),onChase=view==="chase";
   $("tableWrap").style.display=onChase?"none":"";
@@ -248,9 +325,9 @@ function renderDetail(){
         <div><dt>Threads</dt><dd>${r.unresolved}/${r.threads} unresolved</dd></div>
         <div><dt>Last to speak</dt><dd>${r.last?esc(`${r.last.who} · ${r.last.ch} · ${r.last.t.slice(0,10)}`):"—"}</dd></div></dl></article>
       <article class="nextCard"><h2>Next move</h2><p>${esc(r.todo)}</p>
-        ${r.action?`<div class="actionText">${esc(r.action.text)}</div>
-        <button class="btn primary" id="dAction">${esc(r.action.label)}</button>`:""}
-        <div style="margin-top:8px"><small>autorun: ${esc(r.autorun)} — dai campi del provider; l'analisi sul diff la fa /pr-run.</small></div></article>
+        <div id="dAnalysis">${analysisBlockHtml(r)}</div>
+        <div style="margin-top:8px"><small>autorun: ${esc(r.autorun)} — dai campi del provider.
+        ${r.action?`<a href="#" id="dCopyLast" style="color:var(--muted)">copia ${r.action.kind==="command"?"comando":"prompt"} (ultima spiaggia)</a>`:""}</small></div></article>
       <aside><h2>Reviews</h2>${reviews}${closes?`<h2 style="margin-top:10px">Closes</h2>${closes}`:""}</aside>
       ${r.skill?`<article style="grid-column:1/-1;border-top:1px solid var(--line)">
         <h2>Analisi della skill <span class="skillStamp">${esc(session||"")}</span></h2>
@@ -259,7 +336,8 @@ function renderDetail(){
         ${r.skill.draft?`<div class="draft"><span>BOZZA REVIEW</span><p>${esc(r.skill.draft)}</p></div>
         <button class="btn" id="dDraft">Copia bozza</button>`:""}
       </article>`:""}`;
-    const act=$("dAction");if(act)act.onclick=()=>copyText(act,r.action.text);
+    wireAnalysis(r);
+    const cl=$("dCopyLast");if(cl)cl.onclick=e=>{e.preventDefault();copyText(cl,r.action.text);};
     const dr=$("dDraft");if(dr)dr.onclick=()=>copyText(dr,r.skill.draft);
   }else{
     $("dMark").textContent=r.assignees.length?"○":"!";$("dMark").className="largeMark "+(r.assignees.length?"waiting":"attention");

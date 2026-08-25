@@ -19,6 +19,7 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
 import deskstate
+import jobs
 from providers import get_provider
 from verdicts import decorate, fallback_chase, handoff, issue_handoff, issue_type
 
@@ -37,10 +38,11 @@ def detect_repo():
 
 
 class Desk:
-    def __init__(self, provider, repo, me):
+    def __init__(self, provider, repo, me, cwd):
         self.provider = provider
         self.repo = repo
         self.me = me
+        self.cwd = cwd
         self._cache = {}
         self._lock = threading.Lock()
 
@@ -64,6 +66,9 @@ class Desk:
         rows = self._cached("queue", load, refresh)
         state = deskstate.load(self.repo)
         deskstate.annotate_prs(rows, state)
+        orders = state.get("orders") or {}
+        for row in rows:
+            row["order"] = orders.get(str(row["n"]))
         chase = state.get("chase") or fallback_chase(rows)
         return {"rows": rows, "chase": chase,
                 "chase_verified": bool(state.get("chase")),
@@ -113,6 +118,30 @@ class Handler(BaseHTTPRequestHandler):
             elif url.path == "/api/issues":
                 self._send(200, dict(self.desk.issues(refresh),
                                      generated=time.strftime("%H:%M:%S")))
+            elif url.path.startswith("/api/job/"):
+                job = jobs.get(url.path.rsplit("/", 1)[1])
+                self._send(200 if job else 404, job or {"error": "unknown job"})
+            else:
+                self._send(404, {"error": "not found"})
+        except Exception as exc:
+            self._send(502, {"error": str(exc)})
+
+    def do_POST(self):
+        url = urlparse(self.path)
+        length = int(self.headers.get("Content-Length") or 0)
+        body = json.loads(self.rfile.read(length) or b"{}") if length else {}
+        try:
+            parts = url.path.strip("/").split("/")
+            if len(parts) == 4 and parts[:2] == ["api", "pr"] and parts[3] == "analyze":
+                job_id = jobs.analyze_pr(self.desk.repo, int(parts[2]),
+                                         self.desk.me, self.desk.cwd)
+                self._send(202, {"job": job_id})
+            elif len(parts) == 4 and parts[:2] == ["api", "pr"] and parts[3] == "order":
+                order = deskstate.add_order(self.desk.repo, int(parts[2]),
+                                            body.get("propose", ""),
+                                            body.get("draft"),
+                                            body.get("instruction", ""))
+                self._send(200, {"order": order})
             else:
                 self._send(404, {"error": "not found"})
         except Exception as exc:
@@ -131,7 +160,7 @@ def main():
     repo = args.repo or detect_repo()
     me = args.me or provider.whoami()
 
-    Handler.desk = Desk(provider, repo, me)
+    Handler.desk = Desk(provider, repo, me, str(Path.cwd()))
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     sys.stderr.write("review desk on http://127.0.0.1:%s  repo=%s me=%s provider=%s\n"
                      % (args.port, repo, me, provider.name))

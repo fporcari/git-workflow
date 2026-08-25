@@ -38,6 +38,22 @@ def load(repo):
         return {}
 
 
+def save(repo, state):
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    state_path(repo).write_text(json.dumps(state, indent=1))
+
+
+def add_order(repo, n, propose, draft, instruction):
+    """Record the user's go-ahead on one PR. /pr-run reads pending orders as
+    pre-authorized work: the click in the desk was the approval."""
+    state = load(repo)
+    orders = state.setdefault("orders", {})
+    orders[str(n)] = {"propose": propose, "draft": draft,
+                      "instruction": instruction, "status": "pending"}
+    save(repo, state)
+    return orders[str(n)]
+
+
 def annotate_prs(rows, state):
     notes = state.get("prs") or {}
     for row in rows:

@@ -98,6 +98,24 @@ gh pr view <n> --json isDraft,baseRefName,mergeStateStatus,reviewDecision,review
 gh api repos/<owner/repo>/pulls/<n>/reviews --jq '.[]|"\(.user.login) \(.state) commit=\(.commit_id[0:9])"'
 ```
 
+# Lane 0 — desk orders
+
+Before Lane A, read `orders` in
+`~/.local/state/git-workflow/<owner>__<repo>.json`. Each `"status": "pending"`
+entry is a decision the user already took in the review-desk dashboard: the
+pr-analyze block was shown to him and he clicked go — with an optional
+instruction typed in. That click is the authorization, like invoking this
+skill is for Lane A: execute the order first, without re-asking.
+
+- An empty or `vai`/`ok` instruction means execute `propose` as it stands;
+  any other text refines or overrides it — the user's text wins.
+- The operation follows the same rules as its Lane A/B counterpart (A2
+  discipline for answers, A1 gates re-checked fresh before any merge, A3
+  rules for realigns). An order never widens beyond what it names.
+- When done, set the order's `status` to `"done"` plus a one-line `report`;
+  on failure `"failed"` with why. An order needing a decision its instruction
+  does not cover goes to Lane B and is marked `"needs-input"`.
+
 # Lane A — no permission needed
 
 Three operations, on the user's own PRs only. Everything else is Lane B.
