@@ -76,6 +76,10 @@ h2{margin:0 0 7px}.detailGrid p{margin:0 0 12px}
 .nextCard p{font-weight:600;font-size:14px}.nextCard small{color:var(--muted)}
 .signal{display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding:6px 0;font-size:11px}
 .signal span{color:var(--muted)}
+[data-tip]{position:relative}
+[data-tip]:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 7px);left:50%;transform:translateX(-50%);background:var(--ink);color:var(--panel);padding:7px 10px;border-radius:6px;font:11px/1.4 system-ui;width:max-content;max-width:300px;white-space:normal;z-index:60;text-align:left;box-shadow:0 3px 10px rgba(0,0,0,.25);pointer-events:none}
+.tipUnder[data-tip]:hover::after{bottom:auto;top:calc(100% + 7px)}
+.tipRight[data-tip]:hover::after{left:auto;right:0;transform:none}
 .err{margin:10px 18px;padding:8px 12px;border:1px solid var(--red);border-radius:6px;color:var(--red);background:color-mix(in srgb,var(--red) 5%,var(--panel));display:none}
 .btn{border:1px solid var(--line);border-radius:6px;background:var(--panel);padding:6px 10px;color:var(--ink);font:11px inherit;cursor:pointer;white-space:nowrap}
 @media(max-width:980px){[data-cmd]{display:none}}
@@ -89,7 +93,8 @@ h2{margin:0 0 7px}.detailGrid p{margin:0 0 12px}
 .chaseCard pre{font:11px var(--mono);white-space:pre-wrap;word-break:break-word;margin:6px 0 10px;color:var(--ink)}
 .chaseNote{grid-column:1/-1;font-size:11px;color:var(--muted)}
 .skillStamp{font:10px var(--mono);color:var(--muted)}
-.feed{border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--amber) 3%,var(--panel));padding:6px 18px;display:flex;flex-direction:column;gap:2px;max-height:96px;overflow:auto}
+.feed{position:fixed;left:0;right:0;bottom:0;z-index:40;border-top:1px solid var(--line);background:color-mix(in srgb,var(--amber) 3%,var(--panel));padding:6px 18px;display:flex;flex-direction:column;gap:2px;max-height:96px;overflow:auto;box-shadow:0 -2px 10px rgba(0,0,0,.07)}
+.shell{padding-bottom:110px}
 .feed div{font:11px var(--mono);color:var(--ink)}
 .feed div b{color:var(--muted);font-weight:500;margin-right:8px}
 .gridWrap{padding:14px 18px;display:flex;flex-direction:column;gap:14px}
@@ -103,15 +108,15 @@ h2{margin:0 0 7px}.detailGrid p{margin:0 0 12px}
 <main class="shell">
   <header class="topbar">
     <div class="brand"><span class="brandMark">GW</span><strong>review desk</strong><span class="repo" id="repoLabel">…</span></div>
-    <div class="topStats"><span><b id="cPrs">0</b> PR aperte</span><span><b id="cIssues">0</b> issue aperte</span><button class="sync" id="refresh"><i></i><span id="syncLabel">aggiornato —</span></button><button class="btn" id="btnStop" title="Ferma il server del desk (e avvisa la chat collegata)">⏻ stop</button></div>
+    <div class="topStats"><span><b id="cPrs">0</b> PR aperte</span><span><b id="cIssues">0</b> issue aperte</span><button class="sync" id="refresh"><i></i><span id="syncLabel">aggiornato —</span></button><button class="btn tipUnder tipRight" id="btnStop" data-tip="Ferma il server del desk e avvisa la chat collegata. Si riparte dalla chat con /review-desk.">⏻ stop</button></div>
   </header>
 
   <section class="summary">
     <div class="summaryLead"><span class="eyebrow">coda review</span><strong id="leadTitle">carico…</strong><small id="leadSub">leggo il provider</small></div>
-    <div class="metric hot" title="PR dove la prossima azione è tua: review da fare, risposte, riallineamenti"><b id="mAttention">0</b><span>mosse tue</span></div>
-    <div class="metric amber" title="Scelte che può fare solo l'autore/tu: draft da chiudere, decisioni di design"><b id="mDecision">0</b><span>decisioni tue</span></div>
-    <div class="metric" title="PR ferme in attesa di qualcun altro: le trovi raggruppate nel tab Solleciti"><b id="mWaiting">0</b><span>in attesa di altri</span></div>
-    <div class="metric green" title="Approvate, CLEAN, zero richieste pendenti: pronte al merge"><b id="mReady">0</b><span>mergiabili ora</span></div>
+    <div class="metric hot tipUnder" data-tip="PR dove la prossima azione è tua: review da fare, risposte, riallineamenti"><b id="mAttention">0</b><span>mosse tue</span></div>
+    <div class="metric amber tipUnder" data-tip="Scelte che può fare solo l'autore/tu: draft da chiudere, decisioni di design"><b id="mDecision">0</b><span>decisioni tue</span></div>
+    <div class="metric tipUnder" data-tip="PR ferme in attesa di qualcun altro: le trovi raggruppate nel tab Solleciti"><b id="mWaiting">0</b><span>in attesa di altri</span></div>
+    <div class="metric green tipUnder" data-tip="Approvate, CLEAN, zero richieste pendenti: pronte al merge"><b id="mReady">0</b><span>mergiabili ora</span></div>
   </section>
 
   <div class="err" id="errBox"></div>
@@ -121,8 +126,8 @@ h2{margin:0 0 7px}.detailGrid p{margin:0 0 12px}
     <div class="queueTools">
       <div class="tabs" id="tabs"></div>
       <div style="display:flex;gap:6px;align-items:center">
-        <button class="btn" id="btnTriage" title="Griglia di triage qui nel desk: cosa mergiare subito, azioni banali, review da fare, chi sollecitare, decisioni solo tue. Calcolata dai campi del provider; quella con i gate verificati arriva da /pr-triage in chat.">▶ pr-triage</button>
-        <button class="btn" id="btnRun" title="Esegue /pr-run nella chat collegata; qui arrivano le notifiche">▶ pr-run in chat</button>
+        <button class="btn tipUnder" id="btnTriage" data-tip="Griglia di triage qui nel desk: cosa mergiare subito, azioni banali, review da fare, chi sollecitare, decisioni solo tue. Calcolata dai campi del provider; quella con i gate verificati arriva da /pr-triage in chat.">▶ pr-triage</button>
+        <button class="btn tipUnder tipRight" id="btnRun" data-tip="Esegue /pr-run nella chat collegata; qui arrivano le notifiche">▶ pr-run in chat</button>
         <label class="search"><span>⌕</span><input id="q" placeholder="Filtra numero, titolo, autore…"></label>
       </div>
     </div>
@@ -172,10 +177,10 @@ function ageDays(d){return Math.max(0,Math.round((Date.now()-new Date(d))/864e5)
 function renderTabs(){
   const onIssues=view==="issues";
   $("btnRun").textContent=onIssues?"\u25B6 issue-run in chat":"\u25B6 pr-run in chat";
-  $("btnRun").title=onIssues
+  $("btnRun").dataset.tip=onIssues
     ?"La skill issue-run lavora il batch in chat: un'analisi a contesto pulito per issue, la scelta di cosa lavorare (in chat), poi branch e PR per le scelte. Ogni passo arriva qui nel feed."
     :"La skill pr-run svuota la coda in chat: merge delle tue PR approvate, risposte alle review banali, riallineo dei branch, e il resto una PR alla volta. Ogni passo arriva qui nel feed.";
-  $("tabs").innerHTML=VIEWS().map(v=>`<button class="${view===v.id?"active":""}" data-v="${v.id}" title="${v.tip||""}">${v.label} <b>${v.count}</b></button>`).join("");
+  $("tabs").innerHTML=VIEWS().map(v=>`<button class="${view===v.id?"active":""} tipUnder" data-v="${v.id}" data-tip="${v.tip||""}">${v.label} <b>${v.count}</b></button>`).join("");
   $("tabs").querySelectorAll("button").forEach(b=>b.onclick=()=>{view=b.dataset.v;selected=null;render();});
 }
 
@@ -199,7 +204,7 @@ function analysisBlockHtml(r){
     return `<div class="actionText">\u{1F4E8} in lavorazione nella chat collegata \u2014 segui il feed in alto; l'esito compare qui sotto ad analisi chiusa.</div>`;
   if(a?.status==="error")
     return `<div class="actionText">Errore: ${esc(a.error)}</div><button class="btn" id="dAnalyze">Riprova</button>`;
-  return `<button class="btn primary" id="dAnalyze" title="La skill pr-analyze legge tutto il diff, verifica i claim della descrizione e i thread, e produce il blocco cosa/storia/proposta con l'eventuale bozza di risposta. Read-only: non posta nulla.">\u25B6 pr-analyze in chat</button>
+  return `<button class="btn primary" id="dAnalyze" data-tip="La skill pr-analyze legge tutto il diff, verifica i claim della descrizione e i thread, e produce il blocco cosa/storia/proposta con l'eventuale bozza di risposta. Read-only: non posta nulla.">\u25B6 pr-analyze in chat</button>
     <small style="display:block;margin-top:4px">L'analisi gira nella chat collegata, con il suo contesto pieno; il desk mostra solo l'esito e le notifiche.</small>`;
 }
 
@@ -385,7 +390,7 @@ function renderDetail(){
         <div><dt>Assegnatari</dt><dd>${r.assignees.join(", ")||"nessuno"}</dd></div>
         <div><dt>Commenti</dt><dd>${r.comments}</dd></div></dl></article>
       <article class="nextCard"><h2>Prossima mossa</h2><p>${r.assignees.length?`assegnata a ${esc(r.assignees.join(", "))}`:"senza assegnatario — candidata per issue-run"}</p>
-        ${analyses["i"+r.n]?.status==="queued"?`<div class="actionText">\u{1F4E8} in analisi nella chat collegata \u2014 segui il feed.</div>`:`<button class="btn primary" id="dIssueAnalyze" title="La skill issue-analyze verifica la root cause nel codice (o il riuso già esistente per le richieste) in un contesto pulito, e classifica: SINGLE-PHASE o WORKFLOW, EASY/MEDIUM/HARD. Read-only.">\u25B6 issue-analyze in chat</button>`}
+        ${analyses["i"+r.n]?.status==="queued"?`<div class="actionText">\u{1F4E8} in analisi nella chat collegata \u2014 segui il feed.</div>`:`<button class="btn primary" id="dIssueAnalyze" data-tip="La skill issue-analyze verifica la root cause nel codice (o il riuso già esistente per le richieste) in un contesto pulito, e classifica: SINGLE-PHASE o WORKFLOW, EASY/MEDIUM/HARD. Read-only.">\u25B6 issue-analyze in chat</button>`}
         <div style="margin-top:8px"><small>tipo letto da label e titolo; l'analisi gira in un contesto vergine e l'esito arriva qui.</small></div></article>
       <aside><h2>Età</h2><div class="signal"><b>${ageDays(r.created)} giorni</b><span>dal ${esc(r.created)}</span></div></aside>
       ${r.skill?`<article style="grid-column:1/-1;border-top:1px solid var(--line)">
