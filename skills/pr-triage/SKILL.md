@@ -47,10 +47,9 @@ file holds:
 | `gates` | the §3 gate of every base: who may land, approvals, conversation resolution, CODEOWNERS |
 | `shortlist` | the ten issues worth reading |
 
-**Do not recompute any of it.** Reproducing that grid used to cost ~28k
-tokens of input and a whole turn, to re-derive a mapping the desk computes in
-0.07 ms. Your job on a desk-driven triage is only what the fields cannot
-answer:
+**Do not recompute any of it.** Reproducing that grid costs ~28k tokens of
+input and a whole turn, to re-derive a mapping the desk computes in 0.07 ms.
+Your job on a desk-driven triage is only what the fields cannot answer:
 
 1. the rows the computed grid marks `asks` — those need the diff or the
    review read (§4's DIRTY/UNSTABLE rules, and the CODEOWNERS per-path
@@ -75,12 +74,11 @@ desk, or fall back to the calls below for that field alone.
 
 Otherwise, read it yourself — **one call, not four**: `involves:<login>` is a
 superset of author, assignee, commenter, mentions, review-requested and
-reviewed-by, so the four relationship searches resolved the same PRs three
-times over for nothing.
+reviewed-by, so one search resolves every relationship the verdicts need.
 
 ```bash
 R=<owner/repo>; U=<login>; S=${CLAUDE_PLUGIN_ROOT}/skills/pr-triage
-G=${CLAUDE_PLUGIN_ROOT}/gql
+G=${CLAUDE_PLUGIN_ROOT}/server/gql
 gh api graphql -F query=@$G/pr_core.graphql \
   -f q="repo:$R is:open is:pr involves:$U" > /tmp/q_involves.json &
 gh api graphql -F query=@$G/pr_mergestate.graphql \
@@ -94,20 +92,6 @@ jq -s -f $S/mergein.jq /tmp/q_merge.json /tmp/rows_core.json > /tmp/rows.json
 expensive field GitHub serves — asking for it inside the queue search costs
 more than the whole rest of the query — and the verdicts only read it for
 your own PRs.
-
-<details><summary>the previous four-call form, kept for reference</summary>
-
-```bash
-R=<owner/repo>; U=<login>; S=${CLAUDE_PLUGIN_ROOT}/skills/pr-triage
-for rel in "author:$U" "review-requested:$U" "reviewed-by:$U" "assignee:$U"; do
-  gh api graphql -F query=@$S/queue.graphql -f q="repo:$R is:open is:pr $rel" \
-    > /tmp/q_$(echo "$rel" | tr -cd 'a-z').json &
-done; wait
-jq -n -f $S/queue.jq /tmp/q_*.json > /tmp/rows.json
-jq -r '.[]|"\(.n)\t\(.created)\t\(.author)\tdraft=\(.draft)\t\(.merge)/\(.decision)\treq=\(.req|join(","))\tunres=\(.unresolved)/\(.threads)\tlast=\(if .last then "\(.last.t[0:10]) \(.last.who) \(.last.ch)" else "-" end)"' /tmp/rows.json
-```
-
-</details>
 
 - Confirm `hasNextPage` is false; if not, follow `endCursor`.
 - **Never loop per PR.** Everything the verdicts need is in `rows.json`. Open a
@@ -219,7 +203,7 @@ nothing was dropped.
 One fenced block per person, numbers on one line, ready to paste:
 
 ```
-@genro — 7 PR ferme dal 6/7 agosto, tutte con la tua approvazione mancante:
+@<login> — 7 PR ferme dal 6/7 agosto, tutte con la tua approvazione mancante:
 #1027 #1044 #1045 #1050 #1055 #1056 #1057
 ```
 

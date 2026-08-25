@@ -31,8 +31,9 @@ in the background and paints its real rows within seconds; the triage is the
 JSON file with the queue and the issues **already downloaded**. Read that
 file instead of re-querying the provider: the skill's own fetch is the
 slowest thing it does and the desk has already paid for it. Pass
-`--triage-at-boot` only if the user wants the old open-and-wait behaviour.
-Launch only the desk the user asked for when they name one.
+`--triage-at-boot` to have the desk ask the chat for a triage as soon as it
+starts, instead of painting first. Launch only the desk the user asked for
+when they name one.
 
 Without `--chat` a desk runs standalone: Analyze spawns a headless
 read-only `claude -p` and Go leaves orders for `/pr-loop`; no startup triage.
@@ -41,7 +42,8 @@ Options: `--repo owner/repo` (default: the cwd's origin), `--provider
 github|forgejo|fixture` (forgejo needs `FORGEJO_URL`/`FORGEJO_TOKEN`;
 `fixture` replays a recorded payload with no network, for development),
 `--me`, `--port` (default by desk), `--keep-state`, `--triage-at-boot`,
-`--no-prefetch`.
+`--no-prefetch`, `--keep-cache` (reuse the previous run's provider cache
+instead of reading the provider again — offline work).
 
 ## 2 · Park the watcher
 
@@ -189,10 +191,10 @@ the user says so or the preview server is stopped; a watcher exit code 3
 
 **The desk computes; the model judges.** The verdicts (§7), the five blocks
 (§5), the chase blocks (§6), the merge gate of every base (§3) and the issue
-cross-check are all computed by the server from fields and cheap API reads —
-pressing ↻ used to spend ~28k tokens of input and a whole turn to re-derive
-them. The grid the desk shows is labelled with its provenance: *calcolata dal
-desk* until a triage exports a verified one, *verificata dal modello* after.
+cross-check are all computed by the server from fields and cheap API reads;
+re-deriving them in the model costs a whole turn for nothing. The grid the desk
+shows is labelled with its provenance: *calcolata dal desk* until a triage
+exports a verified one, *verificata dal modello* after.
 What the model is called for is what only it can do: the rows marked `asks`,
 one-line explanations on request, the impact ranking, and pr-analyze's diff
 read.

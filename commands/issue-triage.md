@@ -49,6 +49,8 @@ judgement and cannot be looked up:
    PR on it, and why was it closed. What survives both is finished work
    nobody is reviewing: the most valuable find of the run.
 
+Otherwise collect it yourself:
+
 ```bash
 ME=$(gh api user --jq .login)
 gh issue list --state open --limit 300 \
@@ -58,17 +60,11 @@ gh issue list --state open --limit 300 \
 git ls-remote --heads origin | sed 's|.*refs/heads/||' > /tmp/triage-branches.txt
 ```
 
-Drop what already has an open PR or a branch, refill to 10 by date. **A
-numbered branch means: read its history first** — two checks, opposite
-verdicts: (1) is the content already on the base? (`git cherry` is not
-evidence after a squash — verify a symbol or file the branch introduces);
-(2) is there a CLOSED PR on it, and why was it closed? (a closed PR usually
-carries a decision). What survives both — content absent, no PR ever — is
-finished work nobody is reviewing: the most valuable find of the run.
-
-Rank by impact: 1) evidence of real damage (traceback, crash, data loss);
-2) blocks someone else; 3) everything else; 4) DOCS last. Read the body, not
-the label. Classify each as DEFECT / REQUEST / QUESTION / DOCS.
+Drop what already has an open PR or a branch, refill to 10 by date. Then the
+same two judgement steps the desk path leaves you — rank by impact (1 above),
+and read the history of every numbered branch (2 above) — plus the
+classification the desk's `type` would have given you: DEFECT / REQUEST /
+QUESTION / DOCS.
 
 ## Step 2 — The shortlist
 
@@ -83,7 +79,7 @@ the shortlist table under `shortlist` and each batch issue under `issues.<n>`:
 
 ```json
 {"shortlist": {"generated": "<ISO timestamp>",
-           "rows": [{"n": 1156, "date": "2026-08-25", "author": "dgpaci",
+           "rows": [{"n": 1156, "date": "2026-08-25", "author": "<login>",
                       "type": "DEFECT", "title": "...",
                       "assignee": "", "note": "<una riga, in italiano>"}]},
  "issues": {"1156": {"type": "DEFECT", "finding": "<la stessa riga>",

@@ -367,7 +367,7 @@ An unanswered proposal counts as the same thing: do not keep pushing the queue
 at him.
 
 `propose` must be a single concrete action, not a menu: *approve with a note
-about X*, *request changes on the CI failure*, *answer cgabriel that the
+about X*, *request changes on the CI failure*, *answer the reviewer that the
 traceback is outside the diff and open an issue for the real finding*. If you
 cannot compress it to one line, you have not finished analysing it.
 
@@ -581,8 +581,7 @@ standing in a thread will be followed by somebody.
 Report against the goal, not as a diary of what you did.
 
 1. **What Lane A settled** — a table, with the real check numbers, and which
-   issues closed with each merge. Say when a merge closed no issue because none
-   was linked: the traceability gap survives the merge.
+   issues closed with each merge, naming any merge that closed none.
 2. **What is waiting on somebody else** — grouped by person, not by PR, so he can
    chase one name instead of re-reading a list.
 3. **What is still his** — the only part that matters. Each with the one action

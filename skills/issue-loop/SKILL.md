@@ -28,10 +28,9 @@ It is a **loop**, not a run: it never promises to reach the bottom of the
 queue. Stopping halfway is a normal ending, and what was not reached is
 listed rather than lost.
 
-**Never analyze ahead of the proposal.** This skill used to open with one
-`issue-analyze` per candidate and then ask the user to pick four — most of
-those reads were thrown away every time. One analysis per proposal costs
-what the user actually accepts. A batch is the exception he asked for
+**Never analyze ahead of the proposal.** Analysing every candidate and then
+asking him to pick throws most of those reads away; one analysis per proposal
+costs what the user actually accepts. A batch is the exception he asked for
 explicitly, and it is opt-in for exactly that reason.
 
 **Autonomy**: analysis is read-only and free. Branches, commits and PRs are
@@ -76,8 +75,8 @@ Skip this entirely when he named the numbers. Otherwise, in order:
    and need no model (`git ls-remote --heads origin` for branches,
    `is:issue is:open commenter:<me>` for what you have already looked at, the
    queue's `closingIssuesReferences` for existing PRs). Do NOT demand a
-   triage first: it is the same data, and refusing to start is worse than
-   spending 1.4s on it.
+   triage first: it is the same data, and refusing to start costs more than
+   the seconds those three reads take.
 
 Then order by impact, reading the body and not the label: 1) evidence of real
 damage (traceback, crash, data loss); 2) blocks someone else; 3) everything

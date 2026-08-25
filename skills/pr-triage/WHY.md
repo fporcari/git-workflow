@@ -12,8 +12,8 @@ report says what it says. Do not read the whole file to run a triage.
 ## Reading the queue
 
 **Do not loop over the PRs.** A per-PR `gh api` loop over a 48-PR queue is ~150
-sequential HTTP round trips and several minutes. The four parallel GraphQL calls
-were measured at 5-7 seconds over that same queue and cross-checked row-for-row
+sequential HTTP round trips and several minutes. The parallel GraphQL calls were
+measured at 5-7 seconds over that same queue and cross-checked row-for-row
 against the loop version: same rows, same last speakers. The loop is not a
 fallback, it is the old bug.
 
@@ -22,10 +22,11 @@ passed again on the same queue. It means the node budget was exceeded, so the fi
 is smaller `first:` values — never a retry loop, and never reporting a
 relationship as empty because its call died.
 
-**`reviewed-by:$U` is a separate relationship for a reason.** A PR drops out of
+**`reviewed-by:$U` must be covered by the search.** A PR drops out of
 `review-requested:$U` the moment you submit anything on it. If you left
 `CHANGES_REQUESTED`, you are still the one who has to come back and re-read it,
-and without this search that PR is invisible to the triage.
+and a search that misses that relationship makes the PR invisible to the triage.
+`involves:$U` is a superset of all of them, which is why it is the one search.
 
 ## Reading the state
 

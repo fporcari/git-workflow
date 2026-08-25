@@ -15,8 +15,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/server/notify.py --repo <owner/repo> "<one line>"
 
 ## 1 · Analyze first, fresh
 
-Run the `pr-analyze` sibling for issues: follow
-`${CLAUDE_PLUGIN_ROOT}/skills/issue-analyze/SKILL.md` right here (this
+Follow `${CLAUDE_PLUGIN_ROOT}/skills/issue-analyze/SKILL.md` right here (this
 session IS the virgin context). Outcome: type, verified root cause or gap,
 minimal change, SINGLE-PHASE or WORKFLOW, EASY/MEDIUM/HARD, verification
 plan, open decisions. Persist it to the desk state as that skill specifies.
@@ -31,7 +30,7 @@ If SINGLE-PHASE (any size): take it end to end.
   branch `fix|feat|docs/<n>-<slug>`; base = where recent merged fix PRs
   target, not the harness default.
 - The traps and the PR discipline are in
-  `${CLAUDE_PLUGIN_ROOT}/skills/issue-loop/SKILL.md` step 3 — verbatim rules:
+  `${CLAUDE_PLUGIN_ROOT}/skills/issue-loop/SKILL.md` Step 4 — verbatim rules:
   no forks/remotes, PYTHONPATH into the worktree, no git stash, narrowest
   check now, `Fixes #<n>` verified in `closingIssuesReferences`,
   `--assignee` the author, `--reviewer` from CODEOWNERS and confirmed.
