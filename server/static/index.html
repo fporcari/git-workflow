@@ -439,10 +439,18 @@ $("q").oninput=e=>{query=e.target.value;render();};
 $("refresh").onclick=()=>load(true);
 $("btnTriage").onclick=()=>{view="grid";render();};
 $("btnRun").onclick=startRun;
+let stopArmed=null;
 $("btnStop").onclick=async()=>{
-  if(!confirm("Fermare il server del review desk?"))return;
+  const b=$("btnStop");
+  if(!stopArmed){
+    b.textContent="confermi lo stop?";b.style.color="var(--red)";b.style.borderColor="var(--red)";
+    stopArmed=setTimeout(()=>{stopArmed=null;b.textContent="⏻ stop";b.style.color="";b.style.borderColor="";},4000);
+    return;
+  }
+  clearTimeout(stopArmed);stopArmed=null;
+  b.textContent="fermo…";b.disabled=true;
   try{await fetch("/api/shutdown",{method:"POST"});}catch(e){}
-  document.body.innerHTML='<div style="padding:40px;font:14px system-ui">Server fermato. Rilancialo dalla chat con la skill review-desk.</div>';
+  document.body.innerHTML='<div style="padding:40px;font:14px system-ui;color:var(--ink)"><b>Server fermato.</b><br>La chat collegata è stata avvisata. Per ripartire: <code>/review-desk</code> in chat.</div>';
 };
 load(false);
 </script>
