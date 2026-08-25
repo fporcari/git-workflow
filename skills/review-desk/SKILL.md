@@ -1,6 +1,6 @@
 ---
 name: review-desk
-description: Launch the review-desk dashboard attached to THIS chat session — a web view of the PR queue and open issues whose Analyze/Go buttons send their requests back here, so analyses and executions run in the chat with its full context (CLAUDE.md, skills, permissions). Use when the user asks for the dashboard, the review desk, or a visual overview of PRs and issues.
+description: Launch BOTH desks (PR desk + issue desk) attached to this chat, and the reference for how an attached chat processes desk events (triage, orders, analyses, pings, dedicated sessions). Use when the user asks for both dashboards at once; for a single one, pr-desk and issue-desk are the entry skills and they point back here for the event loop.
 ---
 
 # Review desk — attached to this chat
