@@ -83,6 +83,19 @@ h2{margin:0 0 7px}.detailGrid p{margin:0 0 12px}
 .testBox{margin:10px 18px;padding:10px 14px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
 .testBox div{font:11.5px var(--mono);padding:3px 0}
 .testBox .ok{color:var(--green)}.testBox .ko{color:var(--red)}.testBox .pending{color:var(--muted)}
+dialog#dlg{border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);padding:0;width:min(760px,94vw);max-height:84vh;overflow:auto;box-shadow:0 14px 44px rgba(0,0,0,.28)}
+dialog#dlg::backdrop{background:rgba(30,29,26,.38)}
+.dlgHead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:13px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel);z-index:2}
+.dlgHead h1{font-size:15px;margin:2px 0 0}
+.dlgBody{padding:13px 16px}
+.dlgBody dl{margin:0;border-top:1px solid var(--line)}
+.dlgBody dl div{display:flex;justify-content:space-between;gap:14px;padding:5px 0;border-bottom:1px solid var(--line);font-size:11.5px}
+.dlgBody dt{color:var(--muted)}.dlgBody dd{margin:0;font-weight:560;text-align:right}
+.dlgActions{display:flex;gap:8px;flex-wrap:wrap;padding:12px 16px;border-top:1px solid var(--line);position:sticky;bottom:0;background:var(--panel)}
+.rowBtn{border:1px solid var(--line);border-radius:6px;background:var(--panel);font:10.5px inherit;padding:3px 9px;cursor:pointer;color:var(--muted);white-space:nowrap}
+tbody tr:hover .rowBtn{color:var(--ink);border-color:var(--muted)}
+.gridBlock table{table-layout:fixed;width:100%;min-width:0}
+.gridBlock td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:6px 8px}
 .err{margin:10px 18px;padding:8px 12px;border:1px solid var(--red);border-radius:6px;color:var(--red);background:color-mix(in srgb,var(--red) 5%,var(--panel));display:none}
 .btn{border:1px solid var(--line);border-radius:6px;background:var(--panel);padding:6px 10px;color:var(--ink);font:11px inherit;cursor:pointer;white-space:nowrap}
 @media(max-width:980px){[data-cmd]{display:none}}
@@ -142,21 +155,19 @@ h2{margin:0 0 7px}.detailGrid p{margin:0 0 12px}
     <div class="gridWrap" id="gridWrap" style="display:none"></div>
   </section>
 
-  <section class="detail" id="detail" style="display:none">
-    <div class="detailHead">
-      <div><span class="largeMark" id="dMark">·</span><span class="detailKicker" id="dKicker"></span><h1 id="dTitle"></h1></div>
-      <div class="detailActions"><a id="dLink" target="_blank" rel="noreferrer">Apri nel browser ↗</a></div>
-    </div>
-    <div class="detailGrid" id="dGrid"></div>
-  </section>
 </main>
+<dialog id="dlg">
+  <div class="dlgHead"><div id="dlgTitle"></div><button class="btn" id="dlgClose">✕ chiudi</button></div>
+  <div class="dlgBody" id="dlgBody"></div>
+  <div class="dlgActions" id="dlgActions"></div>
+</dialog>
 <script>
 "use strict";
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const MARK={ready:"✓",attention:"!",waiting:"○",decision:"◆"};
 const STATE_LABEL={ready:"mergiabile",attention:"mossa tua",waiting:"in attesa",decision:"decisione tua"};
-let meta={},prs=[],issues=[],chase={},grid=null,situa=null,session=null,loaded=false,view="grid",query="",selected=null,watcherAlive=false,lastPong=null;
+let meta={},prs=[],issues=[],chase={},grid=null,situa=null,session=null,loaded=false,view="grid",query="",watcherAlive=false,lastPong=null;
 const triageRunning={pr:false,issue:false};
 
 const VIEWS=()=>[
@@ -191,7 +202,7 @@ function renderTabs(){
     act.disabled=!watcherAlive;
   }
   $("tabs").innerHTML=VIEWS().map(v=>`<button class="${view===v.id?"active":""} tipUnder" data-v="${v.id}" data-tip="${v.tip||""}">${v.label} <b>${v.count}</b></button>`).join("");
-  $("tabs").querySelectorAll("button").forEach(b=>b.onclick=()=>{view=b.dataset.v;selected=null;render();});
+  $("tabs").querySelectorAll("button").forEach(b=>b.onclick=()=>{view=b.dataset.v;render();});
 }
 
 function visiblePrs(){
@@ -315,7 +326,8 @@ async function startIssueAnalysis(n){
 
 function gridRowsTable(rows){
   if(!rows.length)return `<div class="empty1">niente in questo blocco</div>`;
-  return `<table><tbody>${rows.map(r=>`<tr data-n="${r.n}"><td class="mono">#${r.n}</td><td class="mono">${esc(r.date||"")}</td><td>${esc(r.author||"")}</td><td class="next" style="max-width:none">${esc(r.what||"")}</td><td><b>${esc(r.todo||"")}</b></td><td class="mono">${esc(r.autorun||"")}</td></tr>`).join("")}</tbody></table>`;
+  const cols=`<colgroup><col style="width:64px"><col style="width:92px"><col style="width:100px"><col><col style="width:190px"><col style="width:64px"><col style="width:86px"></colgroup>`;
+  return `<table>${cols}<tbody>${rows.map(r=>`<tr data-dlg="p${r.n}"><td class="mono">#${r.n}</td><td class="mono">${esc(r.date||"")}</td><td>${esc(r.author||"")}</td><td>${esc(r.what||"")}</td><td><b>${esc(r.todo||"")}</b></td><td class="mono">${esc(r.autorun||"")}</td><td><button class="rowBtn" data-dlg="p${r.n}">Azioni…</button></td></tr>`).join("")}</tbody></table>`;
 }
 function renderGrid(){
   const wrap=$("gridWrap"),on=view==="grid";
@@ -334,7 +346,8 @@ function renderGrid(){
   }
   html+=`</div><div class="gridBlock" style="border-top:1px solid var(--line);padding-top:12px"><h2 style="font-size:12px">Issue ${situa?`<span class="skillStamp">— ${esc(situa.generated||"")}</span>`:""}</h2>`;
   if(situa){
-    html+=`<table><tbody>${situa.rows.map(r=>`<tr data-i="${r.n}"><td class="mono">#${r.n}</td><td class="mono">${esc(r.date||"")}</td><td>${esc(r.author||"")}</td><td><span class="tag ${esc(r.type||"")}">${esc(r.type||"")}</span></td><td class="next" style="max-width:none">${esc(r.title||"")}</td><td>${esc(r.assignee||"—")}</td><td class="next" style="max-width:none">${esc(r.note||"")}</td></tr>`).join("")}</tbody></table>`;
+    const scols=`<colgroup><col style="width:64px"><col style="width:92px"><col style="width:100px"><col style="width:110px"><col><col style="width:110px"><col style="width:86px"></colgroup>`;
+    html+=`<table>${scols}<tbody>${situa.rows.map(r=>`<tr data-dlg="i${r.n}"><td class="mono">#${r.n}</td><td class="mono">${esc(r.date||"")}</td><td>${esc(r.author||"")}</td><td><span class="tag ${esc(r.type||"")}">${esc(r.type||"")}</span></td><td title="${esc(r.note||"")}">${esc(r.title||"")}</td><td>${esc(r.assignee||"—")}</td><td><button class="rowBtn" data-dlg="i${r.n}">Azioni…</button></td></tr>`).join("")}</tbody></table>`;
   }else if(triageRunning.issue){
     html+=`<div class="actionText">⏳ issue-triage in corso nella chat collegata — segui il feed in basso; la situa comparirà qui.</div>`;
   }else{
@@ -346,10 +359,7 @@ function renderGrid(){
   wrap.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>copyText(b,b.dataset.copy));
   const tp=$("gTriagePr");if(tp)tp.onclick=()=>{view="queue";view="grid";fetch("/api/triage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({flow:"pr-triage"})}).then(r=>r.json()).then(d=>{if(d.error){$("errBox").style.display="block";$("errBox").textContent=d.error;}else{triageRunning.pr=true;render();}});};
   const ti=$("gTriageIssue");if(ti)ti.onclick=()=>{fetch("/api/triage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({flow:"issue-triage"})}).then(r=>r.json()).then(d=>{if(d.error){$("errBox").style.display="block";$("errBox").textContent=d.error;}else{triageRunning.issue=true;render();}});};
-  wrap.querySelectorAll("tr[data-n]").forEach(tr=>{tr.style.cursor="pointer";tr.onclick=async()=>{
-    if(!loaded)await loadQueue(false);
-    selected="p"+tr.dataset.n;view="queue";render();
-  };});
+  wrap.querySelectorAll("[data-dlg]").forEach(el=>{el.onclick=e=>{e.stopPropagation();openDialog(el.dataset.dlg);};});
 }
 
 function renderChase(){
@@ -378,9 +388,9 @@ function renderTable(){
   }
   $("empty").innerHTML=`<b>Niente in questa vista</b><span>Prova un altro filtro o un altro tab.</span>`;
   if(view==="issues"){
-    th.innerHTML=`<tr><th class="markCol"></th><th>issue</th><th title="DEFECT bug reale · REQUEST nuova funzione · QUESTION domanda · DOCS documentazione — letto da label e titolo">tipo</th><th>autore</th><th>label</th><th>assegnatari</th><th class="num">commenti</th><th class="num">età</th></tr>`;
+    th.innerHTML=`<tr><th class="markCol"></th><th>issue</th><th title="DEFECT bug reale · REQUEST nuova funzione · QUESTION domanda · DOCS documentazione — letto da label e titolo">tipo</th><th>autore</th><th>label</th><th>assegnatari</th><th class="num">commenti</th><th class="num">età</th><th></th></tr>`;
     const rows=visibleIssues();
-    tb.innerHTML=rows.map(r=>`<tr data-n="${r.n}" data-kind="issue" class="${r.assignees.length?"waiting":"attention"} ${selected===`i${r.n}`?"selected":""}">
+    tb.innerHTML=rows.map(r=>`<tr data-n="${r.n}" data-kind="issue" class="${r.assignees.length?"waiting":"attention"}">
       <td class="mark"><span>${r.assignees.length?"○":"!"}</span></td>
       <td class="prTitle"><b>#${r.n}</b><span>${esc(r.title)}</span></td>
       <td><span class="tag ${r.type}">${r.type}</span></td>
@@ -388,13 +398,14 @@ function renderTable(){
       <td class="next">${(r.labels||[]).map(l=>`<span class="tag">${esc(l)}</span>`).join(" ")||"—"}</td>
       <td>${r.assignees.join(", ")||"—"}</td>
       <td class="num">${r.comments||"—"}</td>
-      <td class="num mono">${ageDays(r.created)}d</td></tr>`).join("");
+      <td class="num mono">${ageDays(r.created)}d</td>
+      <td><button class="rowBtn" data-dlg="i${r.n}">Azioni…</button></td></tr>`).join("");
     $("empty").style.display=rows.length?"none":"flex";
   }else{
     const AUTORUN_TIP="Cosa può fare pr-run da solo: A1 = merge automatico (tua PR approvata e CLEAN), A2 = edit banale chiesto dal reviewer, A3 = riallineo del branch. asks = te lo porta in chat, yours = decisione solo tua, - = tocca ad altri";
-    th.innerHTML=`<tr><th class="markCol"></th><th>pull request</th><th>autore</th><th>review</th><th>stato merge</th><th class="num" title="Thread di review non risolti">aperti</th><th>base</th><th title="La prossima azione, dal vocabolario di pr-triage">prossima mossa</th><th title="${AUTORUN_TIP}">autorun</th></tr>`;
+    th.innerHTML=`<tr><th class="markCol"></th><th>pull request</th><th>autore</th><th>review</th><th>stato merge</th><th class="num" title="Thread di review non risolti">aperti</th><th>base</th><th title="La prossima azione, dal vocabolario di pr-triage">prossima mossa</th><th title="${AUTORUN_TIP}">autorun</th><th></th></tr>`;
     const rows=visiblePrs();
-    tb.innerHTML=rows.map(r=>`<tr data-n="${r.n}" data-kind="pr" class="${r.state} ${selected===`p${r.n}`?"selected":""}" tabindex="0">
+    tb.innerHTML=rows.map(r=>`<tr data-n="${r.n}" data-kind="pr" class="${r.state}" tabindex="0">
       <td class="mark"><span title="${STATE_LABEL[r.state]}">${MARK[r.state]}</span></td>
       <td class="prTitle"><b>#${r.n}</b><span>${esc(r.title)}</span><small>${ageDays(r.created)}d</small></td>
       <td><span class="avatar">${esc((r.author||"??").slice(0,2).toUpperCase())}</span>${esc(r.author)}</td>
@@ -403,69 +414,75 @@ function renderTable(){
       <td class="num">${r.unresolved||"—"}</td>
       <td class="mono">${esc(r.base)}</td>
       <td class="next">${esc(r.todo)}</td>
-      <td class="mono" title="${AUTORUN_TIP}">${esc(r.autorun)}</td></tr>`).join("");
+      <td class="mono" title="${AUTORUN_TIP}">${esc(r.autorun)}</td>
+      <td><button class="rowBtn" data-dlg="p${r.n}">Azioni…</button></td></tr>`).join("");
     $("empty").style.display=rows.length?"none":"flex";
   }
-  tb.querySelectorAll("tr").forEach(tr=>tr.onclick=()=>{selected=(tr.dataset.kind==="pr"?"p":"i")+tr.dataset.n;render();});
+  tb.querySelectorAll("tr").forEach(tr=>tr.onclick=()=>openDialog((tr.dataset.kind==="pr"?"p":"i")+tr.dataset.n));
 }
 
-function renderDetail(){
-  const box=$("detail");
-  if(!selected){box.style.display="none";return;}
-  const kind=selected[0],n=+selected.slice(1);
+let dlgTarget=null;
+
+async function openDialog(id){
+  const kind=id[0],n=+id.slice(1);
+  if(!loaded)await loadQueue(false);
+  dlgTarget=id;
+  renderDialog();
+  const d=$("dlg");if(!d.open)d.showModal();
+}
+function closeDialog(){dlgTarget=null;const d=$("dlg");if(d.open)d.close();}
+
+function renderDialog(){
+  if(!dlgTarget)return;
+  const kind=dlgTarget[0],n=+dlgTarget.slice(1);
   const r=(kind==="p"?prs:issues).find(x=>x.n===n);
-  if(!r){box.style.display="none";return;}
-  box.style.display="";
-  $("dLink").href=r.url;
+  if(!r){$("dlgBody").innerHTML=`<p>#${n}: dettagli non nella coda caricata — apri nel browser.</p>`;$("dlgActions").innerHTML=`<a class="btn" href="${kind==="p"?("https://github.com/"+meta.repo+"/pull/"+n):("https://github.com/"+meta.repo+"/issues/"+n)}" target="_blank" rel="noreferrer">Apri nel browser ↗</a><button class="btn" onclick="closeDialog()">Chiudi</button>`;return;}
   if(kind==="p"){
-    $("dMark").textContent=MARK[r.state];$("dMark").className="largeMark "+r.state;
-    $("dKicker").textContent=`PR #${r.n} · ${r.author} · aperta ${r.created} · base ${r.base}`;
-    $("dTitle").textContent=r.title;
+    $("dlgTitle").innerHTML=`<span class="detailKicker">PR #${r.n} · ${esc(r.author)} · aperta ${esc(r.created)} · base ${esc(r.base)} · <span class="status ${r.state}">${esc(STATE_LABEL[r.state])}</span></span><h1>${esc(r.title)}</h1>`;
     const reviews=(r.reviews||[]).map(v=>`<div class="signal"><b>${esc(v.who)}</b><span>${esc(v.state)} · ${esc(v.on)}</span></div>`).join("")||`<div class="signal"><span>ancora nessuna review</span></div>`;
-    const closes=(r.closes||[]).map(c=>`<div class="signal"><b>issue #${c.issue}</b><span>${c.assignees.join(", ")||"senza assegnatario"}</span></div>`).join("");
-    $("dGrid").innerHTML=`
-      <article><h2>Quadro</h2>
-        <dl><div><dt>Decisione review</dt><dd>${esc(r.decision||"—")}</dd></div>
-        <div><dt>Review richieste a</dt><dd>${r.req.join(", ")||"nessuno"}</dd></div>
-        <div><dt>Stato merge</dt><dd>${esc(r.merge)}</dd></div>
-        <div><dt>Thread</dt><dd>${r.unresolved}/${r.threads} aperti</dd></div>
-        <div><dt>Ultimo a parlare</dt><dd>${r.last?esc(`${r.last.who} · ${r.last.ch} · ${r.last.t.slice(0,10)}`):"—"}</dd></div></dl></article>
-      <article class="nextCard"><h2>Prossima mossa</h2><p>${esc(r.todo)}</p>
-        <div id="dAnalysis">${analysisBlockHtml(r)}</div>
-        <div style="margin-top:8px"><small>autorun: ${esc(r.autorun)} — dai campi del provider.
-        ${r.action?`<a href="#" id="dCopyLast" style="color:var(--muted)">copia ${r.action.kind==="command"?"comando":"prompt"} (ultima spiaggia)</a>`:""}</small></div></article>
-      <aside><h2>Review</h2>${reviews}${closes?`<h2 style="margin-top:10px">Chiude</h2>${closes}`:""}</aside>
-      ${r.skill?`<article style="grid-column:1/-1;border-top:1px solid var(--line)">
-        <h2>Analisi della skill <span class="skillStamp">${esc(session||"")}</span></h2>
+    const a=analyses[r.n];
+    $("dlgBody").innerHTML=`
+      <dl><div><dt>Prossima mossa</dt><dd>${esc(r.todo)} <span class="mono">(${esc(r.autorun)})</span></dd></div>
+      <div><dt>Decisione review</dt><dd>${esc(r.decision||"—")}</dd></div>
+      <div><dt>Review richieste a</dt><dd>${r.req.join(", ")||"nessuno"}</dd></div>
+      <div><dt>Stato merge</dt><dd>${esc(r.merge)}</dd></div>
+      <div><dt>Thread</dt><dd>${r.unresolved}/${r.threads} aperti</dd></div>
+      <div><dt>Ultimo a parlare</dt><dd>${r.last?esc(`${r.last.who} · ${r.last.ch} · ${r.last.t.slice(0,10)}`):"—"}</dd></div></dl>
+      <div style="margin-top:10px"><h2>Review</h2>${reviews}</div>
+      ${a?.status==="queued"?`<div class="actionText">📨 pr-analyze in lavorazione nella chat collegata — segui il feed; l'esito comparirà qui.</div>`:""}
+      ${a?.status==="error"?`<div class="actionText">Errore: ${esc(a.error)}</div>`:""}
+      ${r.skill?`<div style="margin-top:10px"><h2>Analisi della skill <span class="skillStamp">${esc(session||"")}</span></h2>
         ${r.skill.analysis?`<p>${esc(r.skill.analysis)}</p>`:""}
         ${r.skill.next?`<p><b>Proposta:</b> ${esc(r.skill.next)}</p>`:""}
-        ${r.skill.draft?`<div class="draft"><span>BOZZA REVIEW</span><p>${esc(r.skill.draft)}</p></div>
-        <button class="btn" id="dDraft">Copia bozza</button>`:""}
-      </article>`:""}`;
-    wireAnalysis(r);
-    const cl=$("dCopyLast");if(cl)cl.onclick=e=>{e.preventDefault();copyText(cl,r.action.text);};
-    const dr=$("dDraft");if(dr)dr.onclick=()=>copyText(dr,r.skill.draft);
+        ${r.skill.draft?`<div class="draft"><span>BOZZA REVIEW</span><p>${esc(r.skill.draft)}</p></div>`:""}
+      </div>`:""}`;
+    $("dlgActions").innerHTML=`
+      <button class="btn primary" id="dlgAnalyze" ${watcherAlive?"":"disabled"} data-tip="La skill pr-analyze legge tutto il diff, verifica i claim della descrizione e i thread, e produce il blocco cosa/storia/proposta con l'eventuale bozza di risposta. Read-only.">▶ pr-analyze in chat</button>
+      ${r.skill?.draft?`<button class="btn" id="dlgDraft">Copia bozza</button>`:""}
+      <a class="btn" href="${r.url}" target="_blank" rel="noreferrer">Apri nel browser ↗</a>
+      ${r.action?`<button class="btn" id="dlgCopy" style="color:var(--muted)">copia ${r.action.kind==="command"?"comando":"prompt"} (ultima spiaggia)</button>`:""}
+      <button class="btn" id="dlgX">Chiudi</button>`;
+    const an=$("dlgAnalyze");if(an)an.onclick=()=>startAnalysis(r.n);
+    const dr=$("dlgDraft");if(dr)dr.onclick=()=>copyText(dr,r.skill.draft);
+    const cp=$("dlgCopy");if(cp)cp.onclick=()=>copyText(cp,r.action.text);
   }else{
-    $("dMark").textContent=r.assignees.length?"○":"!";$("dMark").className="largeMark "+(r.assignees.length?"waiting":"attention");
-    $("dKicker").textContent=`issue #${r.n} · ${r.author} · aperta ${r.created}`;
-    $("dTitle").textContent=r.title;
-    $("dGrid").innerHTML=`
-      <article><h2>Classificazione</h2>
-        <dl><div><dt>Tipo</dt><dd>${esc(r.type)}</dd></div>
-        <div><dt>Label</dt><dd>${r.labels.join(", ")||"nessuna"}</dd></div>
-        <div><dt>Assegnatari</dt><dd>${r.assignees.join(", ")||"nessuno"}</dd></div>
-        <div><dt>Commenti</dt><dd>${r.comments}</dd></div></dl></article>
-      <article class="nextCard"><h2>Prossima mossa</h2><p>${r.assignees.length?`assegnata a ${esc(r.assignees.join(", "))}`:"senza assegnatario — candidata per issue-run"}</p>
-        ${analyses["i"+r.n]?.status==="queued"?`<div class="actionText">📨 chip in preparazione nella chat primaria — clicca la chip lì per aprire la sessione dedicata.</div>`:`<button class="btn primary" id="dIssueAnalyze" data-tip="Prepara una SESSIONE DEDICATA per questa issue: nella chat primaria compare una chip, un tuo click apre la sessione che analizza fresca e — se è una modifica coerente singola — fixa in un worktree e apre la PR. Se è tosta, disegna le fasi (e propone un phased workflow solo se quel plugin è installato).">▶ lavora in sessione dedicata</button>`}
-        <div style="margin-top:8px"><small>tipo letto da label e titolo; la sessione dedicata parte da una chip nella chat primaria e riporta qui l'esito.</small></div></article>
-      <aside><h2>Età</h2><div class="signal"><b>${ageDays(r.created)} giorni</b><span>dal ${esc(r.created)}</span></div></aside>
-      ${r.skill?`<article style="grid-column:1/-1;border-top:1px solid var(--line)">
-        <h2>Analisi della skill <span class="skillStamp">${esc(session||"")}</span></h2>
-        <p>${esc(r.skill.finding||"")}</p>
-        <p class="mono">${esc([r.skill.type,r.skill.phase,r.skill.size].filter(Boolean).join(" · "))}</p>
-      </article>`:""}`;
-    const ia=$("dIssueAnalyze");if(ia)ia.onclick=()=>startIssueAnalysis(r.n);
+    $("dlgTitle").innerHTML=`<span class="detailKicker">issue #${r.n} · ${esc(r.author)} · aperta ${esc(r.created)} · <span class="tag ${esc(r.type)}">${esc(r.type)}</span></span><h1>${esc(r.title)}</h1>`;
+    const a=analyses["i"+r.n];
+    $("dlgBody").innerHTML=`
+      <dl><div><dt>Label</dt><dd>${r.labels.join(", ")||"nessuna"}</dd></div>
+      <div><dt>Assegnatari</dt><dd>${r.assignees.join(", ")||"nessuno — candidata per issue-run"}</dd></div>
+      <div><dt>Commenti</dt><dd>${r.comments}</dd></div>
+      <div><dt>Età</dt><dd>${ageDays(r.created)} giorni (dal ${esc(r.created)})</dd></div></dl>
+      ${a?.status==="queued"?`<div class="actionText">📨 chip in preparazione nella chat primaria — clicca la chip lì per aprire la sessione dedicata.</div>`:""}
+      ${r.skill?`<div style="margin-top:10px"><h2>Analisi della skill</h2><p>${esc(r.skill.finding||"")}</p>
+        <p class="mono">${esc([r.skill.type,r.skill.phase,r.skill.size].filter(Boolean).join(" · "))}</p></div>`:""}`;
+    $("dlgActions").innerHTML=`
+      <button class="btn primary" id="dlgIssueWork" ${watcherAlive?"":"disabled"} data-tip="Prepara una SESSIONE DEDICATA per questa issue: nella chat primaria compare una chip, un tuo click apre la sessione che analizza fresca e — se è una modifica coerente singola — fixa in un worktree e apre la PR. Se è tosta, disegna le fasi (e propone un phased workflow solo se quel plugin è installato).">▶ lavora in sessione dedicata</button>
+      <a class="btn" href="${r.url}" target="_blank" rel="noreferrer">Apri nel browser ↗</a>
+      <button class="btn" id="dlgX">Chiudi</button>`;
+    const iw=$("dlgIssueWork");if(iw)iw.onclick=()=>startIssueAnalysis(r.n);
   }
+  const x=$("dlgX");if(x)x.onclick=closeDialog;
 }
 
 function renderSummary(){
@@ -485,9 +502,11 @@ function renderSummary(){
   $("cPrs").textContent=prs.length;$("cIssues").textContent=issues.length;
 }
 
-function render(){renderTabs();renderTable();renderDetail();renderSummary();}
+function render(){renderTabs();renderTable();renderDialog();renderSummary();}
 
 $("q").oninput=e=>{query=e.target.value;render();};
+$("dlgClose").onclick=closeDialog;
+$("dlg").addEventListener("click",e=>{if(e.target===$("dlg"))closeDialog();});
 $("refresh").onclick=()=>loadQueue(true);
 $("btnAction").onclick=startRun;
 $("btnTest").onclick=runTestMode;
