@@ -61,6 +61,21 @@ each event in order:
   instruction means the proposal as it stands, any other text wins). Set the
   order's `status` to `done` with a one-line `report`, or `failed`/
   `needs-input` with why. Report in chat what was done.
+- **`{"kind": "issue-analyze", "n": N}`** — spawn one fresh read-only agent
+  following `../issue-analyze/SKILL.md` on issue #N (virgin context by
+  design); it persists the verdict to the desk state itself.
+- **`{"kind": "run", "flow": "pr-run"|"issue-run"}`** — run that skill here
+  in chat, step by step.
+
+While working any event, post progress so the desk shows it live:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/server/notify.py --repo <owner/repo> [--pr <n>] "<one line>"
+```
+
+The user drives from the chat; the desk is the radar. Decisions (picks,
+go-aheads beyond an order, anything Lane B) are asked HERE, never rendered
+as desk interactions.
 
 Then **restart the watcher** (step 2) and end the turn. Stop the loop when
 the user says so or the preview server is stopped; a watcher exit code 3

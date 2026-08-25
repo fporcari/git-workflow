@@ -89,6 +89,13 @@ h2{margin:0 0 7px}.detailGrid p{margin:0 0 12px}
 .chaseCard pre{font:11px var(--mono);white-space:pre-wrap;word-break:break-word;margin:6px 0 10px;color:var(--ink)}
 .chaseNote{grid-column:1/-1;font-size:11px;color:var(--muted)}
 .skillStamp{font:10px var(--mono);color:var(--muted)}
+.feed{border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--amber) 3%,var(--panel));padding:6px 18px;display:flex;flex-direction:column;gap:2px;max-height:96px;overflow:auto}
+.feed div{font:11px var(--mono);color:var(--ink)}
+.feed div b{color:var(--muted);font-weight:500;margin-right:8px}
+.gridWrap{padding:14px 18px;display:flex;flex-direction:column;gap:14px}
+.gridBlock h2{margin-bottom:6px}
+.gridBlock table{min-width:0;width:100%}
+.gridBlock .empty1{font-size:11px;color:var(--muted)}
 @media(max-width:900px){.summary{grid-template-columns:1fr repeat(2,130px)}.metric:nth-last-child(-n+2){display:none}.detailGrid{grid-template-columns:1fr}.detailGrid>*+*{border-left:0;border-top:1px solid var(--line)}}
 </style>
 </head>
@@ -108,14 +115,14 @@ h2{margin:0 0 7px}.detailGrid p{margin:0 0 12px}
   </section>
 
   <div class="err" id="errBox"></div>
+  <div class="feed" id="feedBox" style="display:none"></div>
 
   <section class="queue">
     <div class="queueTools">
       <div class="tabs" id="tabs"></div>
       <div style="display:flex;gap:6px;align-items:center">
-        <button class="btn" data-cmd="/pr-triage" title="Copia il comando da incollare in Claude Code">▸ /pr-triage</button>
-        <button class="btn" data-cmd="/pr-run" title="Copia il comando da incollare in Claude Code">▸ /pr-run</button>
-        <button class="btn" data-cmd="/issue-triage" title="Copia il comando da incollare in Claude Code">▸ /issue-triage</button>
+        <button class="btn" id="btnTriage" title="Mostra la griglia di triage qui nel desk">▶ pr-triage</button>
+        <button class="btn" id="btnRun" title="Esegue /pr-run nella chat collegata; qui arrivano le notifiche">▶ pr-run in chat</button>
         <label class="search"><span>⌕</span><input id="q" placeholder="Filter number, title, author…"></label>
       </div>
     </div>
@@ -123,6 +130,7 @@ h2{margin:0 0 7px}.detailGrid p{margin:0 0 12px}
       <thead id="thead"></thead><tbody id="tbody"></tbody>
     </table><div class="empty" id="empty" style="display:none"><b>Nothing in this view</b><span>Try another filter or tab.</span></div></div>
     <div class="chaseWrap" id="chaseWrap" style="display:none"></div>
+    <div class="gridWrap" id="gridWrap" style="display:none"></div>
   </section>
 
   <section class="detail" id="detail" style="display:none">
@@ -145,6 +153,7 @@ const VIEWS=()=>[
   {id:"queue",label:"Queue",count:prs.filter(r=>r.state==="attention"||r.state==="decision"||r.state==="ready").length},
   {id:"ready",label:"Mergeable",count:prs.filter(r=>r.state==="ready").length},
   {id:"waiting",label:"Waiting",count:prs.filter(r=>r.state==="waiting").length},
+  {id:"grid",label:"Triage",count:prs.filter(r=>r.state!=="waiting").length},
   {id:"chase",label:"Chase",count:Object.keys(chase).length},
   {id:"all",label:"All PRs",count:prs.length},
   {id:"issues",label:"Issues",count:issues.length},
@@ -161,6 +170,7 @@ async function copyText(btn,text){
 function ageDays(d){return Math.max(0,Math.round((Date.now()-new Date(d))/864e5));}
 
 function renderTabs(){
+  $("btnRun").textContent=view==="issues"?"\u25B6 issue-run in chat":"\u25B6 pr-run in chat";
   $("tabs").innerHTML=VIEWS().map(v=>`<button class="${view===v.id?"active":""}" data-v="${v.id}">${v.label} <b>${v.count}</b></button>`).join("");
   $("tabs").querySelectorAll("button").forEach(b=>b.onclick=()=>{view=b.dataset.v;selected=null;render();});
 }
@@ -181,51 +191,26 @@ const analyses={};
 
 function analysisBlockHtml(r){
   const a=analyses[r.n];
-  if(r.order&&!a?.block){
-    return `<div class="actionText">Ordine ${esc(r.order.status)} — ${esc(r.order.instruction||"esegui la proposta")}\n→ ${esc(r.order.propose)}${r.order.report?`\n${esc(r.order.report)}`:""}</div>
-      <small>${r.order.status==="pending"?(meta.chat?"Inviato alla chat che ha lanciato il desk: lo esegue lì (Lane 0), senza altre conferme.":"Lo esegue <b>/pr-run</b> in chat, senza altre conferme (Lane 0)."):""}</small>`;
-  }
   if(a?.status==="queued")
-    return `<div class="actionText">📨 richiesta inviata alla chat che ha lanciato il desk — il blocco apparirà qui quando la sessione chiude l'analisi.</div>`;
-  if(a?.status==="running")
-    return `<div class="actionText">⏳ analisi in corso — pr-analyze sta leggendo diff, thread e claim della PR. Un paio di minuti.</div>`;
+    return `<div class="actionText">\u{1F4E8} in lavorazione nella chat collegata \u2014 segui il feed in alto; l'esito compare qui sotto ad analisi chiusa.</div>`;
   if(a?.status==="error")
-    return `<div class="actionText">Errore analisi: ${esc(a.error)}</div><button class="btn primary" id="dAnalyze">Riprova analisi</button>`;
-  if(!a?.block&&r.skill?.next&&!r.order){
-    analyses[r.n]={status:"done",block:{what:r.skill.analysis||"",history:"analisi precedente, dal desk state",propose:r.skill.next,draft:r.skill.draft||null,verified:[],not_verified:[]}};
-    return analysisBlockHtml(r);
-  }
-  if(a?.block){
-    const b=a.block;
-    return `<dl>
-      <div><dt>what</dt><dd style="text-align:left">${esc(b.what)}</dd></div>
-      <div><dt>history</dt><dd style="text-align:left">${esc(b.history)}</dd></div>
-      <div><dt>propose</dt><dd style="text-align:left"><b>${esc(b.propose)}</b></dd></div></dl>
-      ${b.draft?`<div class="draft"><span>BOZZA</span><p>${esc(b.draft)}</p></div>`:""}
-      ${(b.verified||[]).length?`<small>verificato: ${esc(b.verified.join("; "))}</small><br>`:""}
-      ${(b.not_verified||[]).length?`<small>NON verificato: ${esc(b.not_verified.join("; "))}</small>`:""}
-      <textarea id="dInstr" rows="2" placeholder="istruzioni per l'esecuzione (vuoto = esegui la proposta così com'è)" style="width:100%;margin:8px 0 6px;font:11px inherit;border:1px solid var(--line);border-radius:6px;padding:6px;background:var(--bg)"></textarea>
-      <button class="btn primary" id="dGo">Vai — registra l'ordine</button>
-      <small style="display:block;margin-top:4px">L'ordine finisce nel desk state: /pr-run in chat lo esegue come Lane 0, senza richiederti conferma.</small>`;
-  }
-  return `<button class="btn primary" id="dAnalyze">Analizza — chunk pr-run</button>
-    <small style="display:block;margin-top:4px">Lancia pr-analyze headless (read-only): diff, thread, verifica dei claim → blocco what/history/propose.</small>`;
+    return `<div class="actionText">Errore: ${esc(a.error)}</div><button class="btn" id="dAnalyze">Riprova</button>`;
+  return `<button class="btn primary" id="dAnalyze">\u25B6 pr-analyze in chat</button>
+    <small style="display:block;margin-top:4px">L'analisi gira nella chat collegata, con il suo contesto pieno; il desk mostra solo l'esito e le notifiche.</small>`;
 }
 
 function wireAnalysis(r){
   const an=$("dAnalyze");if(an)an.onclick=()=>startAnalysis(r.n);
-  const go=$("dGo");if(go)go.onclick=()=>sendOrder(r.n);
 }
 
 async function startAnalysis(n){
   const prev=prs.find(x=>x.n===n)?.skill?.next||null;
-  analyses[n]={status:"running"};render();
   try{
     const resp=await fetch(`/api/pr/${n}/analyze`,{method:"POST"});
-    const {job,queued,error}=await resp.json();
+    const {queued,error}=await resp.json();
     if(error)throw new Error(error);
-    if(queued){analyses[n]={status:"queued"};render();pollQueueUntil(n,row=>(row.skill?.next||null)!==prev,()=>{delete analyses[n];});}
-    else pollJob(n,job);
+    analyses[n]={status:"queued"};render();
+    pollQueueUntil(n,row=>(row.skill?.next||null)!==prev,()=>{delete analyses[n];});
   }catch(e){analyses[n]={status:"error",error:e.message};render();}
 }
 
@@ -241,39 +226,68 @@ function pollQueueUntil(n,test,onDone){
   },8000);
 }
 
-async function pollJob(n,job){
-  const t=setInterval(async()=>{
-    try{
-      const j=await fetch(`/api/job/${job}`).then(r=>r.json());
-      if(j.status==="running")return;
-      clearInterval(t);
-      if(j.status==="error"){analyses[n]={status:"error",error:j.error};}
-      else{
-        let block;
-        try{block=JSON.parse(j.result.replace(/^```json?\s*|```\s*$/g,""));}
-        catch(e){block={what:"—",history:"—",propose:j.result.slice(0,400)};}
-        analyses[n]={status:"done",block};
-      }
-      render();
-    }catch(e){clearInterval(t);analyses[n]={status:"error",error:e.message};render();}
-  },3000);
+let lastFeedLen=0;
+async function pollFeed(){
+  try{
+    const {feed}=await fetch("/api/feed").then(r=>r.json());
+    const box=$("feedBox");
+    if(feed&&feed.length){
+      box.style.display="";
+      box.innerHTML=feed.slice(-8).reverse().map(f=>`<div><b>${esc(f.at)}</b>${f.pr?`<b>#${f.pr}</b> `:""}${esc(f.msg)}</div>`).join("");
+      if(feed.length!==lastFeedLen){lastFeedLen=feed.length;}
+    }
+  }catch(e){}
+}
+setInterval(pollFeed,5000);
+
+async function startRun(){
+  const flow=view==="issues"?"issue-run":"pr-run";
+  const resp=await fetch("/api/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({flow})});
+  const d=await resp.json();
+  $("errBox").style.display="block";
+  $("errBox").textContent=d.error||flow+" avviato nella chat collegata: segui il feed.";
 }
 
-async function sendOrder(n){
-  const a=analyses[n];if(!a?.block)return;
-  const instruction=($("dInstr")?.value||"").trim();
-  const resp=await fetch(`/api/pr/${n}/order`,{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({propose:a.block.propose,draft:a.block.draft||null,instruction})});
-  const {order,queued,error}=await resp.json();
-  if(error){analyses[n]={status:"error",error};render();return;}
-  const row=prs.find(x=>x.n===n);if(row)row.order=order;
-  delete analyses[n];render();
-  if(queued)pollQueueUntil(n,r=>r.order&&r.order.status!=="pending",()=>{});
+async function startIssueAnalysis(n){
+  const resp=await fetch(`/api/issue/${n}/analyze`,{method:"POST"});
+  const d=await resp.json();
+  $("errBox").style.display=d.error?"block":"none";
+  if(d.error)$("errBox").textContent=d.error;
+  else{analyses["i"+n]={status:"queued"};render();}
+}
+
+const GRID_BLOCKS=[
+  {title:"Da mergiare subito",test:r=>r.autorun==="A1"},
+  {title:"Azione banale",test:r=>r.autorun==="A2"||r.autorun==="A3"},
+  {title:"Review da fare",test:r=>/^(review it|re-review it)/.test(r.todo)},
+  {title:"Solo tue",test:r=>r.autorun==="yours"||r.state==="decision"},
+];
+function renderGrid(){
+  const wrap=$("gridWrap"),on=view==="grid";
+  wrap.style.display=on?"flex":"none";
+  if(!on)return;
+  const used=new Set();
+  let html=`<div class="chaseNote">Griglia dai campi del provider (vocabolario pr-triage \u00A77). La griglia completa, con i gate verificati, la produce <b>/pr-triage</b> in chat e arriva qui via export.</div>`;
+  for(const b of GRID_BLOCKS){
+    const rows=prs.filter(r=>b.test(r));rows.forEach(r=>used.add(r.n));
+    html+=`<div class="gridBlock"><h2>${b.title} (${rows.length})</h2>`+(rows.length
+      ?`<table><tbody>${rows.map(r=>`<tr data-n="${r.n}"><td class="mono">#${r.n}</td><td>${esc(r.title)}</td><td>${esc(r.author)}</td><td class="mono">${esc(r.created)}</td><td class="next">${esc(r.todo)}</td><td class="mono">${esc(r.autorun)}</td></tr>`).join("")}</tbody></table>`
+      :`<div class="empty1">niente in questo blocco</div>`)+`</div>`;
+  }
+  const names=Object.keys(chase);
+  html+=`<div class="gridBlock"><h2>Da sollecitare (${names.length})</h2>`+(names.length
+    ?`<div class="chaseWrap" style="padding:0">${names.map(w=>`<div class="chaseCard"><h2>@${esc(w)}</h2><pre>${esc(chase[w])}</pre><button class="btn" data-copy="${esc(chase[w])}">Copia messaggio</button></div>`).join("")}</div>`
+    :`<div class="empty1">nessuno da sollecitare</div>`)+`</div>`;
+  const rest=prs.filter(r=>!used.has(r.n)&&r.state==="waiting");
+  html+=`<div class="gridBlock"><h2>In attesa di altri (${rest.length})</h2><div class="empty1">${esc(rest.map(r=>"#"+r.n).join(" "))||"\u2014"}</div></div>`;
+  wrap.innerHTML=html;
+  wrap.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>copyText(b,b.dataset.copy));
+  wrap.querySelectorAll("tr[data-n]").forEach(tr=>tr.onclick=()=>{selected="p"+tr.dataset.n;view="queue";render();});
 }
 
 function renderChase(){
   const wrap=$("chaseWrap"),onChase=view==="chase";
-  $("tableWrap").style.display=onChase?"none":"";
+  $("tableWrap").style.display=(onChase||view==="grid")?"none":"";
   wrap.style.display=onChase?"grid":"none";
   if(!onChase)return;
   const names=Object.keys(chase);
@@ -287,8 +301,8 @@ function renderChase(){
 
 function renderTable(){
   const tb=$("tbody"),th=$("thead");
-  renderChase();
-  if(view==="chase"){$("empty").style.display="none";tb.innerHTML="";th.innerHTML="";return;}
+  renderChase();renderGrid();
+  if(view==="chase"||view==="grid"){$("empty").style.display="none";tb.innerHTML="";th.innerHTML="";return;}
   if(view==="issues"){
     th.innerHTML=`<tr><th class="markCol"></th><th>issue</th><th>type</th><th>author</th><th>labels</th><th>assignees</th><th class="num">comments</th><th class="num">age</th></tr>`;
     const rows=visibleIssues();
@@ -367,16 +381,15 @@ function renderDetail(){
         <div><dt>Assignees</dt><dd>${r.assignees.join(", ")||"unassigned"}</dd></div>
         <div><dt>Comments</dt><dd>${r.comments}</dd></div></dl></article>
       <article class="nextCard"><h2>Next move</h2><p>${r.assignees.length?`assigned to ${esc(r.assignees.join(", "))}`:"unassigned — a candidate for /issue-triage"}</p>
-        ${r.action?`<div class="actionText">${esc(r.action.text)}</div>
-        <button class="btn primary" id="dAction">${esc(r.action.label)}</button>`:""}
-        <div style="margin-top:8px"><small>tipo letto da label e titolo; la root-cause la fa /issue-triage.</small></div></article>
+        ${analyses["i"+r.n]?.status==="queued"?`<div class="actionText">\u{1F4E8} in analisi nella chat collegata \u2014 segui il feed.</div>`:`<button class="btn primary" id="dIssueAnalyze">\u25B6 issue-analyze in chat</button>`}
+        <div style="margin-top:8px"><small>tipo letto da label e titolo; l'analisi gira in un contesto vergine e l'esito arriva qui.</small></div></article>
       <aside><h2>Age</h2><div class="signal"><b>${ageDays(r.created)} days</b><span>since ${esc(r.created)}</span></div></aside>
       ${r.skill?`<article style="grid-column:1/-1;border-top:1px solid var(--line)">
         <h2>Analisi della skill <span class="skillStamp">${esc(session||"")}</span></h2>
         <p>${esc(r.skill.finding||"")}</p>
         <p class="mono">${esc([r.skill.type,r.skill.phase,r.skill.size].filter(Boolean).join(" · "))}</p>
       </article>`:""}`;
-    const act=$("dAction");if(act)act.onclick=()=>copyText(act,r.action.text);
+    const ia=$("dIssueAnalyze");if(ia)ia.onclick=()=>startIssueAnalysis(r.n);
   }
 }
 
@@ -415,7 +428,8 @@ async function load(refresh){
 
 $("q").oninput=e=>{query=e.target.value;render();};
 $("refresh").onclick=()=>load(true);
-document.querySelectorAll("[data-cmd]").forEach(b=>b.onclick=()=>copyText(b,b.dataset.cmd));
+$("btnTriage").onclick=()=>{view="grid";render();};
+$("btnRun").onclick=startRun;
 load(false);
 </script>
 </body>

@@ -121,6 +121,9 @@ class Handler(BaseHTTPRequestHandler):
             elif url.path == "/api/issues":
                 self._send(200, dict(self.desk.issues(refresh),
                                      generated=time.strftime("%H:%M:%S")))
+            elif url.path == "/api/feed":
+                feed = deskstate.load(self.desk.repo).get("feed") or []
+                self._send(200, {"feed": feed[-50:]})
             elif url.path.startswith("/api/job/"):
                 job = jobs.get(url.path.rsplit("/", 1)[1])
                 self._send(200 if job else 404, job or {"error": "unknown job"})
@@ -153,6 +156,19 @@ class Handler(BaseHTTPRequestHandler):
                 if self.desk.chat:
                     inbox.push(self.desk.repo, {"kind": "order", "n": n})
                 self._send(200, {"order": order, "queued": self.desk.chat})
+            elif len(parts) == 4 and parts[:2] == ["api", "issue"] and parts[3] == "analyze":
+                if not self.desk.chat:
+                    self._send(409, {"error": "issue-analyze needs the desk launched from a chat session"})
+                else:
+                    inbox.push(self.desk.repo, {"kind": "issue-analyze", "n": int(parts[2])})
+                    self._send(202, {"queued": True})
+            elif parts == ["api", "run"]:
+                if not self.desk.chat:
+                    self._send(409, {"error": "run needs the desk launched from a chat session"})
+                else:
+                    flow = body.get("flow", "pr-run")
+                    inbox.push(self.desk.repo, {"kind": "run", "flow": flow})
+                    self._send(202, {"queued": True})
             else:
                 self._send(404, {"error": "not found"})
         except Exception as exc:
