@@ -1,11 +1,18 @@
 {
   "name": "git-workflow",
-  "description": "PR and issue workflow toolkit: pr-triage / pr-run / issue-triage skills plus a local review-desk dashboard server with pluggable git hosting providers (GitHub today, Forgejo ready).",
-  "version": "0.8.4",
+  "description": "PR and issue workflow toolkit: pr-triage / pr-run / issue-triage skills plus a local review-desk dashboard that computes the triage grid, the chase blocks, the merge gate and the issue cross-check itself, calling a model only for what needs judgement. Pluggable git hosting providers (GitHub today, Forgejo ready).",
+  "version": "0.9.0",
   "author": {
     "name": "Francesco Porcari",
     "email": "fporcari@softwell.it"
   },
   "homepage": "https://github.com/fporcari/git-workflow",
-  "keywords": ["git", "github", "forgejo", "pull-request", "triage", "review"]
+  "keywords": [
+    "git",
+    "github",
+    "forgejo",
+    "pull-request",
+    "triage",
+    "review"
+  ]
 }
