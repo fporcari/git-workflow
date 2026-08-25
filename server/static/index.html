@@ -346,7 +346,10 @@ function renderGrid(){
   wrap.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>copyText(b,b.dataset.copy));
   const tp=$("gTriagePr");if(tp)tp.onclick=()=>{view="queue";view="grid";fetch("/api/triage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({flow:"pr-triage"})}).then(r=>r.json()).then(d=>{if(d.error){$("errBox").style.display="block";$("errBox").textContent=d.error;}else{triageRunning.pr=true;render();}});};
   const ti=$("gTriageIssue");if(ti)ti.onclick=()=>{fetch("/api/triage",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({flow:"issue-triage"})}).then(r=>r.json()).then(d=>{if(d.error){$("errBox").style.display="block";$("errBox").textContent=d.error;}else{triageRunning.issue=true;render();}});};
-  wrap.querySelectorAll("tr[data-n]").forEach(tr=>{tr.style.cursor="pointer";tr.onclick=()=>{if(loaded){selected="p"+tr.dataset.n;view="queue";render();}};});
+  wrap.querySelectorAll("tr[data-n]").forEach(tr=>{tr.style.cursor="pointer";tr.onclick=async()=>{
+    if(!loaded)await loadQueue(false);
+    selected="p"+tr.dataset.n;view="queue";render();
+  };});
 }
 
 function renderChase(){
