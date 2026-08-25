@@ -51,9 +51,12 @@ Merge into `~/.local/state/git-workflow/<owner>__<repo>.json` (preserve the
 other keys):
 
 ```json
-{"issues": {"<n>": {"type": "DEFECT", "finding": "<one line>",
+{"issues": {"<n>": {"type": "DEFECT", "finding": "<una riga, in italiano>",
                      "size": "EASY", "phase": "SINGLE-PHASE"}}}
 ```
+
+`finding` is user-facing (the desk shows it): write it in Italian. Anything
+meant to be posted on the issue stays in English.
 
 When run for a caller (issue-run, the desk), the final message is one JSON
 object with those five fields plus `finding`; when run for a human in chat,

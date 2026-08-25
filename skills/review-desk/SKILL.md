@@ -52,7 +52,9 @@ each event in order:
 - **`{"kind": "analyze", "n": N}`** — run the `pr-analyze` skill on PR #N
   right here (read-only; full playbook in `../pr-analyze/SKILL.md`). Write
   the result into the desk state file as that skill specifies — the desk is
-  polling and will show the block. One line in chat: which PR, the verdict.
+  polling and will show the block. In chat, report three short lines **in
+  Italian** (cosa / storia / proposta); NEVER paste the raw JSON or the
+  English draft into the chat — the draft lives in the desk panel.
 - **`{"kind": "order", "n": N}`** — the user clicked Go on the analysis
   block: that click is the authorization, do not re-ask. Read the order from
   the state file (`orders.<N>`: `propose`, `draft`, `instruction`) and

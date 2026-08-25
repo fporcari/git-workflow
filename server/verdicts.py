@@ -45,9 +45,10 @@ def verdict(row, me):
     if mine:
         if merge == "DIRTY":
             return ("realign with the base", "attention", "A3")
-        if decision == "CHANGES_REQUESTED" and last_who != me:
+        answered = last_who in (me, None)
+        if decision == "CHANGES_REQUESTED" and not answered:
             return ("answer the review", "attention", "asks")
-        if unresolved:
+        if unresolved and not answered:
             return ("resolve the threads", "attention", "asks")
         if decision == "APPROVED" and not req:
             if merge == "CLEAN":
@@ -57,8 +58,14 @@ def verdict(row, me):
             return ("approved - merge state not computed", "decision", "asks")
         if not reviews and not req:
             return ("get a reviewer", "attention", "asks")
-        if last_who == me or last_who is None:
+        if answered:
+            # the user spoke last (an answer, a push comment): the ball is
+            # with whoever was asked, or with whoever requested the changes
             waiting_on = req[0] if req else None
+            if not waiting_on and decision == "CHANGES_REQUESTED":
+                for r in reviews:
+                    if r["state"] == "CHANGES_REQUESTED":
+                        waiting_on = r["who"]
             if waiting_on:
                 return ("waiting on %s" % waiting_on, "waiting", "-")
             return ("needs a look - whose move is unclear", "decision", "asks")

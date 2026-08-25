@@ -38,9 +38,17 @@ to make it true.
 Compress to the pr-run Lane B format. `propose` is ONE concrete action, not a
 menu — if it cannot be one line, the analysis is not finished.
 
-## 4 · Output — strict JSON, nothing else in the final message
+## 4 · Output
 
-The final message must be exactly one JSON object (no fences, no prose):
+**Language**: everything shown to the user — the desk state's `analysis` and
+`next`, the chat report — is written in **Italian**; only `draft` stays in
+English, because it is text meant to be posted on the PR.
+
+**Never show the raw JSON to the user.** Run headless (the desk's standalone
+mode, an agent caller), the final message is exactly one JSON object, no
+fences, no prose. Run in a chat, report the block as three short Italian
+lines (cosa / storia / proposta) and say the draft is in the desk — the JSON
+shape below is only the contract for the state file and for callers:
 
 ```json
 {"n": 1152,
@@ -59,6 +67,7 @@ Before the final message, merge into
 missing, preserve other keys):
 
 ```json
-{"prs": {"<n>": {"analysis": "<what + the key finding>",
-                  "next": "<propose>", "draft": "<draft or omit>"}}}
+{"prs": {"<n>": {"analysis": "<cosa + il finding chiave, in italiano>",
+                  "next": "<la proposta, in italiano>",
+                  "draft": "<the English draft, or omit>"}}}
 ```
