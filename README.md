@@ -4,11 +4,11 @@ A plugin for Claude Code and Codex for working a repository's pull requests
 and issues as a queue: ten shared skills and a local dashboard server with no
 dependencies outside the Python standard library.
 
-The shape of the whole thing is one idea: **the desk computes, the model
-judges.** Anything derivable from the provider's own fields — the triage grid,
-the merge gate, the chase blocks, the issue cross-check — is computed in
-Python in milliseconds and pinned by tests. A model turn is spent only on what
-needs reading a diff or an issue body.
+The shape of the whole thing is one idea: **fetch paints facts; an explicit
+triage publishes verdicts; the model judges only what fields cannot answer.**
+The merge gate and issue cross-check are computed while fetching. The PR
+triage grid and chase blocks are prepared in Python only when the user presses
+the triage button, then completed by the model where a diff read is required.
 
 Built for GitHub today, provider-abstracted so a migration to
 [Forgejo](https://forgejo.org/) only means implementing one class against the
@@ -112,7 +112,7 @@ Both are **explicit-invocation only**, and both take the same mandate:
 
 | skill | what it does |
 |---|---|
-| **`pr-loop`** | Drives the queue until nothing is left that only you can do. Lane A acts without asking — merges your fully-approved PRs, answers small *named* review requests, realigns `DIRTY` branches by merging the base in — and iterates until a full pass changes nothing, because its own merges change the queue. Lane B is everything else, presented as `what` / `history` / `propose`, waiting for a word. Canonical home of the rule for what may run in parallel. |
+| **`pr-loop`** | Drives the queue until nothing is left that only you can do. Lane A acts without asking — merges your fully-approved PRs, answers small *named* review requests, realigns `DIRTY` branches by merging the base in — and iterates until a full pass changes nothing, because its own merges change the queue. Lane B is everything else, presented as author / problem / history / proposal followed by an explicit confirmation question. Canonical home of the rule for what may run in parallel. |
 | **`issue-loop`** | The same loop over the open issues: take the most urgent, analyze that one in a fresh context, propose it in four lines, and on a go-ahead assign it, fix it in a worktree and open the PR. Canonical home of the worktree traps — the shared stash stack, `PYTHONPATH`, a per-agent scratch `GENRO_GNRFOLDER`, which test count is worth believing. |
 
 With `batch=N` an approved batch is never handed straight to N agents: the
@@ -126,7 +126,7 @@ succeeded.
 
 | skill | what it does |
 |---|---|
-| **`pr-analyze`** | One PR, read properly: the whole diff, the description's claims checked against the code that would have to make them true, the threads. Returns the loop's `what`/`history`/`propose` block plus any draft worth posting. Read-only — never posts, never pushes. Used headless by the desk's Analizza button. |
+| **`pr-analyze`** | One PR, read properly: one provider snapshot for the author, linked issue, history, reviews, threads and checks, plus the whole diff; independent reads start together. Returns author / problem / history / one proposal, asks for confirmation, and prepares any draft worth posting. Read-only — never posts, never pushes. Used headless by the desk's Analizza button. |
 | **`issue-analyze`** | One issue, in a virgin context: verify the root cause in the actual code (DEFECT), walk the reuse ladder (REQUEST), find the proving line (QUESTION/DOCS). Returns a typed verdict with the minimal change and a verification plan. Read-only — never branches, never comments. |
 | **`issue-work`** | The mandate of a session spawned for a single issue: analyze it fresh, then either fix it in a worktree and open the PR when it is one coherent change, or lay out the phases it really needs. |
 
@@ -134,13 +134,13 @@ succeeded.
 
 | skill | what it does |
 |---|---|
-| **`pr-desk`** | The PR queue as a dashboard (port 8399), attached to this chat. Computes the triage grid, the merge gate and the chase blocks itself; its buttons — merge orders, `pr-analyze`, `pr-loop`, `pr-triage` on the rows already downloaded — come back to the chat as events. |
+| **`pr-desk`** | The PR queue as a dashboard (port 8399), attached to this chat. Startup and reload fetch provider facts only; the explicit `pr-triage` button prepares and publishes the grid and chase blocks from those rows. Missing or changed triages are highlighted. Its other buttons — merge orders, `pr-analyze`, and `pr-loop` — come back to the chat as events. |
 | **`issue-desk`** | The same for the open issues (port 8398): the cross-check and the shortlist computed without a model, buttons for dedicated work sessions, `issue-analyze` and `issue-loop`. |
 | **`review-desk`** | Launches both at once, and is the reference for how an attached chat processes desk events. Canonical home of the desk protocol: the live-row marker, the request ledger, and the exact `notify.py` flags. |
 
-`plugins/git-workflow/server/` is the code under all three: a
-zero-dependency Python stdlib server
-that reads the provider, computes the verdicts, and serves one page.
+`plugins/git-workflow/server/` is the code under all three: a zero-dependency
+Python stdlib server that reads the provider, prepares explicit triage work,
+and serves one page.
 
 ## The dashboard
 
@@ -157,11 +157,13 @@ play, next move with the `pr-loop` autorun class, reviews, linked issues.
 
 Options: `--repo`, `--provider github|forgejo|fixture`, `--me`, `--port`,
 `--chat` (buttons hand work to the attached chat instead of running headless),
-`--keep-state`, `--keep-cache`, `--no-prefetch`, `--triage-at-boot`.
+`--keep-state`, `--keep-cache`, `--no-prefetch`.
 
 **It does not triage at startup.** It fetches the provider itself and paints
-in seconds; the triage is a button, and pressing it hands the chat the rows
-already downloaded rather than making the skill re-query.
+in seconds. Reload performs the same pure fetch. Pressing the triage button
+hands the chat the rows already downloaded rather than making the skill
+re-query. Every PR is marked as never triaged, current, or stale when its
+provider facts have changed since the last triage.
 
 **Choosing what the loop works.** cmd-click (shift-click for a stretch) picks
 rows; ▶ then runs `pr-loop`/`issue-loop` on **exactly those, in that order,
@@ -174,9 +176,10 @@ Acting belongs to the skills, which log every action on the PR itself.
 
 ## Verdicts
 
-`plugins/git-workflow/server/verdicts.py` ports section 7 of the pr-triage skill — the closed
-verdict vocabulary (`merge it`, `answer the review`, `realign with the base`,
-`waiting on <login>`, …) — restricted to what the fields can honestly answer:
+`plugins/git-workflow/server/verdicts.py` ports section 7 of the pr-triage skill
+— the closed verdict vocabulary (`merge it`, `answer the review`, `realign
+with the base`, `waiting on <login>`, …). It runs only while preparing an
+explicit triage and is restricted to what the fields can honestly answer:
 anything that would need a diff read is reported as `asks` and left to
 `pr-loop`. The `autorun` column mirrors what `pr-loop` does unattended (A1
 merge, A3 realign) versus what it brings to you for a go-ahead.

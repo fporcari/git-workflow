@@ -7,7 +7,7 @@ This is the short version. Pick the page that matches what you need.
 ## How it works
 
 - **Reads:** pull requests, issues, reviews, branches, protection rules, and links between them.
-- **Computes:** queue state, merge gates, issue cross-checks, and safe ordering in the local desk.
+- **Computes:** merge gates, issue cross-checks, and safe ordering in the local desk; PR verdicts only on explicit triage.
 - **Asks a model for:** diff reading, root-cause analysis, proposals, and judgment.
 - **Changes things only when:** the selected skill or an explicit approval authorizes the action.
 
@@ -19,14 +19,15 @@ This is the short version. Pick the page that matches what you need.
 
 - **Use when:** you want the PR dashboard.
 - **Starts:** a local server and opens a small web application in the browser.
-- **Does:** reads and groups the PR queue; web-app buttons send selected work to the current chat.
-- **Does not:** analyze every diff or act by itself.
+- **Does:** fetches and groups the PR queue at startup and reload; web-app buttons send selected work to the current chat.
+- **Highlights:** PRs whose triage is missing or stale after their provider facts change.
+- **Does not:** publish a triage until its button is pressed, analyze every diff, or act by itself.
 
 ![PR desk](02-pr-desk.webp)
 
 ### `pr-triage`
 
-- **Use when:** you want a read-only list of every PR involving you.
+- **Use when:** you explicitly want a read-only triage of every PR involving you.
 - **Reads:** queue fields and the merge gate, not full diffs.
 - **Does:** splits the queue into ready, small action, review, waiting, and decision blocks.
 - **Next:** hands the actionable set to `pr-loop` if requested.
@@ -36,8 +37,8 @@ This is the short version. Pick the page that matches what you need.
 ### `pr-analyze`
 
 - **Use when:** one PR needs a proper read.
-- **Reads:** the complete diff, description claims, history, reviews, and threads.
-- **Returns:** what it does, what happened, what to propose, and any useful draft.
+- **Reads:** one complete provider snapshot and the full diff, concurrently when possible.
+- **Returns:** author, problem solved, review history, one proposal, an explicit confirmation question, and any useful draft.
 - **Does not:** post, push, merge, or modify the PR.
 
 ![PR analyze](04-pr-analyze.webp)

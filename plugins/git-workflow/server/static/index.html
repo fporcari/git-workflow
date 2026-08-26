@@ -75,6 +75,8 @@ tbody tr:hover td{background:#f7f5f0}
 tbody tr.selected td{background:#eeeae1}
 tbody tr.picked td{background:color-mix(in srgb,var(--rust) 10%,var(--panel))}
 tbody tr.picked td:first-child{box-shadow:inset 3px 0 var(--rust)}
+tbody tr.untriaged td{background:color-mix(in srgb,var(--amber) 5%,var(--panel))}
+tbody tr.untriaged.selected td{background:color-mix(in srgb,var(--amber) 11%,var(--panel))}
 .pickBar{display:none;padding:7px 18px;border-bottom:1px solid var(--line);font-size:11.5px;
          align-items:center;gap:10px;flex-wrap:wrap;background:color-mix(in srgb,var(--rust) 6%,var(--panel))}
 .pickBar.on{display:flex}
@@ -114,15 +116,19 @@ tbody tr.working td:first-child{box-shadow:inset 3px 0 var(--amber);animation:ne
 .mark{text-align:center;font:700 12px var(--mono)}
 tr.attention .mark{color:var(--red)}tr.decision .mark{color:var(--amber)}
 tr.ready .mark{color:var(--green)}tr.waiting .mark{color:var(--muted)}
+tr.untriaged .mark{color:var(--amber)}
 .prTitle{display:flex;align-items:center;gap:8px;max-width:420px}
 .prTitle b{font:600 11px var(--mono);color:var(--muted);flex:none}
 .prTitle span{overflow:hidden;text-overflow:ellipsis;font-weight:560}
 .prTitle small{margin-left:auto;color:var(--muted);font:10px var(--mono);flex:none}
+.prTitle .triageChip{margin-left:0;border:1px solid color-mix(in srgb,var(--amber) 45%,var(--line));
+  border-radius:9px;padding:0 6px;color:var(--amber);font:9px var(--mono)}
 .avatar{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#d9dfe0;color:#425657;font:600 8px var(--mono);margin-right:6px;vertical-align:middle}
 .status{display:inline-block;border:1px solid var(--line);border-radius:10px;padding:1px 7px;font-size:10px;color:var(--muted)}
 .status.attention{color:var(--red);border-color:color-mix(in srgb,var(--red) 35%,var(--line));background:color-mix(in srgb,var(--red) 6%,transparent)}
 .status.decision{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 35%,var(--line))}
 .status.ready{color:var(--green);border-color:color-mix(in srgb,var(--green) 35%,var(--line))}
+.status.untriaged{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 35%,var(--line))}
 .check{font-size:8px}
 .check.CLEAN{color:var(--green)}.check.DIRTY,.check.BLOCKED{color:var(--red)}
 .check.UNSTABLE{color:var(--amber)}.check.pending{color:var(--line)}
@@ -156,6 +162,7 @@ tr.ready .mark{color:var(--green)}tr.waiting .mark{color:var(--muted)}
 .largeMark.attention{color:var(--red);border-color:var(--red)}
 .largeMark.decision{color:var(--amber);border-color:var(--amber)}
 .largeMark.ready{color:var(--green);border-color:var(--green)}
+.largeMark.untriaged{color:var(--amber);border-color:var(--amber)}
 .detailKicker{font:10px var(--mono);color:var(--muted)}
 h1{font-size:18px;line-height:1.2;margin:2px 0 0;letter-spacing:-.02em}
 .detailActions{display:flex;gap:7px;flex:none;flex-wrap:wrap;justify-content:flex-end}
@@ -246,13 +253,13 @@ h2{margin:0 0 7px}
 "use strict";
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const MARK={ready:"✓",attention:"!",waiting:"○",decision:"◆"};
-const STATE_LABEL={ready:"mergeable",attention:"mossa tua",waiting:"in attesa",decision:"decisione tua"};
+const MARK={ready:"✓",attention:"!",waiting:"○",decision:"◆",untriaged:"?"};
+const STATE_LABEL={ready:"mergeable",attention:"mossa tua",waiting:"in attesa",decision:"decisione tua",untriaged:"da triagiare"};
 const AUTORUN_TIP="Cosa può fare pr-loop da solo: A1 merge (tua PR approvata e CLEAN) · A2 edit banale chiesto dal reviewer · A3 riallineo del branch · asks te lo porta in chat · yours decisione solo tua · - tocca ad altri";
 
 let meta={},writeToken="",DESK="pr",prs=[],issues=[],chase={},grid=null,shortlist=null,session=null;
 let loaded=false,view="todo",query="",stateFilter=null,watcherAlive=false;
-let issuesTruncated=null,gridComputed=true,shortlistComputed=true,gates={};
+let issuesTruncated=null,triageComplete=false,shortlistComputed=true,gates={};
 let selected=null,tab="quadro",sort={key:"created",dir:-1},acting={},truncated=null,pendingMerge=false;
 let deskEtag=null,fetching=false,lastGenerated=null,timings={};
 const triageRunning={pr:false,issue:false};
@@ -305,28 +312,27 @@ function applyDesk(d){
   session=d.queue.session;lastGenerated=d.generated;
   truncated=d.queue.truncated?d.queue.total:null;
   issuesTruncated=d.issues.truncated?d.issues.total:null;
-  gridComputed=d.queue.grid_computed!==false;
+  triageComplete=!!d.queue.triage_complete;
   shortlistComputed=d.issues.shortlist_computed!==false;
   gates=d.queue.gates||{};
-  // the snapshot carries the grid the desk computed; a model's export, when
-  // there is one, arrives here already substituted by the server
-  grid=d.queue.grid||grid;
+  grid=d.queue.grid||null;
   shortlist=d.issues.shortlist||shortlist;
   flows=d.state&&d.state.flows||flows;
   pendingMerge=!!d.queue.mergestate_pending;
   applyState(d.state);
   loaded=true;
+  if(DESK!=="issue"&&view==="todo"&&prs.some(r=>r.triage_status!=="current"))view="untriaged";
   // a merged PR, a filter, a desk switch: the old selection may be gone
   if(!selectedRow())selectFirst();
 }
 function applyState(st){
   if(!st)return;
-  // only override with what the state file holds: /api/state carries the
-  // model's export, and null there must not wipe the computed grid
-  if(st.grid)grid=st.grid;
+  // /api/state carries the explicit triage export; applying it also checks
+  // every saved fingerprint against the fetched row now on screen
+  if(DESK!=="issue"&&("grid" in st))applyPrTriage(st.grid,st.chase||{});
   if(st.shortlist)shortlist=st.shortlist;
   session=st.session||session;
-  if(Object.keys(st.chase||{}).length)chase=st.chase;
+  if(DESK==="issue"&&Object.keys(st.chase||{}).length)chase=st.chase;
   const w=st.watcher||{};
   watcherAlive=!!w.alive||!!(w.chat&&w.busy);
   if(w.chat&&!w.alive&&w.busy)
@@ -343,6 +349,33 @@ function applyState(st){
   if(feed.length)box.innerHTML=feed.slice(-8).reverse().map(f=>`<div><b>${esc(f.at)}</b>${f.pr?`<b>#${f.pr}</b> `:""}${esc(f.msg)}</div>`).join("");
   if(grid)triageRunning.pr=false;
   if(shortlist)triageRunning.issue=false;
+}
+function applyPrTriage(source,nextChase){
+  const byN=new Map();
+  for(const block of (source&&source.blocks)||[])
+    for(const row of block.rows||[])byN.set(+row.n,row);
+  for(const row of prs){
+    const verdict=byN.get(row.n);
+    const valid=verdict&&verdict.triage_key===row.triage_key&&
+      ["state","todo","autorun"].every(k=>k in verdict);
+    if(valid){
+      for(const key of ["state","todo","autorun","waiting_on"])row[key]=verdict[key]??null;
+      row.action=verdict.action||null;
+      row.triage_status="current";
+    }else{
+      row.state="untriaged";row.autorun="-";row.waiting_on=null;row.action=null;
+      row.triage_status=verdict?"stale":"missing";
+      row.todo=verdict?"triage da aggiornare":"da triagiare";
+    }
+  }
+  triageComplete=prs.every(r=>r.triage_status==="current");
+  grid=source?{...source,blocks:(source.blocks||[]).map(block=>({...block,
+    rows:(block.rows||[]).filter(row=>{
+      const current=prs.find(pr=>pr.n===+row.n);
+      return current&&current.triage_status==="current"&&current.triage_key===row.triage_key;
+    })}))}:null;
+  chase=triageComplete?(nextChase||{}):{};
+  if(view==="untriaged"&&triageComplete)view="todo";
 }
 let stateEtag=null;
 async function pollState(){
@@ -438,8 +471,9 @@ function matches(r,fields){
 function visiblePrs(){
   let list=prs.filter(r=>matches(r,[r.n,r.title,r.author,r.todo,r.base]));
   if(stateFilter)list=list.filter(r=>r.state===stateFilter);
-  else if(view==="todo")list=list.filter(r=>r.state!=="waiting");
-  else if(view==="waiting")list=list.filter(r=>r.state==="waiting");
+  else if(view==="untriaged")list=list.filter(r=>r.triage_status!=="current");
+  else if(view==="todo")list=list.filter(r=>r.triage_status==="current"&&r.state!=="waiting");
+  else if(view==="waiting")list=list.filter(r=>r.triage_status==="current"&&r.state==="waiting");
   return sortRows(list);
 }
 function visibleIssues(){
@@ -450,7 +484,7 @@ function visibleIssues(){
 }
 const SORTERS={
   n:r=>r.n,created:r=>r.created,author:r=>r.author||"",title:r=>(r.title||"").toLowerCase(),
-  state:r=>["attention","decision","ready","waiting"].indexOf(r.state),
+  state:r=>["untriaged","attention","decision","ready","waiting"].indexOf(r.state),
   merge:r=>r.merge||"",unresolved:r=>r.unresolved||0,decision:r=>r.decision||"",
   todo:r=>r.todo||"",autorun:r=>r.autorun||"",type:r=>r.type||"",
   comments:r=>r.comments||0,assignees:r=>(r.assignees||[]).join(","),
@@ -470,10 +504,11 @@ const VIEWS=()=>DESK==="issue"?[
   {id:"free",label:"Unassigned",count:issues.filter(r=>!r.assignees.length).length,tip:"Le candidate per issue-loop: nessuno le ha ancora prese"},
   {id:"all",label:"Tutte",count:loaded?issues.length:"—",tip:"Tutte le issue aperte del repo"},
 ]:[
-  {id:"todo",label:"Da fare",count:prs.filter(r=>r.state!=="waiting").length,tip:"Le PR dove la prossima mossa è tua"},
-  {id:"waiting",label:"In attesa",count:prs.filter(r=>r.state==="waiting").length,tip:"Ferme in attesa di altri"},
+  {id:"untriaged",label:"Da triagiare",count:prs.filter(r=>r.triage_status!=="current").length,tip:"PR nuove o cambiate dopo l'ultimo pr-triage"},
+  {id:"todo",label:"Da fare",count:prs.filter(r=>r.triage_status==="current"&&r.state!=="waiting").length,tip:"Le PR triagiate dove la prossima mossa è tua"},
+  {id:"waiting",label:"In attesa",count:prs.filter(r=>r.triage_status==="current"&&r.state==="waiting").length,tip:"PR triagiate ferme in attesa di altri"},
   {id:"all",label:"Tutte",count:loaded?prs.length:"—",tip:"Tutte le PR aperte in cui sei coinvolto"},
-  {id:"blocks",label:"Blocks",count:grid?grid.blocks.filter(b=>b.rows.length).length:"—",tip:"I cinque blocchi di pr-triage §5, dal più economico: una partizione dei verdetti, calcolata qui"},
+  {id:"blocks",label:"Blocks",count:grid?grid.blocks.filter(b=>b.rows.length).length:"—",tip:"I cinque blocchi pubblicati dall'ultimo pr-triage esplicito"},
   {id:"chase",label:"Chase",count:Object.keys(chase).length,tip:"Un messaggio pronto per ogni persona da sollecitare"},
 ];
 function renderTabs(){
@@ -483,7 +518,8 @@ function renderTabs(){
   const tri=$("btnTriage");
   const triFlow=onIssue?"issue-triage":"pr-triage";
   const triOut=flows[triFlow]&&flows[triFlow].status==="queued";
-  tri.textContent=(triOut?"→ in chat · ":"↻ ")+triFlow;
+  const untriaged=onIssue?0:prs.filter(r=>r.triage_status!=="current").length;
+  tri.textContent=(triOut?"→ in chat · ":"↻ ")+triFlow+(!onIssue?` · ${untriaged||"✓"}`:"");
   tri.title=(onIssue
     ?"Lancia issue-triage nella chat collegata sulle issue GIÀ scaricate qui (nessuna nuova query al provider)."
     :"Lancia pr-triage nella chat collegata sulle PR GIÀ scaricate qui: il desk gli passa il JSON, la skill non rifà le query.");
@@ -571,6 +607,11 @@ function th(key,label,extra){
   const arrow=sort.key===key?`<span class="dir">${sort.dir>0?"▲":"▼"}</span>`:"";
   return `<th data-sort="${key}" ${extra||""}>${label} ${arrow}</th>`;
 }
+function triageChip(r){
+  if(r.triage_status==="current")return "";
+  const stale=r.triage_status==="stale";
+  return `<small class="triageChip" title="${stale?"I fatti della PR sono cambiati dopo l'ultimo pr-triage":"Questa PR non è ancora passata da pr-triage"}">${stale?"↻ triage scaduto":"? da triagiare"}</small>`;
+}
 function renderTable(){
   const tb=$("tbody"),head=$("thead");
   const onChase=view==="chase",onBlocks=view==="blocks";
@@ -609,7 +650,7 @@ function renderTable(){
     tb.innerHTML=list.map(r=>`<tr data-n="${r.n}" class="${r.state}${selected===r.n?" selected":""}${picked.has(r.n)?" picked":""}${onNow(r.n)?" working":""}">
       ${pickCell(r)}
       <td class="mark"><span title="${STATE_LABEL[r.state]}">${MARK[r.state]}</span></td>
-      <td class="prTitle"><b>#${r.n}</b><span>${esc(r.title)}</span>${r.skill?'<small class="dot" title="analisi disponibile">●</small>':""}${onNow(r.n)?'<span class="nowChip"><i></i>ora</span>':""}<small>${ageDays(r.created)}g</small></td>
+      <td class="prTitle"><b>#${r.n}</b><span>${esc(r.title)}</span>${r.skill?'<small class="dot" title="analisi disponibile">●</small>':""}${triageChip(r)}${onNow(r.n)?'<span class="nowChip"><i></i>ora</span>':""}<small>${ageDays(r.created)}g</small></td>
       <td><span class="avatar">${esc((r.author||"??").slice(0,2).toUpperCase())}</span>${esc(r.author)}</td>
       <td><span class="status ${r.state}">${esc(r.decision||(r.draft?"draft":"no review"))}</span></td>
       <td><span class="check ${r.merge||"pending"}">●</span> <span class="mono">${esc(r.merge||"…")}</span></td>
@@ -626,7 +667,7 @@ function renderTable(){
 }
 function renderBlocks(){
   const wrap=$("chaseWrap");
-  if(!grid){wrap.innerHTML=`<div class="chaseNote">Nessuna griglia ancora.</div>`;return;}
+  if(!grid){wrap.innerHTML=`<div class="chaseNote"><b>Nessun pr-triage pubblicato.</b> Il fetch ha caricato le PR; premi ↻ pr-triage per produrre i blocchi.</div>`;return;}
   wrap.innerHTML=grid.blocks.map(b=>{
     if(!b.rows.length)
       return `<div class="chaseCard"><h2>${esc(b.title)}</h2><p style="color:var(--muted);margin:6px 0 0">vuoto</p></div>`;
@@ -646,14 +687,14 @@ function renderBlocks(){
 function renderChase(){
   const names=Object.keys(chase),wrap=$("chaseWrap");
   if(!names.length){
-    wrap.innerHTML=`<div class="chaseNote">${loaded
-      ?"Nessuno da sollecitare: nessuna PR è ferma su qualcun altro."
-      :"Ancora niente: la coda non è caricata."}</div>`;
+    wrap.innerHTML=`<div class="chaseNote">${!loaded
+      ?"Ancora niente: la coda non è caricata."
+      :!triageComplete
+      ?"Il chase resta nascosto finché tutte le PR hanno un triage corrente."
+      :"Nessuno da sollecitare: nessuna PR è ferma su qualcun altro."}</div>`;
     return;
   }
-  const stamp=grid&&!gridComputed
-    ? `Blocchi verificati da ${esc(DESK==="issue"?"issue-triage":"pr-triage")}${session?` — ${esc(session)}`:""}.`
-    : "Raggruppati dai campi del provider: chi è l'ultimo a dover parlare, e da quando.";
+  const stamp=`Dall'ultimo ${esc(DESK==="issue"?"issue-triage":"pr-triage")}${session?` — ${esc(session)}`:""}.`;
   wrap.innerHTML=`<div class="chaseNote">${stamp} Un messaggio per persona, pronto da incollare.</div>`
     + names.map(w=>{
         const text=chase[w];
@@ -772,6 +813,7 @@ function renderIssueActions(r){
 
 function renderPrTab(r){
   const g=$("detailGrid"),sk=r.skill||{};
+  const legacyAnalysis=sk.analysis&&!sk.problem&&!sk.history;
   if(tab==="quadro"){
     const reviews=(r.reviews||[]).map(v=>`<div class="signal"><b>${esc(v.who)}</b><span>${esc(v.state)} · ${esc(v.on)}</span></div>`).join("")
       ||`<div class="signal"><span>ancora nessuna review</span></div>`;
@@ -788,21 +830,23 @@ function renderPrTab(r){
           <div><dt>Base</dt><dd>${esc(r.base)}</dd></div>
           <div><dt>Thread</dt><dd>${r.unresolved}/${r.threads} unresolved</dd></div>
           <div><dt>Ultimo a parlare</dt><dd>${r.last?esc(`${r.last.who} · ${r.last.ch} · ${r.last.t.slice(0,10)}`):"—"}</dd></div>
+          <div><dt>PR triage</dt><dd>${r.triage_status==="current"?"corrente":r.triage_status==="stale"?"da aggiornare":"mai eseguito"}</dd></div>
 
         </dl>
         ${(r.gate||[]).length?`<h2 style="margin-top:11px">Gate di ${esc(r.base)}</h2>
           <ul>${r.gate.map(g=>`<li>${esc(g)}</li>`).join("")}</ul>`:""}
         ${actBadge(r)}</article>
       <article class="nextCard"><h2>Prossima mossa</h2><p>${esc(r.todo)}</p>
-        ${sk.what?`<p style="font-weight:400;font-size:12px">${esc(sk.what)}</p>`:""}
+        ${(sk.problem||sk.what)?`<p style="font-weight:400;font-size:12px">${esc(sk.problem||sk.what)}</p>`:""}
         <small>autorun <b>${esc(r.autorun)}</b> — ${esc(AUTORUN_TIP)}</small>${
         r.closes&&r.closes.some(c=>!c.assignees.length)
           ? `<div class="actionText">Issue collegata senza assignee (${r.closes.filter(c=>!c.assignees.length).map(c=>"#"+c.issue).join(" ")}): nel workflow Softwell legge come da fare a tutti.</div>`:""}</article>
       <aside><h2>Review</h2>${reviews}</aside>`;
   }else if(tab==="analisi"){
     g.innerHTML=`
-      <article class="wideArticle"><h2>Analisi ${sk.analysis?`<span class="mono">${esc(session||"")}</span>`:""}</h2>
-        ${sk.analysis?`<p>${esc(sk.analysis)}</p>`:`<div class="tabEmpty">Nessuna analisi ancora. <b>▶ Analizza</b> manda pr-analyze nella chat collegata: legge tutto il diff, verifica i claim e i thread, e riempie questo tab.</div>`}
+      <article class="wideArticle"><h2>Problema ${sk.analysis?`<span class="mono">${esc(session||"")}</span>`:""}</h2>
+        ${sk.problem?`<p>${esc(sk.problem)}</p>`:legacyAnalysis?`<p>${esc(sk.analysis)}</p>`:`<div class="tabEmpty">Nessuna analisi ancora. <b>▶ Analizza</b> manda pr-analyze nella chat collegata: legge tutto il diff, verifica i claim e i thread, e riempie questo tab.</div>`}
+        ${sk.history?`<h2>Storia</h2><p>${esc(sk.history)}</p>`:""}
         ${sk.next?`<h2>Proposta</h2><p>${esc(sk.next)}</p>`:""}${actBadge(r)}</article>
       <aside><h2>Segnali</h2>
         <div class="signal"><b>merge</b><span>${esc(r.merge||"in arrivo…")}</span></div>
@@ -974,19 +1018,27 @@ function renderSummary(){
     $("leadSub").textContent=`${issues.length} aperte · provider ${meta.provider||"—"}`;
   }else{
     const c={ready:0,attention:0,waiting:0,decision:0};
-    prs.forEach(r=>c[r.state]++);
+    const current=prs.filter(r=>r.triage_status==="current");
+    const pending=prs.length-current.length;
+    current.forEach(r=>c[r.state]++);
     $("mAttention").textContent=c.attention;$("mDecision").textContent=c.decision;
     $("mWaiting").textContent=c.waiting;$("mReady").textContent=c.ready;
     const mine=c.attention+c.decision+c.ready;
     $("cPrs").textContent=prs.length;$("cIssues").textContent=issues.length;
-    $("leadTitle").textContent=mine?`${mine} pull request aspettano una mossa tua`:"nessuna PR aspetta una mossa tua";
-    $("leadSub").textContent=`${prs.length} aperte in cui sei coinvolto · ${issues.length} issue · provider ${meta.provider||"—"}`;
+    $("leadTitle").textContent=pending?`${pending} pull request da triagiare`:mine?`${mine} pull request aspettano una mossa tua`:"nessuna PR aspetta una mossa tua";
+    $("leadSub").textContent=`${prs.length} fetched · ${current.length} con triage corrente · ${issues.length} issue · provider ${meta.provider||"—"}`;
   }
   const notes=[];
-  const src=DESK==="issue"?shortlistComputed:gridComputed;
-  notes.push(src
-    ? `<b>Griglia calcolata dal desk</b> — verdetti, blocchi e ${DESK==="issue"?"cross-check":"solleciti"} dai campi e dal gate del branch, senza spendere un turno di modello. ↻ chiede al modello quello che solo lui può dire.`
-    : `<b>Griglia verificata dal modello</b>${session?` — ${esc(session)}`:""}.`);
+  if(DESK==="issue")notes.push(shortlistComputed
+    ? "<b>Cross-check calcolato dal desk</b> — la shortlist arriva da issue-triage."
+    : `<b>Shortlist verificata dal modello</b>${session?` — ${esc(session)}`:""}.`);
+  else{
+    const missing=prs.filter(r=>r.triage_status==="missing").length;
+    const stale=prs.filter(r=>r.triage_status==="stale").length;
+    notes.push(`<b>Fetch provider completato</b> — ${prs.length} PR caricate senza eseguire pr-triage.`);
+    if(missing||stale)notes.push(`<b>${missing+stale} da triagiare:</b> ${missing} mai viste · ${stale} cambiate dall'ultimo triage.`);
+    else notes.push(`<b>Triage corrente</b>${session?` — ${esc(session)}`:""}.`);
+  }
   if(truncated)notes.push(`<b>Coda troncata:</b> il provider dichiara ${truncated} PR e la pagina ne porta ${prs.length}. Le mancanti non sono in tabella.`);
   if(issuesTruncated)notes.push(`<b>Issue troncate:</b> il repo ne ha ${issuesTruncated} aperte e il desk ne porta ${issues.length}. Le più vecchie non sono in tabella.`);
   if(pendingMerge)notes.push("Lo stato di merge è la lettura più costosa del provider: arriva un attimo dopo, la tabella si riempie da sola.");

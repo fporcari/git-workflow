@@ -1,4 +1,4 @@
 interface:
   display_name: "PR Analyze"
-  short_description: "Verify one pull request and propose the next move."
-  default_prompt: "Use $pr-analyze on the pull request I name."
+  short_description: "Verify one PR and prepare a clear decision."
+  default_prompt: "Use $pr-analyze on the pull request I name; show its author, problem, history, and one proposal, then ask for confirmation."

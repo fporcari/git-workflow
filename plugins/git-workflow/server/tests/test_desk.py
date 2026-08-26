@@ -71,16 +71,19 @@ class RowContract(unittest.TestCase):
     PR_KEYS = {"n", "title", "created", "author", "assignees", "draft", "base",
                "head", "incomplete", "merge",
                "decision", "req", "reviews", "unresolved", "threads", "closes",
-               "last", "url", "todo", "state", "autorun", "action"}
+               "last", "url", "todo", "state", "autorun", "action",
+               "triage_key", "triage_status"}
     ISSUE_KEYS = {"n", "title", "created", "author", "labels", "assignees",
                   "comments", "url", "type", "action"}
 
     def test_queue_rows_carry_every_field(self):
+        deskstate.save(REPO, {})
         queue = fresh_desk().queue()
         self.assertTrue(queue["rows"])
         for row in queue["rows"]:
             self.assertTrue(self.PR_KEYS <= set(row), self.PR_KEYS - set(row))
-            self.assertIn(row["state"], ("ready", "attention", "waiting", "decision"))
+            self.assertEqual(row["state"], "untriaged")
+            self.assertEqual(row["triage_status"], "missing")
 
     def test_issue_rows_carry_every_field(self):
         rows = fresh_desk().issues()["rows"]
@@ -256,7 +259,8 @@ class CrossProcessFiles(unittest.TestCase):
 
 
 class HeadlessAgents(unittest.TestCase):
-    RESULT = {"n": 17, "what": "cosa", "history": "storia",
+    RESULT = {"n": 17, "author": "alice", "problem": "problema",
+              "history": "storia",
               "propose": "proposta", "draft": None,
               "verified": ["diff"], "not_verified": ["CI"]}
 
@@ -272,11 +276,19 @@ class HeadlessAgents(unittest.TestCase):
         command = jobs.command("claude", "prompt", jobs.READ_TOOLS, "/tmp/repo")
         self.assertIn("--json-schema", command)
         self.assertNotIn("Write", command[command.index("--allowedTools") + 1])
+        self.assertNotIn("gh pr view", jobs.READ_TOOLS)
+        self.assertNotIn("gh pr checks", jobs.READ_TOOLS)
 
     def test_result_cannot_escape_to_another_pr(self):
         with self.assertRaisesRegex(ValueError, "expected #18"):
             jobs.parse_result("claude", json.dumps({
                 "result": json.dumps(self.RESULT)}), expected_n=18)
+
+    def test_result_requires_a_non_empty_decision_block(self):
+        result = dict(self.RESULT, problem="")
+        with self.assertRaisesRegex(ValueError, "empty analysis fields"):
+            jobs.parse_result("claude", json.dumps({
+                "result": json.dumps(result)}), expected_n=17)
 
     def test_valid_result_is_merged_into_desk_state(self):
         repo = REPO + "-headless-result"
@@ -284,6 +296,9 @@ class HeadlessAgents(unittest.TestCase):
         jobs.persist(repo, self.RESULT)
         record = deskstate.load(repo)["prs"]["17"]
         self.assertEqual(record["next"], "proposta")
+        self.assertEqual(record["author"], "alice")
+        self.assertEqual(record["problem"], "problema")
+        self.assertEqual(record["history"], "storia")
         self.assertIn("storia", record["analysis"])
 
 
@@ -508,13 +523,12 @@ class Http(unittest.TestCase):
 
 
 class BootDoesNotTriage(unittest.TestCase):
-    """Point of the redesign: the desk fetches at boot, it does not sit on an
-    empty grid waiting for a chat-side triage."""
+    """Point of the redesign: boot fetches; only the button triages."""
 
-    def test_triage_at_boot_is_opt_in(self):
+    def test_boot_has_no_triage_switch_or_enqueue(self):
         source = Path(ROOT / "prdesk.py").read_text()
-        self.assertIn("--triage-at-boot", source)
-        self.assertIn("args.chat and args.triage_at_boot", source)
+        self.assertNotIn("--triage-at-boot", source)
+        self.assertNotIn("triage_at_boot", source)
 
     def test_prefetch_fills_the_cache(self):
         desk = fresh_desk()
@@ -654,18 +668,23 @@ class Gate(unittest.TestCase):
 
 
 class Blocks(unittest.TestCase):
-    """pr-triage §5 is a pure function of the verdicts. It used to cost a
-    model turn and ~28k tokens of input, per refresh."""
+    """Fetch carries facts; explicit triage publishes the verdict blocks."""
+
+    def setUp(self):
+        deskstate.save(REPO, {})
+
+    def exported(self, desk):
+        return json.loads(Path(desk.export_rows()).read_text())
 
     def test_every_row_lands_in_exactly_one_block(self):
-        rows = fresh_desk().queue()["rows"]
-        blocks = verdicts.blocks(rows)
+        exported = self.exported(fresh_desk())
+        rows, blocks = exported["queue"], exported["grid"]["blocks"]
         placed = [r["n"] for b in blocks for r in b["rows"]]
         self.assertEqual(sorted(placed), sorted(r["n"] for r in rows))
         self.assertEqual(len(placed), len(set(placed)), "a row in two blocks")
 
     def test_the_five_titles_are_always_present_and_in_order(self):
-        blocks = verdicts.blocks(fresh_desk().queue()["rows"])
+        blocks = self.exported(fresh_desk())["grid"]["blocks"]
         self.assertEqual([b["title"] for b in blocks], list(verdicts.BLOCK_TITLES))
 
     def test_an_a1_goes_first_and_a_waiting_row_goes_last(self):
@@ -674,31 +693,37 @@ class Blocks(unittest.TestCase):
         self.assertEqual(verdicts.block_of(rows[0]), "Da mergiare subito")
         self.assertEqual(verdicts.block_of(rows[1]), "In attesa di altri")
 
-    def test_the_desk_computes_the_grid_and_says_so(self):
+    def test_fetch_does_not_publish_a_triage_grid(self):
         queue = fresh_desk().queue()
-        self.assertTrue(queue["grid_computed"])
-        self.assertTrue(queue["grid"]["computed"])
+        self.assertIsNone(queue["grid"])
+        self.assertFalse(queue["triage_complete"])
+        self.assertEqual(queue["triage_counts"]["missing"], len(queue["rows"]))
+
+    def test_publishing_the_export_marks_every_row_current(self):
+        desk = fresh_desk()
+        exported = self.exported(desk)
+        deskstate.save(REPO, {"grid": exported["grid"],
+                              "chase": exported["chase"]})
+        queue = desk.queue()
+        self.assertTrue(queue["triage_complete"])
+        self.assertTrue(all(r["triage_status"] == "current"
+                            for r in queue["rows"]))
         self.assertEqual(len(queue["grid"]["blocks"]), 5)
 
-    def test_a_model_export_wins_over_the_computed_grid(self):
+    def test_a_mismatched_fingerprint_stales_only_that_pr(self):
         desk = fresh_desk()
-        state = deskstate.load(REPO)
-        state["grid"] = {"generated": "x", "blocks": [{"title": "T", "rows": []}]}
-        deskstate.save(REPO, state)
-        try:
-            queue = desk.queue()
-            self.assertFalse(queue["grid_computed"])
-            self.assertEqual(queue["grid"]["blocks"][0]["title"], "T")
-        finally:
-            state.pop("grid")
-            deskstate.save(REPO, state)
-
-    def test_the_grid_stamp_does_not_move_between_requests(self):
-        """A grid restamped from the wall clock defeats the UI's ETag."""
-        desk = fresh_desk()
-        first = desk.queue()["grid"]["generated"]
-        time.sleep(1.05)
-        self.assertEqual(desk.queue()["grid"]["generated"], first)
+        exported = self.exported(desk)
+        first = next(r for b in exported["grid"]["blocks"] for r in b["rows"])
+        first["triage_key"] = "old"
+        deskstate.save(REPO, {"grid": exported["grid"],
+                              "chase": exported["chase"]})
+        queue = desk.queue()
+        stale = [r for r in queue["rows"] if r["triage_status"] == "stale"]
+        self.assertEqual([r["n"] for r in stale], [first["n"]])
+        self.assertFalse(queue["triage_complete"])
+        self.assertEqual(sum(len(b["rows"]) for b in queue["grid"]["blocks"]),
+                         len(queue["rows"]) - 1)
+        self.assertEqual(queue["chase"], {})
 
 
 class Chase(unittest.TestCase):
@@ -810,6 +835,11 @@ class RowsExport(unittest.TestCase):
         self.assertEqual(len(exported["grid"]["blocks"]), 5)
         self.assertTrue(exported["shortlist"])
         self.assertLessEqual(len(exported["shortlist"]), 10)
+        grid_rows = [row for block in exported["grid"]["blocks"]
+                     for row in block["rows"]]
+        self.assertTrue(all({"triage_key", "state", "todo", "autorun",
+                             "waiting_on", "action"} <= set(row)
+                            for row in grid_rows))
 
     def test_the_shortlist_is_numbers_that_index_the_rows(self):
         """It used to be written twice in the same literal — the rows and

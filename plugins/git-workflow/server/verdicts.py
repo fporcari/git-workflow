@@ -193,7 +193,9 @@ def blocks(rows):
         grouped[block_of(row)].append({
             "n": row["n"], "date": row.get("created"), "author": row.get("author"),
             "what": row.get("title"), "todo": row.get("todo"),
-            "autorun": row.get("autorun"), "base": row.get("base"),
+            "autorun": row.get("autorun"), "state": row.get("state"),
+            "waiting_on": row.get("waiting_on"), "base": row.get("base"),
+            "triage_key": row.get("triage_key"), "action": row.get("action"),
         })
     return [{"title": title, "rows": grouped[title]} for title in BLOCK_TITLES]
 

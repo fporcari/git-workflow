@@ -1,6 +1,6 @@
 {
   "name": "git-workflow",
-  "version": "0.16.2+codex.20260825214050",
+  "version": "0.16.3",
   "description": "A repository workflow toolkit for pull request and issue triage, review, execution loops, and a local review desk.",
   "author": {
     "name": "Francesco Porcari",
@@ -21,7 +21,7 @@
   "interface": {
     "displayName": "Git Workflow",
     "shortDescription": "Drain pull request and issue queues safely.",
-    "longDescription": "Triage pull requests and issues, verify review state, work approved changes, and use a local dashboard backed by deterministic provider reads.",
+    "longDescription": "Fetch pull requests and issues into a local dashboard, explicitly triage them with fingerprinted verdicts, verify review state, and work approved changes.",
     "developerName": "Francesco Porcari",
     "category": "Developer Tools",
     "capabilities": [

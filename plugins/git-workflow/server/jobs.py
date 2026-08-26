@@ -20,8 +20,7 @@ from pathlib import Path
 import deskstate
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
-READ_TOOLS = ("Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),"
-              "Bash(gh api:*),Bash(gh issue view:*),Bash(gh search:*),"
+READ_TOOLS = ("Bash(gh pr diff:*),Bash(gh api:*),Bash(gh search:*),"
               "Read,Grep,Glob")
 ANALYZE_TIMEOUT = 900
 SCHEMA = PLUGIN_ROOT / "server" / "schemas" / "pr-analysis.json"
@@ -64,17 +63,24 @@ def parse_result(agent, stdout, output_path=None, expected_n=None):
     elif output_path:
         raw = Path(output_path).read_text()
     result = raw if isinstance(raw, dict) else json.loads(raw)
-    required = {"n", "what", "history", "propose", "draft", "verified",
-                "not_verified"}
+    required = {"n", "author", "problem", "history", "propose", "draft",
+                "verified", "not_verified"}
     if not isinstance(result, dict) or not required <= set(result):
         raise ValueError("agent returned an invalid PR analysis")
     if expected_n is not None and result["n"] != expected_n:
         raise ValueError("agent returned analysis for PR #%s, expected #%s"
                          % (result["n"], expected_n))
     if not all(isinstance(result[key], str)
-               for key in ("what", "history", "propose")):
+               for key in ("author", "problem", "history", "propose")):
         raise ValueError("agent returned non-text analysis fields")
-    if not all(isinstance(result[key], list)
+    if not all(result[key].strip()
+               for key in ("author", "problem", "history", "propose")):
+        raise ValueError("agent returned empty analysis fields")
+    if (result["draft"] is not None and
+            not isinstance(result["draft"], str)):
+        raise ValueError("agent returned an invalid draft")
+    if not all(isinstance(result[key], list) and
+               all(isinstance(item, str) for item in result[key])
                for key in ("verified", "not_verified")):
         raise ValueError("agent returned invalid verification lists")
     return result
@@ -82,7 +88,10 @@ def parse_result(agent, stdout, output_path=None, expected_n=None):
 
 def persist(repo, result):
     def mutate(state):
-        record = {"analysis": "%s\n%s" % (result["what"], result["history"]),
+        record = {"author": result["author"],
+                  "problem": result["problem"],
+                  "history": result["history"],
+                  "analysis": "%s\n%s" % (result["problem"], result["history"]),
                   "next": result["propose"],
                   "verified": result["verified"],
                   "not_verified": result["not_verified"]}

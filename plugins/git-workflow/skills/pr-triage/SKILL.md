@@ -41,14 +41,15 @@ title alone.
 
 ## 2 · Read the queue
 
-**If a desk handed you a `rows` path** (the `triage` event carries it), the
-queue is already downloaded AND the deterministic work is already done. That
-file holds:
+**If a desk handed you a `rows` path** (the explicit `triage` event carries
+it), the provider facts are already downloaded and the desk has prepared the
+deterministic candidate verdicts for this run. Fetch never publishes these as
+a triage by itself. The file holds:
 
 | key | what it already is |
 |---|---|
-| `queue` | the rows, with `todo`/`state`/`autorun` computed (§7) |
-| `grid` | the five blocks of §5, already partitioned |
+| `queue` | the fetched rows plus `triage_key`, with candidate `todo`/`state`/`autorun` (§7) |
+| `grid` | the five candidate blocks of §5, already partitioned; every row retains `triage_key` |
 | `chase` | the §6 blocks, per person, oldest first, with the dates |
 | `gates` | the §3 gate of every base: who may land, approvals, conversation resolution, CODEOWNERS |
 | `shortlist` | the ten issues worth reading |
@@ -57,7 +58,7 @@ file holds:
 input and a whole turn, to re-derive a mapping the desk computes in 0.07 ms.
 Your job on a desk-driven triage is only what the fields cannot answer:
 
-1. the rows the computed grid marks `asks` — those need the diff or the
+1. the rows the candidate grid marks `asks` — those need the diff or the
    review read (§4's DIRTY/UNSTABLE rules, and the CODEOWNERS per-path
    question when `gates.<base>.per_path` is true);
 2. **what each PR is FOR**, one line, in the user's language — the desk shows
@@ -65,9 +66,11 @@ Your job on a desk-driven triage is only what the fields cannot answer:
    only for the rows you were asked about;
 3. §8's three repo-level findings, which are patterns nobody can look up.
 
-Then export what you added, merged into the grid you were given — the desk
-shows a model-verified grid in place of its computed one, and says which of
-the two the user is looking at.
+Then export what you added, merged into the full grid you were given. Preserve
+every row's `triage_key`, `state`, `todo`, `autorun`, `waiting_on` and
+`action`: the desk uses that key to mark each PR `current`, `missing` or
+`stale` after the next provider reload. Publishing only the rows you inspected
+would falsely mark the others as never triaged.
 
 ```bash
 jq '.queue' <rows path> > /tmp/rows.json
@@ -329,12 +332,14 @@ Two cases end the run instead, and both must be said out loud:
 Nothing after the handover: a summary that re-narrates the blocks wastes the scan
 they were built for.
 
-## 10 · Publish to the review desk
+## 10 · Publish a desk-triggered run
 
-Before the handover, export the run so the `review-desk` dashboard's Triage
-tab shows THIS grid — the desk renders nothing there until a real triage has
-run. Merge into `~/.local/state/git-workflow/<owner>__<repo>.json` (create
-the directory, preserve unrelated keys):
+When a desk `rows` path triggered the run, export it so the `review-desk`
+dashboard's Triage tab shows THIS grid. A direct invocation has no desk-issued
+`triage_key`: report it in chat but do not publish a grid that would be stale
+immediately. For a desk-triggered run, merge into
+`~/.local/state/git-workflow/<owner>__<repo>.json` (create the directory,
+preserve unrelated keys):
 
 ```json
 {
@@ -345,7 +350,10 @@ the directory, preserve unrelated keys):
       {"title": "Da mergiare subito",
        "rows": [{"n": 1027, "date": "2026-07-29", "author": "me",
                   "what": "<one line, user's language>",
-                  "todo": "merge it", "autorun": "A1"}]},
+                  "todo": "merge it", "autorun": "A1", "state": "ready",
+                  "waiting_on": null,
+                  "action": "<copy unchanged from the candidate row>",
+                  "triage_key": "<copy unchanged from the fetched row>"}]},
       {"title": "Azione banale", "rows": []},
       {"title": "Review da fare", "rows": []},
       {"title": "Solo tue", "rows": []},
@@ -361,8 +369,8 @@ the directory, preserve unrelated keys):
 The five §5 blocks map onto `grid.blocks` in the same order (block 4's chase
 messages go under `chase`, per person, only the ones that passed the §6
 gate). User-facing strings (`what`, `analysis`) in Italian; the verdict
-vocabulary stays as-is. Overwrite `grid`, `chase` and `session` wholesale:
-stale triage is worse than none.
+vocabulary stays as-is. Copy `triage_key` rather than generating it. Overwrite
+`grid`, `chase` and `session` wholesale: stale triage is worse than none.
 
 **Triggered from the desk** (a `{"kind": "triage"}` inbox event): run
 report-only — blocks, findings, export — and skip the §9 handover question;

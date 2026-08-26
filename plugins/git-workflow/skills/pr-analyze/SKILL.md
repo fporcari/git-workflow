@@ -1,45 +1,59 @@
 ---
 name: pr-analyze
-description: Analyze ONE pull request the pr-loop way — read the whole diff, verify the description's claims against the code, read the threads — and return the Lane B block (what / history / propose) plus any draft worth posting. Read-only, never posts or pushes. Used headless by the review-desk dashboard's Analyze button, or from chat on a single PR.
+description: Analyze ONE pull request — identify its author and the problem it solves, reconstruct its review history, verify its claims against the code and propose one next action for confirmation. Read-only, never posts or pushes. Used headless by the review desk or directly in chat.
 ---
 
-# PR analyze — one PR, the pr-loop Lane B chunk
-
-Resolve `<PLUGIN_ROOT>` from `<PLUGIN_ROOT>/refs/runtime.md` before following
-cross-skill paths.
+# PR analyze — one verified decision
 
 Read-only. This skill produces the decision block; acting on it is a separate,
 explicitly authorized step. **Never** post, push, merge, edit, assign or
 resolve anything here.
 
-Input: a PR number and a repo (`owner/repo`). Work from `gh` alone — `gh pr
-view`, `gh pr diff`, `gh api` — so no local checkout is required.
+Input: a PR number and a repo (`owner/repo`). Work from `gh` alone, so no
+local checkout is required. `<PLUGIN_ROOT>` is the plugin directory containing
+this skill's `skills/`, `refs/` and `server/` siblings.
 
-## 1 · Gather
+## 1 · Gather once
+
+Start the GraphQL snapshot and the diff concurrently when the host supports
+parallel read-only calls:
 
 ```bash
-gh pr view <n> --repo <owner/repo> --json title,body,author,isDraft,baseRefName,mergeStateStatus,reviewDecision,reviewRequests,reviews,closingIssuesReferences,headRefOid
+gh api graphql -f owner=<owner> -f name=<repo-name> -F number=<n> -F query=@<PLUGIN_ROOT>/server/gql/pr_analysis.graphql
 gh pr diff <n> --repo <owner/repo>
-gh api repos/<owner/repo>/pulls/<n>/comments --jq '.[]|{id,path,line,user:.user.login,body}'
-gh api repos/<owner/repo>/pulls/<n>/reviews --jq '.[]|{user:.user.login,state,body,commit_id}'
-gh pr checks <n> --repo <owner/repo>
 ```
 
-## 2 · Verify
+The snapshot contains the PR opening, linked issue context, author, requested
+reviewers, general comments, reviews with commit ids, resolved and unresolved
+review threads, and the latest commit's checks. A true `hasNextPage` means the
+corresponding history is incomplete: fetch the next page when it matters
+to the decision, otherwise name the gap in `not_verified`.
 
-The full playbook is the pr-loop skill's sections **"Verifying before you
-propose"**, **"Distrust tests until you read the fixture"** and **"Blast
-radius lives outside the repo"** — read them from
-`<PLUGIN_ROOT>/skills/pr-loop/SKILL.md` (or the sibling
-`../pr-loop/SKILL.md` relative to this file) and run the moves that apply.
-The core discipline: the description is a claim, not evidence — take each
-sentence the correctness rests on and go read the function that would have
-to make it true.
+Read the whole diff, not only its summary. Do not repeat fields already present
+in the snapshot with `gh pr view` or the REST review endpoints.
 
-## 3 · The block
+## 2 · Establish the decision
 
-Compress to the pr-loop Lane B format. `propose` is ONE concrete action, not a
-menu — if it cannot be one line, the analysis is not finished.
+Read `<PLUGIN_ROOT>/refs/pr-verification.md` and run the checks that apply.
+
+Produce four distinct facts:
+
+- `author`: the provider login, never inferred from prose or commits;
+- `problem`: the user-visible or operational problem and how this PR addresses
+  it; for a pure refactor, say explicitly that there is no behaviour change;
+- `history`: the meaningful chronology, including whose turn it is now, open
+  threads, requested reviewers, checks and how long it has been waiting;
+- `propose`: one concrete next action, with the review state or message it
+  entails. If it is not the user's action to take, say whose action it is.
+
+The PR title and body are claims. Prefer the linked issue and verified call path
+when they disagree. Do not turn a file list into the problem statement.
+
+## 3 · Choose one proposal
+
+`propose` is one concrete action, not a menu. If it cannot be one line, the
+analysis is not finished. Draft the exact English review/comment only when that
+action needs text posted on the PR; otherwise `draft` is `null`.
 
 ## 4 · Output
 
@@ -47,21 +61,38 @@ menu — if it cannot be one line, the analysis is not finished.
 `next`, the chat report — is written in **Italian**; only `draft` stays in
 English, because it is text meant to be posted on the PR.
 
-**Never show the raw JSON to the user.** Run headless (the desk's standalone
-mode, an agent caller), the final message is exactly one JSON object, no
-fences, no prose. Run in a chat, report the block as three short Italian
-lines (cosa / storia / proposta) and say the draft is in the desk — the JSON
-shape below is only the contract for the state file and for callers:
+**Never show raw JSON to the user.** In headless mode (the desk's standalone
+mode or an agent caller), the final message is exactly one JSON object, with no
+fences or prose. The schema is:
 
 ```json
 {"n": 1152,
- "what": "one line: what the PR changes",
+ "author": "provider login",
+ "problem": "one line: the problem and how the PR addresses it",
  "history": "one line: reviews so far, whose turn, how long it has sat",
  "propose": "one line: exactly what will be done on a go-ahead",
  "draft": "full text of the comment/review to post, or null",
  "verified": ["what was actually checked this session"],
  "not_verified": ["what was not checked, named honestly"]}
 ```
+
+In chat, show exactly this compact Italian decision block, followed by the
+confirmation question:
+
+```text
+#<n> — aperta da @<author>
+problema: <problem>
+storia: <history>
+proposta: <propose>
+
+Procedo con questa proposta?
+```
+
+Do not say merely that a draft exists: when attached to the desk, say that the
+English draft is visible there. Outside the desk, include the draft after the
+decision block so the user can inspect what the proposal would post. A `vai`,
+`ok`, `procedi` or `si` authorizes exactly the displayed proposal, not any
+other action.
 
 ## 5 · Publish to the review desk
 
@@ -70,7 +101,10 @@ In an attached interactive session, merge into
 missing, preserve other keys):
 
 ```json
-{"prs": {"<n>": {"analysis": "<cosa + il finding chiave, in italiano>",
+{"prs": {"<n>": {"author": "<provider login>",
+                  "problem": "<problema + soluzione, in italiano>",
+                  "history": "<cronologia + a chi tocca, in italiano>",
+                  "analysis": "<problema + storia, in italiano>",
                   "next": "<la proposta, in italiano>",
                   "draft": "<the English draft, or omit>"}}}
 ```

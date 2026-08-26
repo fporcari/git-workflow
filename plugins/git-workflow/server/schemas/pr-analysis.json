@@ -4,12 +4,13 @@
   "additionalProperties": false,
   "properties": {
     "n": {"type": "integer"},
-    "what": {"type": "string"},
-    "history": {"type": "string"},
-    "propose": {"type": "string"},
+    "author": {"type": "string", "minLength": 1},
+    "problem": {"type": "string", "minLength": 1},
+    "history": {"type": "string", "minLength": 1},
+    "propose": {"type": "string", "minLength": 1},
     "draft": {"type": ["string", "null"]},
     "verified": {"type": "array", "items": {"type": "string"}},
     "not_verified": {"type": "array", "items": {"type": "string"}}
   },
-  "required": ["n", "what", "history", "propose", "draft", "verified", "not_verified"]
+  "required": ["n", "author", "problem", "history", "propose", "draft", "verified", "not_verified"]
 }

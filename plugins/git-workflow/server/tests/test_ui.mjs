@@ -228,6 +228,21 @@ for (const t of ["quadro", "analisi", "thread", "bozza"]) {
      errors[0] && errors[0].message);
 }
 
+const analyzedRow = page.state.prs.find(r => r.n === page.state.selected);
+const previousSkill = analyzedRow.skill;
+analyzedRow.skill = { author: "alice", problem: "problema verificato",
+                      history: "storia ricostruita", next: "proposta unica" };
+page.renderDetail();
+document.getElementById("detailTabs").querySelectorAll("button")
+  .find(b => b.dataset.t === "analisi").click();
+const analysisGrid = document.getElementById("detailGrid").innerHTML;
+ok("PR analysis separates problem, history, and proposal",
+   /Problema/.test(analysisGrid) && /problema verificato/.test(analysisGrid) &&
+   /Storia/.test(analysisGrid) && /storia ricostruita/.test(analysisGrid) &&
+   /Proposta/.test(analysisGrid) && /proposta unica/.test(analysisGrid));
+analyzedRow.skill = previousSkill;
+page.renderDetail();
+
 /* ---- 5. actions are wired and act directly (no modal in between) ---- */
 page.watcher = false;
 page.render();
@@ -268,28 +283,59 @@ page.render();
 ok("a truncated issue list is reported too",
    document.getElementById("noteBox").innerHTML.includes("228"));
 
-/* ---- 7b. the work the desk now computes, and says it computed ---- */
+/* ---- 7b. fetch is factual; explicit triage publishes keyed verdicts ---- */
 page.applyDesk(snapshot);
 page.render();
-ok("the grid provenance is stated, never left ambiguous",
-   document.getElementById("noteBox").innerHTML.includes("calcolata dal desk"));
-ok("the payload carries the computed grid", !!snapshot.queue.grid);
-ok("the grid has the five blocks of pr-triage §5",
-   (snapshot.queue.grid.blocks || []).length === 5);
-ok("every PR lands in exactly one block", (() => {
-  const placed = snapshot.queue.grid.blocks.flatMap(b => b.rows.map(r => r.n));
-  return placed.length === snapshot.queue.rows.length &&
-         new Set(placed).size === placed.length;
-})());
+ok("fetch does not publish a triage grid", snapshot.queue.grid === null);
+ok("every fetched PR starts visibly untriaged",
+   page.state.prs.every(r => r.triage_status === "missing") &&
+   document.getElementById("tbody").innerHTML.includes("da triagiare"));
+ok("the default PR view is Da triagiare",
+   page.state.view === "untriaged" && page.visiblePrs().length === page.state.prs.length);
+ok("the fetch banner does not claim a triage ran",
+   document.getElementById("noteBox").innerHTML.includes("Fetch provider completato"));
+
+const triageTitles = ["Da mergiare subito", "Azione banale", "Review da fare",
+                      "Solo tue", "In attesa di altri"];
+const triageRows = page.state.prs.map((r,i) => ({
+  n:r.n,date:r.created,author:r.author,what:r.title,base:r.base,
+  todo:i%4===0?"waiting on genro":i%4===1?"merge it":i%4===2?"review it":"decide",
+  autorun:i%4===1?"A1":i%4===0?"-":"asks",
+  state:i%4===0?"waiting":i%4===1?"ready":i%4===2?"attention":"decision",
+  waiting_on:i%4===0?"genro":null,
+  triage_key:r.triage_key,action:null,
+}));
+const triageBlock = row => row.state==="waiting"?"In attesa di altri":
+  row.autorun==="A1"?"Da mergiare subito":row.todo==="review it"?"Review da fare":"Solo tue";
+const triageGrid = { generated:"2026-08-26T12:00:00",
+  blocks:triageTitles.map(title => ({title,rows:triageRows.filter(row=>triageBlock(row)===title)})) };
+const triageChase = { genro:`@genro — 2 PR ferme su di te, la più vecchia dal 2026-08-01:\n#${triageRows[0].n} (2026-08-01) prima\n#${triageRows[4].n} (2026-08-02) seconda` };
+page.applyState({ grid:triageGrid, chase:triageChase, session:"PR triage test",
+                  watcher:{alive:true,chat:true}, feed:[] });
+page.render();
+ok("explicit pr-triage makes every matching row current",
+   page.state.prs.every(r => r.triage_status === "current"));
+ok("the triage button shows that nothing is pending",
+   document.getElementById("btnTriage").textContent.includes("✓"));
 
 const blocksTab = document.getElementById("tabs").querySelectorAll("button")
   .find(b => b.dataset.v === "blocks");
-ok("a Blocks tab shows what the desk computed", !!blocksTab);
+ok("a Blocks tab shows what pr-triage published", !!blocksTab);
 blocksTab.click();
 ok("the blocks render as their own cards",
    document.getElementById("chaseWrap").innerHTML.includes("Da mergiare subito"));
 ok("a block row is clickable through to the detail panel",
    document.getElementById("chaseWrap").querySelectorAll("[data-n]").length > 0);
+
+const changed = page.state.prs[0], savedKey = changed.triage_key;
+changed.triage_key = "changed-provider-facts";
+page.applyState({ grid:triageGrid, chase:triageChase, watcher:{alive:true,chat:true}, feed:[] });
+page.view = "untriaged";page.render();
+ok("a changed PR alone becomes stale",
+   page.visiblePrs().length === 1 && page.visiblePrs()[0].n === changed.n &&
+   document.getElementById("tbody").innerHTML.includes("triage scaduto"));
+changed.triage_key = savedKey;
+page.applyState({ grid:triageGrid, chase:triageChase, watcher:{alive:true,chat:true}, feed:[] });
 
 page.view = "todo";
 page.render();
@@ -350,7 +396,7 @@ ok("a failure reads as a failure",
 target.requests = {};
 
 ok("chase blocks carry the dates the message needs",
-   Object.values(snapshot.queue.chase).some(t => /\(\d{4}-\d{2}-\d{2}\)/.test(t)));
+   Object.values(triageChase).some(t => /\(\d{4}-\d{2}-\d{2}\)/.test(t)));
 
 /* ---- 7c. no invented Italian for a term whose home is English ---- */
 const BANNED = ["Situa", "situa", "Solleciti", "mergiabili", "assegnatari"];
@@ -511,7 +557,7 @@ const tabsNow = () => document.getElementById("tabs").querySelectorAll("button")
 tabsNow().find(b => b.dataset.v === "chase").click();
 ok("Chase shows one card per person",
    document.getElementById("chaseWrap").querySelectorAll("[data-copy]").length ===
-     Object.keys(snapshot.queue.chase).length);
+     Object.keys(triageChase).length);
 ok("each card carries the message to paste, whole",
    document.getElementById("chaseWrap").querySelectorAll("[data-copy]")
      .every(b => (b.attrs["data-copy"] || "").includes("#")));

@@ -9,14 +9,14 @@ it belongs in the user's home, and a stale one left behind by a dead session
 is noise the OS should collect.
 
 STATE (~/.local/state/git-workflow/<owner>__<repo>.json): the analyses, the
-drafts, the orders, the verified grid — what a MODEL produced by reading
-diffs. That is expensive to lose and worth keeping across a relaunch, which
-is what --keep-state is for.
+drafts, the orders, and the grid published by an explicit triage. That work is
+expensive to lose and worth keeping across a relaunch, which is what
+--keep-state is for.
 
-The skills (pr-triage, pr-loop, issue-triage) write what only a model can
-produce: the diff-level analysis, the review drafts, the chase blocks, the
-issue findings. The server merges it into the rows it serves, so the desk's
-Analysis/Draft tabs show the skills' actual work instead of placeholders.
+The skills (pr-triage, pr-loop, issue-triage) write their published verdicts
+and what only a model can produce: the diff-level analysis, review drafts,
+chase blocks, and issue findings. The server merges them into the rows it
+serves, so the desk shows the skills' actual work instead of placeholders.
 
 Path: ~/.local/state/git-workflow/<owner>__<repo>.json
 
@@ -27,6 +27,7 @@ Schema (all keys optional):
   "prs":    {"1152": {"analysis": "...", "draft": "...", "next": "..."}},
   "issues": {"1156": {"type": "DEFECT", "finding": "...", "size": "EASY",
                       "phase": "SINGLE-PHASE"}},
+  "grid":   {"generated": "...", "blocks": [{"id": "...", "rows": []}]},
   "chase":  {"genro": "@genro — 7 PR ferme dal ...:\n#1027 #1044 ..."}
 }
 """
@@ -78,8 +79,8 @@ def reset(repo):
     """Archive the previous session's state so the desk starts empty:
     stale analyses and feed lines read as fresh data otherwise. The old
     file survives as .prev next to it. The inbox is emptied only when its
-    events are stale: the two desks start back to back and each enqueues
-    its own startup triage, which must survive the sibling's reset."""
+    events are stale: the two desks start back to back and a click received
+    while the sibling starts must survive its reset."""
     path = state_path(repo)
     safejson.archive(path, path.with_suffix(".json.prev"))
     inbox = runtime_path(repo, "inbox.jsonl")

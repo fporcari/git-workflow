@@ -54,6 +54,14 @@ class Packaging(unittest.TestCase):
             (PLUGIN / "server" / "schemas" / "pr-analysis.json").read_text())
         self.assertEqual(schema["type"], "object")
         self.assertFalse(schema["additionalProperties"])
+        self.assertIn("author", schema["required"])
+        self.assertIn("problem", schema["required"])
+
+    def test_analysis_query_carries_the_decision_context(self):
+        query = (PLUGIN / "server" / "gql" / "pr_analysis.graphql").read_text()
+        for field in ("author", "bodyText", "reviewThreads",
+                      "closingIssuesReferences", "statusCheckRollup"):
+            self.assertIn(field, query)
 
 
 if __name__ == "__main__":

@@ -35,15 +35,13 @@ Claude browser-preview configuration:
  "port": 8398}
 ```
 
-**The desks do NOT triage at startup.** Each one boots, reads the provider
-in the background and paints its real rows within seconds; the triage is the
-↻ button, and it arrives as a `triage` event carrying `rows` — the path of a
-JSON file with the queue and the issues **already downloaded**. Read that
+**The desks do NOT triage at startup or reload.** Each one reads the provider
+in the background and paints its real rows within seconds; triage starts only
+from its button and arrives as a `triage` event carrying `rows` — the path of
+a JSON file with the queue and the issues **already downloaded**. Read that
 file instead of re-querying the provider: the skill's own fetch is the
-slowest thing it does and the desk has already paid for it. Pass
-`--triage-at-boot` to have the desk ask the chat for a triage as soon as it
-starts, instead of painting first. Launch only the desk the user asked for
-when they name one.
+slowest thing it does and the desk has already paid for it. Launch only the
+desk the user asked for when they name one.
 
 Without `--chat` a desk runs standalone: Analyze uses the selected local agent
 backend (`--agent auto|claude|codex`) and Go leaves orders for `pr-loop`; no
@@ -52,8 +50,8 @@ startup triage.
 Options: `--repo owner/repo` (default: the cwd's origin), `--provider
 github|forgejo|fixture` (forgejo needs `FORGEJO_URL`/`FORGEJO_TOKEN`;
 `fixture` replays a recorded payload with no network, for development),
-`--me`, `--port` (default by desk), `--keep-state`, `--triage-at-boot`,
-`--no-prefetch`, `--keep-cache` (reuse the previous run's provider cache
+`--me`, `--port` (default by desk), `--keep-state`, `--no-prefetch`,
+`--keep-cache` (reuse the previous run's provider cache
 instead of reading the provider again — offline work).
 
 ## 2 · Park the watcher
@@ -84,9 +82,11 @@ then for each event in order:
 - **`{"kind": "analyze", "n": N}`** — run the `pr-analyze` skill on PR #N
   right here (read-only; full playbook in `../pr-analyze/SKILL.md`). Write
   the result into the desk state file as that skill specifies — the desk is
-  polling and will show the block. In chat, report three short lines **in
-  Italian** (cosa / storia / proposta); NEVER paste the raw JSON or the
-  English draft into the chat — the draft lives in the desk panel.
+  polling and will show the block. In chat, report its compact decision block
+  **in Italian** (author / problem / history / proposal), then ask `Procedo
+  con questa proposta?`; NEVER paste raw JSON or the English draft into chat —
+  the draft lives in the desk panel. A chat go-ahead authorizes exactly that
+  displayed proposal; execute it under `pr-loop` and report what was done.
 - **`{"kind": "order", "n": N}`** — the user clicked Go on the analysis
   block: that click is the authorization, do not re-ask. Read the order from
   the state file (`orders.<N>`: `propose`, `draft`, `instruction`) and
@@ -123,9 +123,9 @@ then for each event in order:
 - **`{"kind": "triage", "flow": ..., "rows": "<path>"}`** — run that
   skill here, report-only, **reading `rows` instead of querying the
   provider**. That file holds `{repo, me, generated, queue, issues, grid,
-  chase, gates, shortlist}` — the rows AND the deterministic work the desk
-  has already done (the §5 blocks, the §6 chase, the §3 gate, the issue
-  cross-check and its ten-issue shortlist). Add only what a model can add
+  chase, gates, shortlist}` — the fetched rows and the deterministic candidate
+  work prepared for this explicit run (the §5 blocks, the §6 chase, the §3
+  gate, the issue cross-check and its ten-issue shortlist). Add only what a model can add
   (the `asks` rows, the impact ranking, §8's findings), then export the
   result to the desk state as the skill's own export section specifies (`grid`+`chase` for pr-triage,
   `shortlist` for issue-triage): the desk's Triage tab renders exactly that
@@ -232,12 +232,12 @@ the user says so or the preview server is stopped; a watcher exit code 3
 
 ## What the desk shows
 
-**The desk computes; the model judges.** The verdicts (§7), the five blocks
-(§5), the chase blocks (§6), the merge gate of every base (§3) and the issue
-cross-check are all computed by the server from fields and cheap API reads;
-re-deriving them in the model costs a whole turn for nothing. The grid the desk
-shows is labelled with its provenance: *calcolata dal desk* until a triage
-exports a verified one, *verificata dal modello* after.
+**Fetch paints facts; triage publishes verdicts.** On the PR desk, boot and
+reload show the provider queue without pretending it has been triaged. The
+server prepares §7 verdicts, §5 blocks and §6 chase only after the explicit
+`pr-triage` click, then the model judges the rows that need it and publishes the
+full keyed grid. Changed rows become `stale`; new rows are `missing`. The issue
+cross-check remains a deterministic provider annotation.
 What the model is called for is what only it can do: the rows marked `asks`,
 one-line explanations on request, the impact ranking, and pr-analyze's diff
 read.
@@ -259,7 +259,8 @@ fetched, instead of making both pay again). ⟳ forces a fresh read.
 The cache, the inbox, the watcher heartbeat and the rows export live in a
 private per-user dir under the OS temp dir, so nothing session-scoped is left
 in the user's home. Only the state file — the analyses, drafts, orders and
-verified grid a MODEL produced — stays in `~/.local/state/git-workflow/`,
+grid published by an explicit triage — stays in
+`~/.local/state/git-workflow/`,
 which is what `--keep-state` carries across a relaunch. The
 merge state is fetched as a second phase — it is by far the most expensive
 field on GitHub — so the merge column may read `…` for a beat on a cold

@@ -1,6 +1,6 @@
 ---
 name: pr-desk
-description: Launch the PR desk — the dashboard of the pull request queue, attached to this chat. It reads the queue itself and paints in seconds, computing the triage grid, the merge gate and the chase blocks without a model; buttons (merge orders, pr-analyze, pr-loop, pr-triage on the rows already downloaded) come back here as events. Use when the user asks for the PR desk or a PR dashboard.
+description: Launch the PR desk — the dashboard of the pull request queue, attached to this chat. Startup and reload fetch provider facts only; an explicit pr-triage button publishes the grid and chase from the rows already downloaded, while missing and stale triages stay highlighted. Merge orders, pr-analyze and pr-loop also come back here as events. Use when the user asks for the PR desk or a PR dashboard.
 ---
 
 # PR desk
@@ -26,7 +26,9 @@ Then follow `../review-desk/SKILL.md` sections 2–3: park the watcher
 (**one per repo** — skip if a sibling desk already parked it) and process
 the events it prints.
 
-The desk does **not** triage at startup: it fetches the provider itself and
-paints in seconds. `pr-triage` arrives only when the user presses ↻, and the
-event carries `rows` — the path of the JSON the desk has already downloaded.
-Run the skill on that file rather than re-querying.
+The desk does **not** triage at startup or reload: both are pure provider
+fetches that paint in seconds. `pr-triage` arrives only when the user presses
+its button, and the event carries `rows` — the path of the JSON the desk has
+already downloaded. Run the skill on that file rather than re-querying. The
+desk marks every PR whose published triage is absent as `missing` and every PR
+whose provider fingerprint changed as `stale`.

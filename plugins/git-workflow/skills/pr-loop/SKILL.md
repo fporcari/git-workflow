@@ -303,16 +303,16 @@ Ordered by who is blocked. For each, four lines and then stop:
 
 ```
 #<n> — <author> opened it
-what:    <one line: what the PR changes>
+problem: <one line: what problem the PR solves and how>
 history: <one line: reviews so far, whose turn, how long it has sat>
 propose: <one line: exactly what you will do if he says go>
 ```
 
-Then wait. `vai` / `ok` / `procedi` / `si` means execute that proposal and move
-to the next PR without re-asking. Anything else is a conversation about that PR:
-answer it, adjust the proposal, ask again. Never present the next PR before the
-current one is settled — the whole point of the format is that he holds one
-decision in his head at a time.
+Ask `Procedo con questa proposta?`, then wait. `vai` / `ok` / `procedi` / `si`
+means execute that proposal and move to the next PR without re-asking. Anything
+else is a conversation about that PR: answer it, adjust the proposal, ask again.
+Never present the next PR before the current one is settled — the whole point of
+the format is that he holds one decision in his head at a time.
 
 ### With `batch=N`
 
@@ -386,122 +386,9 @@ end with what he should do, and you move on.
 
 ## Verifying before you propose
 
-A PR description is a claim, not evidence. Almost every real defect found with
-this skill came from one move: taking a sentence from the description — "previous
-behaviour is unchanged", "falls back to `url()`", "so it can be configured with
-S3" — and going to find the function that would have to make it true. Roughly
-half the time it is not true, and the author had no idea. Reading only the diff
-cannot find these: the diff is locally consistent, and the lie is in the seam
-between the diff and everything else.
-
-Read the whole diff first, then run the moves that apply.
-
-**Trace "no behaviour change" to the callee's default.** When a PR starts passing
-a parameter that was previously omitted, the claim rests entirely on whether the
-explicit value equals the callee's default. Read the signature. Thirty seconds,
-and it either confirms the PR or sinks it.
-
-**Check a deletion's justification before it destroys working code.** "This
-example cannot work", "this mechanism was dropped" — go find the mechanism. Read
-the function that would have to honour it, and grep whether the identifiers the
-deleted code binds exist anywhere else in the repository. A deletion justified by
-a wrong claim is the least recoverable kind of mistake in a review.
-
-**Check the name resolves in the registry the code will actually use.** Codebases
-accumulate parallel lookup tables with overlapping-but-different key sets. Find
-the function that resolves, and read *which* table it consults — not which one
-the concept belongs to. When the lookup returns `None` instead of raising, the
-failure surfaces later as an `AttributeError` on `None`.
-
-**Check the error branch can fire, and that what it reports can vary.** A guard
-that enriches its message with context is worthless if the only state that
-triggers it is the state where that context is empty.
-
-**A new column is not new behaviour for old rows.** For any added column a code
-path now keys off: what is its value on rows predating the migration, and did the
-old path ever populate what the new path requires? "NULL" and "no" means existing
-records silently fall out of the feature — highest severity, because tests pass,
-CI is green, and it only appears in production data.
-
-**When a mechanism is swapped, compare semantics, not call sites.** Replacing a
-purpose-built matcher with a hand-rolled `LIKE`, or a permission engine with a
-substring test, changes what matches. Unanchored substring matching gives false
-positives on longer values (`admin` matches `superadmin`) and silently drops
-whatever rule syntax the original understood. Every call site still compiles.
-
-**Follow a value to where it is written, not to where it is set.** A generated
-default injected for one path and carried into another is how an update ends up
-rewriting a primary key. When a branch order changes, re-ask what the *other*
-branch was preparing the data for.
-
-**A shared fixture makes a config change repo-wide.** Before calling a config
-edit local, grep for the instance or fixture name: a test base class naming one
-instance means every suite inheriting it now loads whatever was added. Compare
-the PR's CI against its base's — red on both is inherited, red only here is this
-PR's delta, four-of-four red is not flakiness.
-
-**Before calling an unfamiliar idiom wrong, grep for it.** Framework-specific
-expression syntax looks arbitrary until you find the twenty other places using
-it. Often the PR is *fixing* the broken form and the version that looks normal to
-you is the bug. This applies to attribute access on a wrapper class too: read
-whether `__getattr__` exists and whether `__setattr__` does — a read that
-delegates and a write that does not is a real defect and looks like neither.
-
-**Conversely, check the plumbing connects.** A localization entry does nothing if
-the label is a bare string with no translation marker: the PR ships a dead entry
-and thinks it shipped a translation.
-
-**Put a ratchet under test rather than reading it.** When a PR claims a check
-fails in both directions, break it both ways and watch it fail. Two experiments,
-and it either holds or the whole series resting on it does not.
-
-## Distrust tests until you read the fixture
-
-"48 tests pass" is a claim like any other.
-
-Read what the fixture builds. A fresh temp file per run makes a test idempotent
-for free; a fixed, persistent database name that is never dropped does not. A
-test that inserts a row and mutates it without cleanup passes once and then
-collides with its own leftovers — and when the collision is on the very unique
-index the PR is about, the test reproduces the bug against itself on the second
-run.
-
-Check the tests exercise the real thing. Mocks standing in for
-insert/query/commit prove nothing about a change to insert/query/commit.
-
-**Run the new tests against the base**, not only against the branch. Tests that
-pass on the base too are pinning nothing — and the half of the fix they leave
-unpinned is exactly where the regression will come back. Say which half.
-
-A fixture that calls `pytest.skip` when its dependency is missing is a check that
-protects nothing in the environment where it skips. Say where it skips.
-
-## Blast radius lives outside the repo
-
-For a framework repo, the code that breaks is in the applications. Local grep
-cannot see them; the cross-repo index can. Search without a repo filter for the
-attributes, methods and conventions the PR changes.
-
-Look especially for **the application-level attribute that shadows the core
-one** — apps routinely define their own `main_*` variant injecting
-high-specificity CSS or config, sometimes resolved per record at runtime, while
-core reads its own differently-named attribute. A PR measuring with the core
-attribute while the app renders with its own produces a silent, systematic
-mismatch no test in the framework repo can see.
-
-Run it in both directions, because honesty requires both:
-
-- who is **exposed** — call sites with no override, on the default path the PR changes;
-- who is **shielded** — call sites already overriding the hook it rewrites.
-
-The shielded set is usually large and it shrinks the blast radius. Report it. A
-review that lists only the scary half is not more rigorous, it is less accurate,
-and it burns your credibility for the findings that are real.
-
-Then state the **direction** of the error. A size estimate too small clips
-content and corrupts pagination; too large only wastes space. Wrong in the safe
-direction is a different severity from wrong in the dangerous one, and saying
-which is what makes the finding actionable.
+Read `<PLUGIN_ROOT>/refs/pr-verification.md` and run the checks that apply. It
+is the shared verification contract for `pr-loop` and `pr-analyze`; keep the
+rules there rather than duplicating them here.
 
 ## Two PRs, one file
 
