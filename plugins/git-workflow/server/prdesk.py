@@ -21,10 +21,12 @@ Speed shape (the desk used to be slow for structural reasons, not slow code):
   * MERGE STATE IS PHASE TWO. It is the one expensive field; the table
     paints without it and fills in when it lands.
   * HTTP/1.1 keep-alive + ETags, so the UI's polling costs one 304.
-  * TRIAGE PRECOMPUTATION STAYS LOCAL. When the user presses pr-triage, the
-    desk computes the deterministic verdicts and blocks before handing the
-    snapshot to the model. They are never presented as a completed triage
-    before that explicit run.
+  * THE TRIAGE IS COMPUTED AND PUBLISHED HERE. When the user presses
+    pr-triage the desk computes the verdicts, the five blocks and the chase
+    (verdicts.py, 0.07 ms for 52 PRs) and writes them to the state file
+    itself. The model is asked only for what a field cannot answer, one PR at
+    a time. Nothing of this runs at boot: a computed grid is not a triage
+    until he asks for one.
   * THE MERGE GATE IS READ, not guessed (gate.py). Where a base restricts
     who may push, "approved + CLEAN + mine" is not the user's merge — the
     old field-only verdict said `A1 → merge it` there and was wrong.
@@ -73,18 +75,41 @@ def detect_repo():
     return tail.removesuffix(".git")
 
 
+# the fields a verdict is a function of, and nothing else: hashing the whole
+# row made a title edit or a body edit expire a triage that would not change
+VERDICT_FIELDS = ("author", "draft", "base", "head", "merge", "decision",
+                  "req", "reviews", "unresolved", "incomplete", "assignees",
+                  "conflict_kind", "last")
+GATE_FIELDS = ("branch", "protected", "can_land", "landers", "approvals",
+               "codeowners_required", "owners", "per_path", "dismiss_stale",
+               "conversation_resolution")
+
+
 def triage_key(row, gate):
-    """Fingerprint every provider fact a triage verdict can depend on."""
-    payload = {"row": row, "gate": gate or {}}
+    """Fingerprint the provider facts THIS row's verdict reads."""
+    payload = [[row.get(f) for f in VERDICT_FIELDS],
+               [(gate or {}).get(f) for f in GATE_FIELDS]]
     raw = json.dumps(payload, sort_keys=True, separators=(",", ":"),
                      default=str).encode()
     return hashlib.sha256(raw).hexdigest()[:20]
 
 
+def row_number(row):
+    """The PR number of a stored grid row, or None. The state file is written
+    by a session that can die mid-write, so a malformed row costs that row and
+    never the whole desk."""
+    try:
+        return int(row["n"])
+    except (TypeError, ValueError, KeyError):
+        return None
+
+
 def triage_records(grid):
-    return {int(row["n"]): row
+    """The published verdicts, by PR number."""
+    return {row_number(row): row
             for block in (grid or {}).get("blocks", [])
-            for row in block.get("rows", [])}
+            for row in block.get("rows", []) or []
+            if row_number(row) is not None}
 
 
 class Desk:
@@ -154,6 +179,16 @@ class Desk:
                            self.repo, self.me, [b]).get(b))
         return gates
 
+    def _all_gates(self, bases, refresh=False):
+        """Every base's gate, waited for — the triage export cannot leave one
+        out. Concurrently: they are independent API reads."""
+        bases = sorted({b for b in bases if b})
+        if not bases:
+            return {}
+        with ThreadPoolExecutor(max_workers=min(len(bases), 8)) as pool:
+            got = list(pool.map(lambda b: (b, self._gate(b, refresh)), bases))
+        return {branch: gate for branch, gate in got if gate}
+
     def _relations(self, refresh=False):
         """Who commented where, and every remote branch — neither needs the
         queue, so both belong in the first wave."""
@@ -216,16 +251,21 @@ class Desk:
 
     # ---- assembled views ---------------------------------------------
 
-    def _queue_facts(self, refresh=False, complete_gates=False):
+    def _queue_facts(self, refresh=False, complete_gates=False, state=None):
         raw = self._raw_queue(refresh)
         rows = [dict(row) for row in raw["rows"]]
         states = self._mergestates(refresh) or {}
+        notes = (state if state is not None else deskstate.load(self.repo))
+        notes = notes.get("prs") or {}
         for row in rows:
             if row.get("merge") is None:
                 row["merge"] = states.get(str(row["n"]))
+            # the one fact a model contributes to the engine: it takes a diff
+            # read to tell a mechanical conflict from a substantive one
+            row["conflict_kind"] = (notes.get(str(row["n"])) or {}).get("conflict_kind")
         bases = sorted({row.get("base") for row in rows if row.get("base")})
-        gates = ({branch: self._gate(branch, refresh) for branch in bases}
-                 if complete_gates else self._gates(bases, refresh)) or {}
+        gates = (self._all_gates(bases, refresh) if complete_gates
+                 else self._gates(bases, refresh)) or {}
         for row in rows:
             gate = gates.get(row.get("base"))
             row["gate"] = gatelib.notes(gate)
@@ -256,20 +296,29 @@ class Desk:
             counts[status] += 1
         return counts
 
-    def _current_grid(self, grid, rows):
+    def _current_grid(self, grid, rows, state):
+        """The published grid minus every row the provider has moved since,
+        with the model's one-line `what` where it wrote one."""
         if not grid:
             return None
         current = {row["n"]: row["triage_key"] for row in rows
                    if row["triage_status"] == "current"}
+        notes = state.get("prs") or {}
         visible = copy.deepcopy(grid)
         for block in visible.get("blocks", []):
-            block["rows"] = [row for row in block.get("rows", [])
-                             if current.get(int(row["n"])) == row.get("triage_key")]
+            kept = []
+            for row in block.get("rows", []) or []:
+                n = row_number(row)
+                if n is None or current.get(n) != row.get("triage_key"):
+                    continue
+                row["what"] = (notes.get(str(n)) or {}).get("what") or row.get("what")
+                kept.append(row)
+            block["rows"] = kept
         return visible
 
     def queue(self, refresh=False):
-        rows, raw, states, gates = self._queue_facts(refresh)
         state = deskstate.load(self.repo)
+        rows, raw, states, gates = self._queue_facts(refresh, state=state)
         counts = self._apply_triage(rows, state.get("grid"))
         deskstate.annotate_prs(rows, state)
         deskstate.annotate_requests(rows, state)
@@ -283,7 +332,7 @@ class Desk:
                 "chase": (state.get("chase") or {}) if complete else {},
                 "session": state.get("session"),
                 "gates": gates,
-                "grid": self._current_grid(state.get("grid"), rows),
+                "grid": self._current_grid(state.get("grid"), rows, state),
                 "triage_complete": complete,
                 "triage_counts": counts,
                 "shortlist": state.get("shortlist")}
@@ -322,9 +371,14 @@ class Desk:
         ledger = st.get("requests") or {}
         flows = {key.split(":", 1)[1]: rec for key, rec in ledger.items()
                  if key.startswith(("triage:", "run:"))}
+        grid = st.get("grid") or {}
         return {"feed": (st.get("feed") or [])[-50:], "flows": flows,
                 "working": deskstate.working(self.repo, st),
-                "grid": st.get("grid"), "shortlist": st.get("shortlist"),
+                # the stamp, not the grid: the page reads the reconciled rows
+                # from /api/queue rather than matching fingerprints a second
+                # time in its own copy of the rule
+                "triage": {"generated": grid.get("generated")},
+                "shortlist": st.get("shortlist"),
                 "chase": st.get("chase") or {},
                 "session": st.get("session"), "pong": st.get("pong"),
                 "watcher": {"alive": self.chat and age is not None and age < 10,
@@ -345,20 +399,37 @@ class Desk:
                 "timings": dict(self.timings),
                 "generated": time.strftime("%H:%M:%S")}
 
-    def export_rows(self):
-        """Build triage input from the fetched facts without refetching."""
+    def run_triage(self):
+        """The explicit triage run, in full: compute the verdicts, PUBLISH the
+        keyed grid and the chase blocks, and write the rows file the skill
+        reads.
+
+        The grid is deterministic (verdicts.py, 0.07 ms for 52 PRs) and the
+        desk owns it end to end. Handing it to a model to copy back verbatim
+        cost a turn and lost a row whenever the copy slipped; what a model
+        adds is written per PR, in `prs.<n>` — the one-line `what`, the
+        analysis, and `conflict_kind`, the single fact the engine cannot read
+        off a field. Publishing stays explicit: nothing here runs at boot.
+        """
         rows, _, _, gates = self._queue_facts(complete_gates=True)
         decorate(rows, self.me, gates)
         for row in rows:
             row["action"] = handoff(
                 row, self.repo,
                 self.provider.merge_command(self.repo, row["n"]))
-        stamp = self.timings.get("queue", {}).get("stamp") or ""
-        grid = {"generated": stamp, "blocks": verdicts.blocks(rows)}
+        grid = {"generated": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                "blocks": verdicts.blocks(rows)}
         chase = verdicts.chase(rows, self.me)
+
+        if self.kind == "pr":       # the issue desk shares the state file and
+            def publish(state):     # must not publish a PR grid nobody ran
+                state["grid"] = grid
+                state["chase"] = chase
+            deskstate.update(self.repo, publish)
+
         issues = self.issues()
         payload = {"repo": self.repo, "me": self.me,
-                   "generated": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                   "generated": grid["generated"],
                    "queue": rows, "issues": issues["rows"],
                    "grid": grid, "chase": chase, "gates": gates,
                    # the numbers only: every one of them is already a full row
@@ -518,7 +589,7 @@ class Handler(BaseHTTPRequestHandler):
                 # explicit re-read of the provider, on the caller's demand
                 self._send(200, dict(self.desk.snapshot(refresh=True), refetched=True))
             elif parts == ["api", "rows"]:
-                path = self.desk.export_rows()
+                path = self.desk.run_triage()
                 self._send(200, {"path": str(path)})
             elif parts == ["api", "shutdown"]:
                 if self.desk.chat:
@@ -543,12 +614,13 @@ class Handler(BaseHTTPRequestHandler):
                 self._chat_only({"kind": "ping", "token": body.get("token") or ""},
                                 "il ping ha senso solo in modalità chat")
             elif parts == ["api", "triage"]:
-                # the triage reads the JSON the desk already downloaded
-                path = self.desk.export_rows()
                 flow = body.get("flow", "pr-triage")
                 if flow not in ("pr-triage", "issue-triage"):
                     self._send(400, {"error": "unknown triage flow"})
                     return
+                # the deterministic half runs and publishes here, on the
+                # rows already downloaded; the chat is asked for the rest
+                path = self.desk.run_triage()
                 self._chat_only({"kind": "triage", "flow": flow, "rows": str(path)},
                                 "triage needs the desk launched from a chat session",
                                 key=deskstate.request_key("triage", flow), label=flow)

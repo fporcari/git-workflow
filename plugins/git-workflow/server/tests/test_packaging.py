@@ -57,6 +57,30 @@ class Packaging(unittest.TestCase):
         self.assertIn("author", schema["required"])
         self.assertIn("problem", schema["required"])
 
+    def test_the_headless_analysis_cannot_write_through_gh(self):
+        """`gh api` accepts -X POST: an allowlist that grants it grants the
+        merge too, and this agent is read-only."""
+        import sys
+        sys.path.insert(0, str(PLUGIN / "server"))
+        import jobs
+        self.assertNotIn("Bash(gh api:*)", jobs.READ_TOOLS)
+        self.assertIn("Bash(gh api graphql:*)", jobs.READ_TOOLS)
+
+    def test_the_decision_block_is_not_a_copy_paste_fence(self):
+        """The three labels are what he scans; a fence flattens them and
+        offers a copy nobody wants."""
+        for name in ("pr-analyze", "pr-loop"):
+            text = (PLUGIN / "skills" / name / "SKILL.md").read_text()
+            self.assertIn("**Proposta** ·", text, name)
+            self.assertIn("code fence", text, name)
+
+    def test_the_verification_checklist_keeps_its_cases(self):
+        why = (PLUGIN / "refs" / "pr-verification-WHY.md").read_text()
+        self.assertIn("claim, not evidence", why)
+        for name in ("pr-analyze", "pr-loop"):
+            self.assertIn("pr-verification-WHY.md",
+                          (PLUGIN / "skills" / name / "SKILL.md").read_text(), name)
+
     def test_analysis_query_carries_the_decision_context(self):
         query = (PLUGIN / "server" / "gql" / "pr_analysis.graphql").read_text()
         for field in ("author", "bodyText", "reviewThreads",

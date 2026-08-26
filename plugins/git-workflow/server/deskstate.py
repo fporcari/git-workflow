@@ -13,10 +13,12 @@ drafts, the orders, and the grid published by an explicit triage. That work is
 expensive to lose and worth keeping across a relaunch, which is what
 --keep-state is for.
 
-The skills (pr-triage, pr-loop, issue-triage) write their published verdicts
-and what only a model can produce: the diff-level analysis, review drafts,
-chase blocks, and issue findings. The server merges them into the rows it
-serves, so the desk shows the skills' actual work instead of placeholders.
+The grid and the chase blocks are written by the DESK, on the explicit
+triage run. The skills (pr-triage, pr-loop, issue-triage) add per PR what
+only a model can produce: the one-line `what`, the diff-level analysis, the
+review draft, `conflict_kind`, the issue findings. The server merges those
+into the rows it serves, so the desk shows the skills' actual work instead of
+placeholders.
 
 Path: ~/.local/state/git-workflow/<owner>__<repo>.json
 
@@ -24,7 +26,8 @@ Schema (all keys optional):
 {
   "generated": "2026-08-25T12:00:00",
   "session":   "PR triage · genropy · 2026-08-25",
-  "prs":    {"1152": {"analysis": "...", "draft": "...", "next": "..."}},
+  "prs":    {"1152": {"what": "...", "analysis": "...", "draft": "...",
+                      "next": "...", "conflict_kind": "mechanical"}},
   "issues": {"1156": {"type": "DEFECT", "finding": "...", "size": "EASY",
                       "phase": "SINGLE-PHASE"}},
   "grid":   {"generated": "...", "blocks": [{"id": "...", "rows": []}]},
@@ -78,9 +81,12 @@ def load(repo):
 def reset(repo):
     """Archive the previous session's state so the desk starts empty:
     stale analyses and feed lines read as fresh data otherwise. The old
-    file survives as .prev next to it. The inbox is emptied only when its
-    events are stale: the two desks start back to back and a click received
-    while the sibling starts must survive its reset."""
+    file survives as .prev next to it. The published grid goes with them —
+    a relaunch is a request for the truth now, and re-publishing it costs
+    one press and no model turn; `--keep-state` is for keeping it. The inbox
+    is emptied only when its events are stale: the two desks start back to
+    back and a click received while the sibling starts must survive its
+    reset."""
     path = state_path(repo)
     safejson.archive(path, path.with_suffix(".json.prev"))
     inbox = runtime_path(repo, "inbox.jsonl")

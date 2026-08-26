@@ -7,8 +7,10 @@ dependencies outside the Python standard library.
 The shape of the whole thing is one idea: **fetch paints facts; an explicit
 triage publishes verdicts; the model judges only what fields cannot answer.**
 The merge gate and issue cross-check are computed while fetching. The PR
-triage grid and chase blocks are prepared in Python only when the user presses
-the triage button, then completed by the model where a diff read is required.
+triage grid and chase blocks are computed in Python and published by the
+server itself, on the press — the model adds, per PR, only what a field
+cannot say: the one line of what it is for, a conflict read off the diff, an
+analysis.
 
 Built for GitHub today, provider-abstracted so a migration to
 [Forgejo](https://forgejo.org/) only means implementing one class against the
@@ -134,7 +136,7 @@ succeeded.
 
 | skill | what it does |
 |---|---|
-| **`pr-desk`** | The PR queue as a dashboard (port 8399), attached to this chat. Startup and reload fetch provider facts only; the explicit `pr-triage` button prepares and publishes the grid and chase blocks from those rows. Missing or changed triages are highlighted. Its other buttons — merge orders, `pr-analyze`, and `pr-loop` — come back to the chat as events. |
+| **`pr-desk`** | The PR queue as a dashboard (port 8399), attached to this chat. Startup and reload fetch provider facts only; the explicit `pr-triage` button computes and publishes the grid and chase blocks from those rows itself. Missing or changed triages are highlighted. Its other buttons — merge orders, `pr-analyze`, and `pr-loop` — come back to the chat as events. |
 | **`issue-desk`** | The same for the open issues (port 8398): the cross-check and the shortlist computed without a model, buttons for dedicated work sessions, `issue-analyze` and `issue-loop`. |
 | **`review-desk`** | Launches both at once, and is the reference for how an attached chat processes desk events. Canonical home of the desk protocol: the live-row marker, the request ledger, and the exact `notify.py` flags. |
 
@@ -161,9 +163,10 @@ Options: `--repo`, `--provider github|forgejo|fixture`, `--me`, `--port`,
 
 **It does not triage at startup.** It fetches the provider itself and paints
 in seconds. Reload performs the same pure fetch. Pressing the triage button
-hands the chat the rows already downloaded rather than making the skill
-re-query. Every PR is marked as never triaged, current, or stale when its
-provider facts have changed since the last triage.
+computes and publishes the whole grid on the spot, then hands the chat the
+rows already downloaded rather than making the skill re-query. Every PR is
+marked as never triaged, current, or stale — stale meaning the fields its
+verdict was read from have changed since.
 
 **Choosing what the loop works.** cmd-click (shift-click for a stretch) picks
 rows; ▶ then runs `pr-loop`/`issue-loop` on **exactly those, in that order,
@@ -178,10 +181,12 @@ Acting belongs to the skills, which log every action on the PR itself.
 
 `plugins/git-workflow/server/verdicts.py` ports section 7 of the pr-triage skill
 — the closed verdict vocabulary (`merge it`, `answer the review`, `realign
-with the base`, `waiting on <login>`, …). It runs only while preparing an
-explicit triage and is restricted to what the fields can honestly answer:
-anything that would need a diff read is reported as `asks` and left to
-`pr-loop`. The `autorun` column mirrors what `pr-loop` does unattended (A1
+with the base`, `waiting on <login>`, …). It runs only on an explicit
+triage, publishes what it computed, and is restricted to what the fields can
+honestly answer: anything that would need a diff read is reported as `asks`
+and left to `pr-loop`. The single fact a model hands back to it is
+`conflict_kind` — mechanical or substantive — which is what turns a `DIRTY`
+row of your own into an unattended realign. The `autorun` column mirrors what `pr-loop` does unattended (A1
 merge, A3 realign) versus what it brings to you for a go-ahead.
 
 ## Providers

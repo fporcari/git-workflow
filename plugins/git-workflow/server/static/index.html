@@ -262,6 +262,7 @@ let loaded=false,view="todo",query="",stateFilter=null,watcherAlive=false;
 let issuesTruncated=null,triageComplete=false,shortlistComputed=true,gates={};
 let selected=null,tab="quadro",sort={key:"created",dir:-1},acting={},truncated=null,pendingMerge=false;
 let deskEtag=null,fetching=false,lastGenerated=null,timings={};
+let triageStamp=null;   // when the published triage changes, repaint the rows
 const triageRunning={pr:false,issue:false};
 let flows={};   // triage/run outstanding, from the server's ledger
 let workingOn=null;  // the rows the chat is on right now
@@ -319,17 +320,26 @@ function applyDesk(d){
   shortlist=d.issues.shortlist||shortlist;
   flows=d.state&&d.state.flows||flows;
   pendingMerge=!!d.queue.mergestate_pending;
+  // these rows are already reconciled against this stamp: record it before
+  // applyState, or the poll would ask for the paint it just did
+  triageStamp=(d.state&&d.state.triage&&d.state.triage.generated)||null;
   applyState(d.state);
   loaded=true;
   if(DESK!=="issue"&&view==="todo"&&prs.some(r=>r.triage_status!=="current"))view="untriaged";
+  if(DESK!=="issue"&&view==="untriaged"&&triageComplete)view="todo";
   // a merged PR, a filter, a desk switch: the old selection may be gone
   if(!selectedRow())selectFirst();
 }
 function applyState(st){
   if(!st)return;
-  // /api/state carries the explicit triage export; applying it also checks
-  // every saved fingerprint against the fetched row now on screen
-  if(DESK!=="issue"&&("grid" in st))applyPrTriage(st.grid,st.chase||{});
+  // the state poll carries the STAMP of the published triage, not the grid:
+  // matching fingerprints is the server's job and it does it once, in
+  // /api/queue. A new stamp means the desk has rows to repaint.
+  const stamp=(st.triage&&st.triage.generated)||null;
+  if(DESK!=="issue"&&stamp!==triageStamp){
+    triageStamp=stamp;triageRunning.pr=false;
+    if(loaded)loadDesk(false);
+  }
   if(st.shortlist)shortlist=st.shortlist;
   session=st.session||session;
   if(DESK==="issue"&&Object.keys(st.chase||{}).length)chase=st.chase;
@@ -347,35 +357,7 @@ function applyState(st){
   const box=$("feedBox");
   box.classList.toggle("on",feed.length>0);
   if(feed.length)box.innerHTML=feed.slice(-8).reverse().map(f=>`<div><b>${esc(f.at)}</b>${f.pr?`<b>#${f.pr}</b> `:""}${esc(f.msg)}</div>`).join("");
-  if(grid)triageRunning.pr=false;
   if(shortlist)triageRunning.issue=false;
-}
-function applyPrTriage(source,nextChase){
-  const byN=new Map();
-  for(const block of (source&&source.blocks)||[])
-    for(const row of block.rows||[])byN.set(+row.n,row);
-  for(const row of prs){
-    const verdict=byN.get(row.n);
-    const valid=verdict&&verdict.triage_key===row.triage_key&&
-      ["state","todo","autorun"].every(k=>k in verdict);
-    if(valid){
-      for(const key of ["state","todo","autorun","waiting_on"])row[key]=verdict[key]??null;
-      row.action=verdict.action||null;
-      row.triage_status="current";
-    }else{
-      row.state="untriaged";row.autorun="-";row.waiting_on=null;row.action=null;
-      row.triage_status=verdict?"stale":"missing";
-      row.todo=verdict?"triage da aggiornare":"da triagiare";
-    }
-  }
-  triageComplete=prs.every(r=>r.triage_status==="current");
-  grid=source?{...source,blocks:(source.blocks||[]).map(block=>({...block,
-    rows:(block.rows||[]).filter(row=>{
-      const current=prs.find(pr=>pr.n===+row.n);
-      return current&&current.triage_status==="current"&&current.triage_key===row.triage_key;
-    })}))}:null;
-  chase=triageComplete?(nextChase||{}):{};
-  if(view==="untriaged"&&triageComplete)view="todo";
 }
 let stateEtag=null;
 async function pollState(){

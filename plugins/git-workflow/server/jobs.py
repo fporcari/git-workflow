@@ -20,8 +20,9 @@ from pathlib import Path
 import deskstate
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
-READ_TOOLS = ("Bash(gh pr diff:*),Bash(gh api:*),Bash(gh search:*),"
-              "Read,Grep,Glob")
+# `gh api` alone would allow -X POST: the analysis is read-only, so the
+# allowlist names the two calls the skill actually makes
+READ_TOOLS = ("Bash(gh api graphql:*),Bash(gh pr diff:*),Read,Grep,Glob")
 ANALYZE_TIMEOUT = 900
 SCHEMA = PLUGIN_ROOT / "server" / "schemas" / "pr-analysis.json"
 

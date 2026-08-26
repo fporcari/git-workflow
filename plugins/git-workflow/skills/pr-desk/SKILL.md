@@ -28,7 +28,9 @@ the events it prints.
 
 The desk does **not** triage at startup or reload: both are pure provider
 fetches that paint in seconds. `pr-triage` arrives only when the user presses
-its button, and the event carries `rows` — the path of the JSON the desk has
-already downloaded. Run the skill on that file rather than re-querying. The
-desk marks every PR whose published triage is absent as `missing` and every PR
-whose provider fingerprint changed as `stale`.
+its button. That press computes and publishes the whole deterministic grid on
+the server, and the event carries `rows` — the path of the JSON the desk has
+already downloaded. Run the skill on that file rather than re-querying, and
+add only per-PR work: the grid is already on screen. The desk marks every PR
+whose published triage is absent as `missing` and every PR whose provider
+fingerprint changed as `stale`.

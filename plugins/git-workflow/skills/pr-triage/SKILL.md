@@ -42,35 +42,33 @@ title alone.
 ## 2 · Read the queue
 
 **If a desk handed you a `rows` path** (the explicit `triage` event carries
-it), the provider facts are already downloaded and the desk has prepared the
-deterministic candidate verdicts for this run. Fetch never publishes these as
-a triage by itself. The file holds:
+it), the run is already half done: the press computed the verdicts and
+**published** the grid and the chase blocks to the desk state. They are on
+screen before you read a line. The file holds:
 
 | key | what it already is |
 |---|---|
-| `queue` | the fetched rows plus `triage_key`, with candidate `todo`/`state`/`autorun` (§7) |
-| `grid` | the five candidate blocks of §5, already partitioned; every row retains `triage_key` |
-| `chase` | the §6 blocks, per person, oldest first, with the dates |
+| `queue` | the fetched rows plus `triage_key`, with the §7 `todo`/`state`/`autorun` |
+| `grid` | the five blocks of §5, published; every row keyed by `triage_key` |
+| `chase` | the §6 blocks, per person, oldest first, with the dates — published |
 | `gates` | the §3 gate of every base: who may land, approvals, conversation resolution, CODEOWNERS |
 | `shortlist` | the ten issues worth reading |
 
-**Do not recompute any of it.** Reproducing that grid costs ~28k tokens of
-input and a whole turn, to re-derive a mapping the desk computes in 0.07 ms.
-Your job on a desk-driven triage is only what the fields cannot answer:
+**Do not recompute any of it, and do not copy it anywhere.** Reproducing that
+grid costs ~28k tokens and a whole turn to re-derive a mapping the desk
+computes in 0.07 ms — and a row dropped in the copy reads as a PR nobody ever
+triaged. Your job is only what the fields cannot answer:
 
-1. the rows the candidate grid marks `asks` — those need the diff or the
-   review read (§4's DIRTY/UNSTABLE rules, and the CODEOWNERS per-path
-   question when `gates.<base>.per_path` is true);
+1. the rows marked `asks` — those need the diff or the review read (§4's
+   DIRTY/UNSTABLE rules, and the CODEOWNERS per-path question when
+   `gates.<base>.per_path` is true);
 2. **what each PR is FOR**, one line, in the user's language — the desk shows
    the raw title and asks for this per row (the `explain` event), so write it
    only for the rows you were asked about;
 3. §8's three repo-level findings, which are patterns nobody can look up.
 
-Then export what you added, merged into the full grid you were given. Preserve
-every row's `triage_key`, `state`, `todo`, `autorun`, `waiting_on` and
-`action`: the desk uses that key to mark each PR `current`, `missing` or
-`stale` after the next provider reload. Publishing only the rows you inspected
-would falsely mark the others as never triaged.
+What you find goes under `prs.<n>` (§10), one PR at a time. The grid stays the
+desk's.
 
 ```bash
 jq '.queue' <rows path> > /tmp/rows.json
@@ -332,46 +330,37 @@ Two cases end the run instead, and both must be said out loud:
 Nothing after the handover: a summary that re-narrates the blocks wastes the scan
 they were built for.
 
-## 10 · Publish a desk-triggered run
+## 10 · What you write back
 
-When a desk `rows` path triggered the run, export it so the `review-desk`
-dashboard's Triage tab shows THIS grid. A direct invocation has no desk-issued
-`triage_key`: report it in chat but do not publish a grid that would be stale
-immediately. For a desk-triggered run, merge into
+The grid, the chase blocks and the `triage_key` of every row are written by
+the desk itself, on the press that started this run. **Never write `grid` or
+`chase`.** You write what a field cannot say, per PR, merged into
 `~/.local/state/git-workflow/<owner>__<repo>.json` (create the directory,
-preserve unrelated keys):
+preserve every other key):
 
 ```json
 {
   "session": "PR triage · <repo> · <YYYY-MM-DD>",
-  "grid": {
-    "generated": "<ISO timestamp>",
-    "blocks": [
-      {"title": "Da mergiare subito",
-       "rows": [{"n": 1027, "date": "2026-07-29", "author": "me",
-                  "what": "<one line, user's language>",
-                  "todo": "merge it", "autorun": "A1", "state": "ready",
-                  "waiting_on": null,
-                  "action": "<copy unchanged from the candidate row>",
-                  "triage_key": "<copy unchanged from the fetched row>"}]},
-      {"title": "Azione banale", "rows": []},
-      {"title": "Review da fare", "rows": []},
-      {"title": "Solo tue", "rows": []},
-      {"title": "In attesa di altri", "rows": []}
-    ]
-  },
-  "chase": {"<login>": "<the exact fenced block of §6, verbatim>"},
-  "prs": {"<n>": {"analysis": "<in italiano: what it is + the verdict's reason>",
-                   "next": "<what is to be done>"}}
+  "prs": {
+    "1027": {"what": "<one line in the user's language, no verdict>",
+             "analysis": "<in italiano: cosa fa + perché quel verdetto>",
+             "next": "<what is to be done>",
+             "conflict_kind": "mechanical"}
+  }
 }
 ```
 
-The five §5 blocks map onto `grid.blocks` in the same order (block 4's chase
-messages go under `chase`, per person, only the ones that passed the §6
-gate). User-facing strings (`what`, `analysis`) in Italian; the verdict
-vocabulary stays as-is. Copy `triage_key` rather than generating it. Overwrite
-`grid`, `chase` and `session` wholesale: stale triage is worse than none.
+`what` replaces the raw title in the desk's blocks. `conflict_kind` is the one
+value that feeds the engine back: on a `DIRTY` branch of his own, `mechanical`
+(a changelog, a lock file, disjoint additions) turns that row into
+`realign with the base` / `A3` by itself, and `substantive` leaves it `asks`.
+Write it only for a conflict you actually inspected — §4's rule stands.
+
+A direct invocation with no desk behind it writes nothing: report the blocks
+in chat. There is no `triage_key` to hang them on, and a grid published
+without one is stale the moment the provider moves.
 
 **Triggered from the desk** (a `{"kind": "triage"}` inbox event): run
-report-only — blocks, findings, export — and skip the §9 handover question;
+report-only — blocks, findings, the per-PR notes — and skip the §9 handover
+question;
 the user is driving from the dashboard and will press run himself.

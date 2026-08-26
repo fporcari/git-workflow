@@ -5,7 +5,9 @@ take each sentence the correctness rests on and inspect the function that
 would have to make it true. The important defects usually live at the seam
 between a locally consistent diff and the code around it.
 
-Run only the checks that apply.
+Run only the checks that apply. `pr-verification-WHY.md`, next to this file,
+carries the case behind each one — read the relevant section when you are
+about to skip a check or one looks wrong for this repo.
 
 ## Claims and call paths
 

@@ -299,13 +299,18 @@ remaining work all needs him.
 
 # Lane B — one PR at a time, or one batch
 
-Ordered by who is blocked. For each, four lines and then stop:
+Ordered by who is blocked. For each, four lines and then stop — **as text,
+never inside a code fence**: a fence reads as something to copy and flattens
+the labels he is scanning for.
 
-```
-#<n> — <author> opened it
-problem: <one line: what problem the PR solves and how>
-history: <one line: reviews so far, whose turn, how long it has sat>
-propose: <one line: exactly what you will do if he says go>
+(the fence below delimits the template — your output has no fence)
+
+```markdown
+**#<n>** — aperta da @<author>
+
+**Problema** · <one line: what problem the PR solves and how>
+**Storia** · <one line: reviews so far, whose turn, how long it has sat>
+**Proposta** · <one line: exactly what you will do if he says go>
 ```
 
 Ask `Procedo con questa proposta?`, then wait. `vai` / `ok` / `procedi` / `si`
@@ -388,7 +393,9 @@ end with what he should do, and you move on.
 
 Read `<PLUGIN_ROOT>/refs/pr-verification.md` and run the checks that apply. It
 is the shared verification contract for `pr-loop` and `pr-analyze`; keep the
-rules there rather than duplicating them here.
+rules there rather than duplicating them here. `pr-verification-WHY.md` beside
+it holds the case behind each check — every one was learned by getting it
+wrong — and is what you read when a check looks skippable.
 
 ## Two PRs, one file
 
@@ -496,10 +503,10 @@ left alone and why.
 changes the queue — a merge, an answered review, a realign — and again at
 the end of the loop:
 
-- remove the settled PR's rows from `grid.blocks` in
-  `~/.local/state/git-workflow/<owner>__<repo>.json` (a merged PR must
-  disappear from the dashboard, not sit there looking pending), or re-run
-  the queue read and re-export the whole grid per pr-triage §10;
+- **do not touch `grid` or `chase`** — they are the desk's, and a merged PR
+  leaves the provider queue, so the desk drops its row by itself on the next
+  read. What a settled PR leaves behind is at most a name in a chase message,
+  and the next pr-triage press rewrites those;
 - refresh `analysis`/`next` for what moved, and put the full text of any
   review drafted but not sent in that PR's `draft` key;
 - one feed line per action (`notify.py`), in plain words;

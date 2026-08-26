@@ -123,14 +123,13 @@ then for each event in order:
 - **`{"kind": "triage", "flow": ..., "rows": "<path>"}`** — run that
   skill here, report-only, **reading `rows` instead of querying the
   provider**. That file holds `{repo, me, generated, queue, issues, grid,
-  chase, gates, shortlist}` — the fetched rows and the deterministic candidate
-  work prepared for this explicit run (the §5 blocks, the §6 chase, the §3
-  gate, the issue cross-check and its ten-issue shortlist). Add only what a model can add
-  (the `asks` rows, the impact ranking, §8's findings), then export the
-  result to the desk state as the skill's own export section specifies (`grid`+`chase` for pr-triage,
-  `shortlist` for issue-triage): the desk's Triage tab renders exactly that
-  export. Skip the skill's closing handover question — the user drives from
-  the dashboard.
+  chase, gates, shortlist}`. For pr-triage the desk has ALREADY published
+  `grid` and `chase` to the state file: do not copy them anywhere, and never
+  rewrite them. Add only what a model can add, per PR, under `prs.<n>` — the
+  one-line `what`, the reading of an `asks` row, `conflict_kind` on a DIRTY
+  branch — plus §8's repo-level findings in chat. For issue-triage the export
+  section still applies (`shortlist`). Skip the skill's closing handover
+  question — the user drives from the dashboard.
 - **`{"kind": "run", "flow": "pr-loop"|"issue-loop", "ns": [...], "batch": N}`**
   — run that skill here in chat, step by step. `ns` is the rows the user
   picked by hand in the dashboard: it means *exactly those, in that order,
@@ -139,9 +138,9 @@ then for each event in order:
   together, 1..4, and he was asked for it at the moment he pressed ▶, so do
   not re-ask that either. An empty `ns` is the whole queue.
   Three rules the desk depends on: (1) after every action that changes the
-  queue (a merge above all) update the grid export so the settled PR
-  **disappears from the dashboard** — pr-loop's "Publish to the review desk"
-  section says how; (2) with a batch, mark every row it is working
+  queue (a merge above all) press the desk's own triage again — or tell the
+  user to — so the settled PR **disappears from the dashboard**: the grid is
+  the desk's to write, never yours; (2) with a batch, mark every row it is working
   (`notify.py --batch`), because a marker naming one of N leaves the others
   reading as idle; (3) plain words everywhere the user reads — never bare
   "Lane A/Lane B" in chat or feed: say *azioni automatiche* and *le PR che
@@ -233,14 +232,15 @@ the user says so or the preview server is stopped; a watcher exit code 3
 ## What the desk shows
 
 **Fetch paints facts; triage publishes verdicts.** On the PR desk, boot and
-reload show the provider queue without pretending it has been triaged. The
-server prepares §7 verdicts, §5 blocks and §6 chase only after the explicit
-`pr-triage` click, then the model judges the rows that need it and publishes the
-full keyed grid. Changed rows become `stale`; new rows are `missing`. The issue
-cross-check remains a deterministic provider annotation.
-What the model is called for is what only it can do: the rows marked `asks`,
-one-line explanations on request, the impact ranking, and pr-analyze's diff
-read.
+reload show the provider queue without pretending it has been triaged. On the
+explicit `pr-triage` click the server computes §7 verdicts, §5 blocks and §6
+chase and **writes them itself**, keyed to a fingerprint of the fields each
+verdict reads: a PR the provider has moved since becomes `stale`, one never
+triaged is `missing`. The issue cross-check remains a deterministic provider
+annotation.
+What the model is called for is what only it can do, one PR at a time: the
+rows marked `asks`, one-line explanations on request, the impact ranking, and
+pr-analyze's diff read. It writes those under `prs.<n>`, never over the grid.
 
 Verdicts are the pr-triage vocabulary; the Chase tab groups the people to chase
 over the user's OWN PRs only, per pr-triage §6 — somebody else's stalled PR is

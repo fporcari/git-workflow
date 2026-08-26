@@ -195,7 +195,7 @@ def blocks(rows):
             "what": row.get("title"), "todo": row.get("todo"),
             "autorun": row.get("autorun"), "state": row.get("state"),
             "waiting_on": row.get("waiting_on"), "base": row.get("base"),
-            "triage_key": row.get("triage_key"), "action": row.get("action"),
+            "triage_key": row.get("triage_key"),
         })
     return [{"title": title, "rows": grouped[title]} for title in BLOCK_TITLES]
 

@@ -34,7 +34,9 @@ in the snapshot with `gh pr view` or the REST review endpoints.
 
 ## 2 · Establish the decision
 
-Read `<PLUGIN_ROOT>/refs/pr-verification.md` and run the checks that apply.
+Read `<PLUGIN_ROOT>/refs/pr-verification.md` and run the checks that apply;
+`pr-verification-WHY.md` beside it has the case behind each one, for when you
+are about to skip a check.
 
 Produce four distinct facts:
 
@@ -76,17 +78,25 @@ fences or prose. The schema is:
  "not_verified": ["what was not checked, named honestly"]}
 ```
 
-In chat, show exactly this compact Italian decision block, followed by the
-confirmation question:
+In chat, show exactly this Italian decision block — **as text, never inside a
+code fence**. A fence turns it into something to copy, and the labels stop
+standing out; here they are the whole point, because he reads the three lines
+and answers.
 
-```text
-#<n> — aperta da @<author>
-problema: <problem>
-storia: <history>
-proposta: <propose>
+(the fence below delimits the template — your output has no fence)
+
+```markdown
+**#<n>** — aperta da @<author>
+
+**Problema** · <problem>
+**Storia** · <history>
+**Proposta** · <propose>
 
 Procedo con questa proposta?
 ```
+
+One line each, in that order, with the label in bold. Nothing before the
+block, nothing after the question.
 
 Do not say merely that a draft exists: when attached to the desk, say that the
 English draft is visible there. Outside the desk, include the draft after the

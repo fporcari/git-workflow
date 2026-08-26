@@ -674,7 +674,7 @@ class Blocks(unittest.TestCase):
         deskstate.save(REPO, {})
 
     def exported(self, desk):
-        return json.loads(Path(desk.export_rows()).read_text())
+        return json.loads(Path(desk.run_triage()).read_text())
 
     def test_every_row_lands_in_exactly_one_block(self):
         exported = self.exported(fresh_desk())
@@ -701,9 +701,7 @@ class Blocks(unittest.TestCase):
 
     def test_publishing_the_export_marks_every_row_current(self):
         desk = fresh_desk()
-        exported = self.exported(desk)
-        deskstate.save(REPO, {"grid": exported["grid"],
-                              "chase": exported["chase"]})
+        self.exported(desk)          # the run publishes the grid itself
         queue = desk.queue()
         self.assertTrue(queue["triage_complete"])
         self.assertTrue(all(r["triage_status"] == "current"
@@ -712,11 +710,11 @@ class Blocks(unittest.TestCase):
 
     def test_a_mismatched_fingerprint_stales_only_that_pr(self):
         desk = fresh_desk()
-        exported = self.exported(desk)
-        first = next(r for b in exported["grid"]["blocks"] for r in b["rows"])
+        self.exported(desk)
+        state = deskstate.load(REPO)
+        first = next(r for b in state["grid"]["blocks"] for r in b["rows"])
         first["triage_key"] = "old"
-        deskstate.save(REPO, {"grid": exported["grid"],
-                              "chase": exported["chase"]})
+        deskstate.save(REPO, state)
         queue = desk.queue()
         stale = [r for r in queue["rows"] if r["triage_status"] == "stale"]
         self.assertEqual([r["n"] for r in stale], [first["n"]])
@@ -724,6 +722,103 @@ class Blocks(unittest.TestCase):
         self.assertEqual(sum(len(b["rows"]) for b in queue["grid"]["blocks"]),
                          len(queue["rows"]) - 1)
         self.assertEqual(queue["chase"], {})
+
+
+class TriageOwnership(unittest.TestCase):
+    """The desk computes the grid and publishes it; a model adds per-PR facts.
+    Copying a 50-row grid back verbatim through a model cost a turn and lost a
+    row whenever the copy slipped."""
+
+    def setUp(self):
+        deskstate.save(REPO, {})
+
+    def test_the_run_publishes_the_grid_and_the_chase_itself(self):
+        desk = fresh_desk()
+        desk.run_triage()
+        state = deskstate.load(REPO)
+        self.assertEqual(len(state["grid"]["blocks"]), 5)
+        self.assertIn("chase", state)
+        self.assertTrue(desk.queue()["triage_complete"])
+
+    def test_the_issue_desk_never_publishes_a_pr_grid(self):
+        fresh_desk(kind="issue").run_triage()
+        self.assertNotIn("grid", deskstate.load(REPO))
+
+    def test_the_model_line_reaches_the_published_grid(self):
+        desk = fresh_desk()
+        desk.run_triage()
+        n = desk.queue()["rows"][0]["n"]
+        state = deskstate.load(REPO)
+        state["prs"] = {str(n): {"what": "riscrive il dispatch dei trigger"}}
+        deskstate.save(REPO, state)
+        rows = [row for block in desk.queue()["grid"]["blocks"]
+                for row in block["rows"] if row["n"] == n]
+        self.assertEqual(rows[0]["what"], "riscrive il dispatch dei trigger")
+
+    def test_a_malformed_published_row_costs_that_row_only(self):
+        desk = fresh_desk()
+        desk.run_triage()
+        state = deskstate.load(REPO)
+        state["grid"]["blocks"][0]["rows"].append({"what": "no number here"})
+        deskstate.save(REPO, state)
+        queue = desk.queue()          # used to raise, and the desk went blank
+        self.assertTrue(queue["rows"])
+
+    def test_a_conflict_read_by_a_model_upgrades_the_verdict(self):
+        """conflict_kind is the one fact the engine cannot read off a field —
+        and until it had a writer, no DIRTY row could ever reach A3."""
+        desk = fresh_desk()
+        dirty = [r for r in desk.queue()["rows"]
+                 if r["merge"] == "DIRTY" and r["author"] == desk.me
+                 and not r["incomplete"]]
+        self.assertTrue(dirty, "the fixture needs a DIRTY PR of his own")
+        n = dirty[0]["n"]
+        deskstate.save(REPO, {"prs": {str(n): {"conflict_kind": "mechanical"}}})
+        desk.run_triage()
+        row = next(r for r in desk.queue()["rows"] if r["n"] == n)
+        self.assertEqual(row["autorun"], "A3")
+
+
+class RelaunchStartsUntriaged(unittest.TestCase):
+    """A relaunch is a request for the truth now. Re-publishing the grid is
+    one press and no model turn, so nothing is carried over silently;
+    --keep-state is the way to keep it."""
+
+    def test_a_relaunch_drops_the_published_grid(self):
+        desk = fresh_desk()
+        desk.run_triage()
+        deskstate.reset(REPO)
+        self.assertNotIn("grid", deskstate.load(REPO))
+        self.assertFalse(desk.queue()["triage_complete"])
+
+
+class TriageKey(unittest.TestCase):
+    """The fingerprint covers the fields a verdict READS. Hashing the whole
+    row expired a triage on a title edit, which is churn, not news."""
+
+    ROW = {"n": 1, "author": "me", "draft": False, "base": "develop",
+           "merge": "CLEAN", "decision": "APPROVED", "req": [], "reviews": [],
+           "unresolved": 0, "incomplete": False, "assignees": ["me"],
+           "last": None, "title": "one", "summary": "body", "url": "u"}
+
+    def test_an_edited_title_or_body_does_not_expire_a_triage(self):
+        other = dict(self.ROW, title="two", summary="rewritten", url="v")
+        self.assertEqual(prdesk.triage_key(self.ROW, None),
+                         prdesk.triage_key(other, None))
+
+    def test_a_changed_verdict_input_does(self):
+        for field, value in (("merge", "DIRTY"), ("decision", None),
+                             ("req", ["cgabriel"]), ("draft", True),
+                             ("conflict_kind", "mechanical")):
+            with self.subTest(field=field):
+                self.assertNotEqual(
+                    prdesk.triage_key(self.ROW, None),
+                    prdesk.triage_key(dict(self.ROW, **{field: value}), None))
+
+    def test_the_gate_is_part_of_it(self):
+        self.assertNotEqual(
+            prdesk.triage_key(self.ROW, None),
+            prdesk.triage_key(self.ROW, {"branch": "develop", "can_land": False}))
 
 
 class Chase(unittest.TestCase):
@@ -829,7 +924,7 @@ class RowsExport(unittest.TestCase):
 
     def test_the_export_carries_the_computed_work(self):
         desk = fresh_desk()
-        exported = json.loads(Path(desk.export_rows()).read_text())
+        exported = json.loads(Path(desk.run_triage()).read_text())
         for key in ("queue", "issues", "grid", "chase", "gates", "shortlist"):
             self.assertIn(key, exported, key)
         self.assertEqual(len(exported["grid"]["blocks"]), 5)
@@ -838,8 +933,10 @@ class RowsExport(unittest.TestCase):
         grid_rows = [row for block in exported["grid"]["blocks"]
                      for row in block["rows"]]
         self.assertTrue(all({"triage_key", "state", "todo", "autorun",
-                             "waiting_on", "action"} <= set(row)
+                             "waiting_on"} <= set(row)
                             for row in grid_rows))
+        self.assertTrue(all("action" not in row for row in grid_rows),
+                        "the command belongs to the live row, one source only")
 
     def test_the_shortlist_is_numbers_that_index_the_rows(self):
         """It used to be written twice in the same literal — the rows and
@@ -847,7 +944,7 @@ class RowsExport(unittest.TestCase):
         came last. The numbers win: every one of them is already a full row
         under "issues", and repeating them doubled the export."""
         desk = fresh_desk()
-        exported = json.loads(Path(desk.export_rows()).read_text())
+        exported = json.loads(Path(desk.run_triage()).read_text())
         self.assertTrue(all(isinstance(n, int) for n in exported["shortlist"]))
         known = {r["n"] for r in exported["issues"]}
         self.assertTrue(set(exported["shortlist"]) <= known)

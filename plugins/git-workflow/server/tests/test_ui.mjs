@@ -176,6 +176,18 @@ try {
   process.exit(2);
 }
 
+/* ---- the explicit triage, run for real: the desk computes and publishes the
+   grid itself, so the page only ever has to paint what /api/desk hands it ---- */
+let triaged;
+try {
+  await fetch(`${ROOT}/api/rows`, {method: "POST",
+    headers: {"X-Git-Workflow-Token": snapshot.meta.write_token}});
+  triaged = await (await fetch(`${ROOT}/api/desk`)).json();
+} catch (e) {
+  console.log(`\ncannot publish a triage on ${ROOT} (${e.message})\n`);
+  process.exit(2);
+}
+
 globalThis.setInterval = () => 0;      // the page's own polling stays off
 globalThis.fetch = async () => { throw new Error("network is off in this test"); };
 
@@ -295,26 +307,12 @@ ok("the default PR view is Da triagiare",
 ok("the fetch banner does not claim a triage ran",
    document.getElementById("noteBox").innerHTML.includes("Fetch provider completato"));
 
-const triageTitles = ["Da mergiare subito", "Azione banale", "Review da fare",
-                      "Solo tue", "In attesa di altri"];
-const triageRows = page.state.prs.map((r,i) => ({
-  n:r.n,date:r.created,author:r.author,what:r.title,base:r.base,
-  todo:i%4===0?"waiting on genro":i%4===1?"merge it":i%4===2?"review it":"decide",
-  autorun:i%4===1?"A1":i%4===0?"-":"asks",
-  state:i%4===0?"waiting":i%4===1?"ready":i%4===2?"attention":"decision",
-  waiting_on:i%4===0?"genro":null,
-  triage_key:r.triage_key,action:null,
-}));
-const triageBlock = row => row.state==="waiting"?"In attesa di altri":
-  row.autorun==="A1"?"Da mergiare subito":row.todo==="review it"?"Review da fare":"Solo tue";
-const triageGrid = { generated:"2026-08-26T12:00:00",
-  blocks:triageTitles.map(title => ({title,rows:triageRows.filter(row=>triageBlock(row)===title)})) };
-const triageChase = { genro:`@genro — 2 PR ferme su di te, la più vecchia dal 2026-08-01:\n#${triageRows[0].n} (2026-08-01) prima\n#${triageRows[4].n} (2026-08-02) seconda` };
-page.applyState({ grid:triageGrid, chase:triageChase, session:"PR triage test",
-                  watcher:{alive:true,chat:true}, feed:[] });
+page.applyDesk(triaged);
 page.render();
 ok("explicit pr-triage makes every matching row current",
    page.state.prs.every(r => r.triage_status === "current"));
+ok("the server, not the page, reconciled them",
+   triaged.queue.triage_complete && !html.includes("applyPrTriage"));
 ok("the triage button shows that nothing is pending",
    document.getElementById("btnTriage").textContent.includes("✓"));
 
@@ -327,15 +325,22 @@ ok("the blocks render as their own cards",
 ok("a block row is clickable through to the detail panel",
    document.getElementById("chaseWrap").querySelectorAll("[data-n]").length > 0);
 
-const changed = page.state.prs[0], savedKey = changed.triage_key;
-changed.triage_key = "changed-provider-facts";
-page.applyState({ grid:triageGrid, chase:triageChase, watcher:{alive:true,chat:true}, feed:[] });
-page.view = "untriaged";page.render();
+/* a PR the provider has moved since the triage: the server marks that row
+   stale and drops it from the grid — the page must show it as such */
+const staleN = triaged.queue.rows[0].n;
+const staleDesk = {...triaged, queue: {...triaged.queue,
+  triage_complete: false, chase: {},
+  rows: triaged.queue.rows.map(r => r.n !== staleN ? r : ({...r,
+    state: "untriaged", autorun: "-", action: null, waiting_on: null,
+    todo: "triage da aggiornare", triage_status: "stale"})),
+  grid: {...triaged.queue.grid, blocks: triaged.queue.grid.blocks.map(b =>
+    ({...b, rows: b.rows.filter(r => +r.n !== staleN)}))}}};
+page.applyDesk(staleDesk);
+page.view = "untriaged"; page.render();
 ok("a changed PR alone becomes stale",
-   page.visiblePrs().length === 1 && page.visiblePrs()[0].n === changed.n &&
+   page.visiblePrs().length === 1 && page.visiblePrs()[0].n === staleN &&
    document.getElementById("tbody").innerHTML.includes("triage scaduto"));
-changed.triage_key = savedKey;
-page.applyState({ grid:triageGrid, chase:triageChase, watcher:{alive:true,chat:true}, feed:[] });
+page.applyDesk(triaged);
 
 page.view = "todo";
 page.render();
@@ -396,7 +401,7 @@ ok("a failure reads as a failure",
 target.requests = {};
 
 ok("chase blocks carry the dates the message needs",
-   Object.values(triageChase).some(t => /\(\d{4}-\d{2}-\d{2}\)/.test(t)));
+   Object.values(triaged.queue.chase).some(t => /\(\d{4}-\d{2}-\d{2}\)/.test(t)));
 
 /* ---- 7c. no invented Italian for a term whose home is English ---- */
 const BANNED = ["Situa", "situa", "Solleciti", "mergiabili", "assegnatari"];
@@ -557,7 +562,7 @@ const tabsNow = () => document.getElementById("tabs").querySelectorAll("button")
 tabsNow().find(b => b.dataset.v === "chase").click();
 ok("Chase shows one card per person",
    document.getElementById("chaseWrap").querySelectorAll("[data-copy]").length ===
-     Object.keys(triageChase).length);
+     Object.keys(triaged.queue.chase).length);
 ok("each card carries the message to paste, whole",
    document.getElementById("chaseWrap").querySelectorAll("[data-copy]")
      .every(b => (b.attrs["data-copy"] || "").includes("#")));
