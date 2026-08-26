@@ -6,7 +6,9 @@ dependencies outside the Python standard library.
 
 The shape of the whole thing is one idea: **fetch paints facts; an explicit
 triage publishes verdicts; the model judges only what fields cannot answer.**
-The merge gate and issue cross-check are computed while fetching. The PR
+The merge gate, the issue cross-check and the issue shortlist are computed
+while fetching, on every read — a filter is not a verdict, and a model's copy
+of one is a thing to keep in sync. The PR
 triage grid and chase blocks are computed in Python and published by the
 server itself, on the press — the model adds, per PR, only what a field
 cannot say: the one line of what it is for, a conflict read off the diff, an
@@ -104,7 +106,7 @@ chat.
 | skill | what it does |
 |---|---|
 | **`pr-triage`** | Every open PR you are involved in, split into five blocks by the kind of work each needs: mergeable now, trivial action, reviews you owe, people to chase (grouped per person, ready to paste), and the calls only you can make. Each row carries number, date, author, what it is, what is to be done, and whether `pr-loop` would handle it unattended — read from the provider's fields, never by reading diffs. Hands over to `pr-loop`. |
-| **`issue-triage`** | The ten most recent open issues nobody has looked at yet, ranked by impact and classified DEFECT / REQUEST / QUESTION / DOCS, with existing branches and PRs cross-checked. Its most valuable find is finished work sitting on a branch with no PR. Takes `batch=N` and `mine`. |
+| **`issue-triage`** | The ten most recent open issues nobody has looked at yet, ranked by impact and classified DEFECT / REQUEST / QUESTION / DOCS, with existing branches and PRs cross-checked. Its most valuable find is finished work sitting on a branch with no PR. The filter and the cross-check are the desk's; what it writes back is per issue — the impact rank, the verified type, the finding, and the date that lets the desk tell a fresh reading from an overtaken one. Takes `batch=N` and `mine`. |
 
 ### Work the queue — the loops
 
@@ -115,7 +117,7 @@ Both are **explicit-invocation only**, and both take the same mandate:
 | skill | what it does |
 |---|---|
 | **`pr-loop`** | Drives the queue until nothing is left that only you can do. Lane A acts without asking — merges your fully-approved PRs, answers small *named* review requests, realigns `DIRTY` branches by merging the base in — and iterates until a full pass changes nothing, because its own merges change the queue. Lane B is everything else, presented as author / problem / history / proposal followed by an explicit confirmation question. Canonical home of the rule for what may run in parallel. |
-| **`issue-loop`** | The same loop over the open issues: take the most urgent, analyze that one in a fresh context, propose it in four lines, and on a go-ahead assign it, fix it in a worktree and open the PR. Canonical home of the worktree traps — the shared stash stack, `PYTHONPATH`, a per-agent scratch `GENRO_GNRFOLDER`, which test count is worth believing. |
+| **`issue-loop`** | The same loop over the open issues: take the most urgent, analyze that one in a fresh context, propose it in four lines, and on a go-ahead assign it, fix it in a worktree and open the PR. `bugfix` is the wide mode: every eligible bug analyzed, all the plans read at once, one single go-ahead, then all the approved PRs in parallel — a bug rarely carries an architectural decision, and the PR review is still the control step. |
 
 With `batch=N` an approved batch is never handed straight to N agents: the
 loop builds a conflict graph first — same file, stacked PRs, the same issue, a
@@ -137,7 +139,7 @@ succeeded.
 | skill | what it does |
 |---|---|
 | **`pr-desk`** | The PR queue as a dashboard (port 8399), attached to this chat. Startup and reload fetch provider facts only; the explicit `pr-triage` button computes and publishes the grid and chase blocks from those rows itself. Missing or changed triages are highlighted. Its other buttons — merge orders, `pr-analyze`, and `pr-loop` — come back to the chat as events. |
-| **`issue-desk`** | The same for the open issues (port 8398): the cross-check and the shortlist computed without a model, buttons for dedicated work sessions, `issue-analyze` and `issue-loop`. |
+| **`issue-desk`** | The same for the open issues (port 8398): the cross-check and the shortlist computed without a model on every read, the impact ranking and the verified type from `issue-triage`, an analysis marked *da aggiornare* when its issue has moved since. Buttons for dedicated work sessions, `issue-analyze` and `issue-loop`. |
 | **`review-desk`** | Launches both at once, and is the reference for how an attached chat processes desk events. Canonical home of the desk protocol: the live-row marker, the request ledger, and the exact `notify.py` flags. |
 
 `plugins/git-workflow/server/` is the code under all three: a zero-dependency

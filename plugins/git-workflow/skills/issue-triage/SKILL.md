@@ -40,15 +40,17 @@ Every issue row carries `type` (from labels and title) and a `cross` block:
     note         what that combination means, in one line
 
 and `shortlist` holds the ten the desk already filtered down to: never
-looked at, nobody on them, no PR, newest first. That is ~14k tokens of issue
-rows turned into ten you actually have to read.
+looked at, nobody on them, no PR, newest first. The desk recomputes that
+filter on every read, so it is never stale and there is nothing to publish:
+it is ~14k tokens of issue rows turned into ten you actually have to read.
 
-**Do not recompute it.** What is left for you is the part that needs
-judgement and cannot be looked up:
+**Do not recompute it, and do not copy it back.** What is left for you is the
+part that needs judgement and cannot be looked up:
 
 1. **rank the shortlist by impact** — read the body, not the label
    (1. evidence of real damage; 2. blocks someone else; 3. the rest;
-   4. DOCS last);
+   4. DOCS last). You write that rank as `impact` per issue, and the desk
+   reorders the shortlist by it;
 2. for any issue whose `cross.note` says *lavoro fermo* (a branch, no PR, no
    assignee), answer the two questions only a reading can answer: is the
    content already on the base (`git cherry` is not evidence after a squash
@@ -81,24 +83,28 @@ finds, the dead branches worth pruning, and which issues the next batch
 would pick up.
 
 Export to the review desk state
-(`~/.local/state/git-workflow/<owner>__<repo>.json`, preserve other keys):
-the shortlist table under `shortlist` and each batch issue under `issues.<n>`:
+(`~/.local/state/git-workflow/<owner>__<repo>.json`, preserve other keys).
+**Never write `shortlist`**: the desk computes that filter itself, on every
+read. You write one entry per issue you read:
 
 ```json
-{"shortlist": {"generated": "<ISO timestamp>",
-           "rows": [{"n": 1156, "date": "2026-08-25", "author": "<login>",
-                      "type": "DEFECT", "title": "...",
-                      "assignee": "", "note": "<una riga, in italiano>"}]},
- "issues": {"1156": {"type": "DEFECT", "finding": "<la stessa riga>",
+{"issues": {"1156": {"type": "DEFECT",
+                      "impact": 1,
+                      "finding": "<una riga, in italiano>",
+                      "at": "<ISO timestamp, now>",
                       "phase": null, "size": null}}}
 ```
 
-issue-analyze fills phase and size later. The desk's Triage tab shows
-`shortlist` in its ISSUE block — it stays empty until this command has run.
+`impact` is the rank you just gave it, 1 = first — the desk reorders the
+shortlist by it and says so. `type` overrides the desk's guess from the
+labels, which is what a label-less issue needs. `at` is what makes the entry
+honest: the desk compares it with the issue's own last activity and marks the
+analysis *da aggiornare* when the issue has moved since. issue-analyze fills
+`phase` and `size` later.
 
 **Triggered from the desk** (a `{"kind": "triage", "flow": "issue-triage"}`
-inbox event): run through Step 2 and the export, skip the Step 3 handover
-question — the user drives from the dashboard.
+inbox event): run through Step 2 and the per-issue entries, skip the Step 3
+handover question — the user drives from the dashboard.
 
 ## Step 3 — Handover
 

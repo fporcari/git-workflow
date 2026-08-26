@@ -589,8 +589,12 @@ ok("issue desk has its own tabs",
    document.getElementById("detail").innerHTML.includes('data-t="analisi"'));
 ok("issue desk shows the cross-check the desk computed",
    document.getElementById("detailGrid").innerHTML.includes("Cross-check"));
-ok("the issue shortlist is computed, and labelled as computed",
-   !!snapshot.issues.shortlist && snapshot.issues.shortlist_computed !== false);
+ok("the issue shortlist is computed on every read",
+   !!snapshot.issues.shortlist && snapshot.issues.ranked === false);
+ok("every issue row says whether it is in it",
+   snapshot.issues.rows.every(r => "in_shortlist" in r));
+ok("the page no longer hunts the shortlist array per row",
+   !html.includes("shortlist.rows.find"));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

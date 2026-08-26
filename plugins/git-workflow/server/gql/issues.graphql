@@ -4,7 +4,7 @@ query($o:String!,$r:String!,$after:String){
       totalCount
       pageInfo{hasNextPage endCursor}
       nodes{
-        number title createdAt url author{login}
+        number title createdAt updatedAt url author{login}
         labels(first:10){nodes{name}}
         assignees(first:5){nodes{login}}
         comments{totalCount}

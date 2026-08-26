@@ -43,6 +43,9 @@ class Provider:
 
         Returns {"rows": [...], "total": int, "truncated": bool} — same
         promise as queue(): a page cap is reported, never hidden.
+
+        A row carries `updated`, the last activity on the issue: it is what
+        tells a dated analysis apart from one the issue has moved past.
         """
         raise NotImplementedError
 

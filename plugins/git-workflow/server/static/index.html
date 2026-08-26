@@ -259,11 +259,10 @@ const AUTORUN_TIP="Cosa può fare pr-loop da solo: A1 merge (tua PR approvata e 
 
 let meta={},writeToken="",DESK="pr",prs=[],issues=[],chase={},grid=null,shortlist=null,session=null;
 let loaded=false,view="todo",query="",stateFilter=null,watcherAlive=false;
-let issuesTruncated=null,triageComplete=false,shortlistComputed=true,gates={};
+let issuesTruncated=null,triageComplete=false,ranked=false,gates={};
 let selected=null,tab="quadro",sort={key:"created",dir:-1},acting={},truncated=null,pendingMerge=false;
 let deskEtag=null,fetching=false,lastGenerated=null,timings={};
 let triageStamp=null;   // when the published triage changes, repaint the rows
-const triageRunning={pr:false,issue:false};
 let flows={};   // triage/run outstanding, from the server's ledger
 let workingOn=null;  // the rows the chat is on right now
 let picked=new Set();   // the rows chosen by hand for the next loop
@@ -314,10 +313,10 @@ function applyDesk(d){
   truncated=d.queue.truncated?d.queue.total:null;
   issuesTruncated=d.issues.truncated?d.issues.total:null;
   triageComplete=!!d.queue.triage_complete;
-  shortlistComputed=d.issues.shortlist_computed!==false;
+  ranked=!!d.issues.ranked;
   gates=d.queue.gates||{};
   grid=d.queue.grid||null;
-  shortlist=d.issues.shortlist||shortlist;
+  shortlist=d.issues.shortlist||null;
   flows=d.state&&d.state.flows||flows;
   pendingMerge=!!d.queue.mergestate_pending;
   // these rows are already reconciled against this stamp: record it before
@@ -337,10 +336,9 @@ function applyState(st){
   // /api/queue. A new stamp means the desk has rows to repaint.
   const stamp=(st.triage&&st.triage.generated)||null;
   if(DESK!=="issue"&&stamp!==triageStamp){
-    triageStamp=stamp;triageRunning.pr=false;
+    triageStamp=stamp;
     if(loaded)loadDesk(false);
   }
-  if(st.shortlist)shortlist=st.shortlist;
   session=st.session||session;
   if(DESK==="issue"&&Object.keys(st.chase||{}).length)chase=st.chase;
   const w=st.watcher||{};
@@ -357,7 +355,6 @@ function applyState(st){
   const box=$("feedBox");
   box.classList.toggle("on",feed.length>0);
   if(feed.length)box.innerHTML=feed.slice(-8).reverse().map(f=>`<div><b>${esc(f.at)}</b>${f.pr?`<b>#${f.pr}</b> `:""}${esc(f.msg)}</div>`).join("");
-  if(shortlist)triageRunning.issue=false;
 }
 let stateEtag=null;
 async function pollState(){
@@ -461,7 +458,7 @@ function visiblePrs(){
 function visibleIssues(){
   let list=issues.filter(r=>matches(r,[r.n,r.title,r.author,(r.labels||[]).join(" "),r.type]));
   if(view==="free")list=list.filter(r=>!r.assignees.length);
-  if(view==="shortlist"&&shortlist){const keep=new Set(shortlist.rows.map(x=>x.n));list=list.filter(r=>keep.has(r.n));}
+  if(view==="shortlist")list=list.filter(r=>r.in_shortlist);
   return sortRows(list);
 }
 const SORTERS={
@@ -615,12 +612,11 @@ function renderTable(){
   if(DESK==="issue"){
     head.innerHTML=`<tr>${pickHead(list)}<th class="markCol"></th>${th("n","#")}${th("title","issue")}${th("type","tipo",'title="DEFECT bug reale · REQUEST nuova funzione · QUESTION domanda · DOCS documentazione"')}${th("author","autore")}<th>label</th>${th("assignees","assignees")}${th("comments","commenti",'class="num"')}${th("created","età",'class="num"')}</tr>`;
     tb.innerHTML=list.map(r=>{
-      const note=shortlist&&shortlist.rows.find(x=>x.n===r.n);
       return `<tr data-n="${r.n}" class="${r.assignees.length?"waiting":"attention"}${selected===r.n?" selected":""}${picked.has(r.n)?" picked":""}${onNow(r.n)?" working":""}">
         ${pickCell(r)}
         <td class="mark"><span title="${r.assignees.length?"presa":"libera"}">${r.assignees.length?"○":"!"}</span></td>
         <td class="mono">#${r.n}</td>
-        <td class="prTitle"><span>${esc(r.title)}</span>${r.skill||note?'<small class="dot" title="analisi disponibile">●</small>':""}${onNow(r.n)?'<span class="nowChip"><i></i>ora</span>':""}</td>
+        <td class="prTitle"><span>${esc(r.title)}</span>${issueMark(r)}${onNow(r.n)?'<span class="nowChip"><i></i>ora</span>':""}</td>
         <td><span class="tag ${esc(r.type)}">${esc(r.type)}</span></td>
         <td><span class="avatar">${esc((r.author||"??").slice(0,2).toUpperCase())}</span>${esc(r.author)}</td>
         <td class="next">${(r.labels||[]).map(l=>`<span class="tag">${esc(l)}</span>`).join(" ")||"—"}</td>
@@ -862,9 +858,14 @@ function renderPrTab(r){
     const f=$("bFallback");if(f)f.onclick=()=>copyText(f,r.action.text);
   }
 }
+/* one dot for an analysis on file, an arrow when the issue has moved past it */
+function issueMark(r){
+  if(r.analysis_stale)
+    return '<small class="dot" title="Analisi presente, ma l\'issue si è mossa dopo">↻</small>';
+  return r.skill?'<small class="dot" title="analisi disponibile">●</small>':"";
+}
 function renderIssueTab(r){
   const g=$("detailGrid"),sk=r.skill||{};
-  const note=shortlist&&shortlist.rows.find(x=>x.n===r.n);
   if(tab==="quadro"){
     g.innerHTML=`
       <article><h2>Cosa risolve</h2>
@@ -891,12 +892,12 @@ function renderIssueTab(r){
           + line("già vista da te", c.seen_by_me?"sì, hai commentato":"no")
           + line("assegnata a te", c.mine?"sì":"no")
           + `<div class="evidence" style="margin-top:8px"><code>${esc(c.note||"")}</code>
-             <span>${note?"nel batch del triage":"dal cross-check del desk"}</span></div>`;
+             <span>${r.in_shortlist?"nella shortlist":"fuori shortlist"}</span></div>`;
       })()}</aside>`;
   }else{
     g.innerHTML=`
       <article class="wideArticle"><h2>Analisi</h2>
-        ${sk.finding?`<p>${esc(sk.finding)}</p><p class="mono">${esc([sk.type,sk.phase,sk.size].filter(Boolean).join(" · "))}</p>`
+        ${sk.finding?`<p>${esc(sk.finding)}</p><p class="mono">${esc([r.type,sk.phase,sk.size,r.analysis_at?"del "+r.analysis_at.slice(0,10):null].filter(Boolean).join(" · "))}</p>${r.analysis_stale?`<small class="triageChip" title="L'issue si è mossa dopo questa analisi">↻ analisi da aggiornare</small>`:""}`
           :`<div class="tabEmpty">Nessuna analisi ancora. <b>▶ Lavora</b> apre una sessione dedicata che verifica la causa nel codice e propone la mossa minima.</div>`}
         ${actBadge(r)}</article>
       <aside><h2>Cosa fa la sessione dedicata</h2><ul>
@@ -1011,9 +1012,14 @@ function renderSummary(){
     $("leadSub").textContent=`${prs.length} fetched · ${current.length} con triage corrente · ${issues.length} issue · provider ${meta.provider||"—"}`;
   }
   const notes=[];
-  if(DESK==="issue")notes.push(shortlistComputed
-    ? "<b>Cross-check calcolato dal desk</b> — la shortlist arriva da issue-triage."
-    : `<b>Shortlist verificata dal modello</b>${session?` — ${esc(session)}`:""}.`);
+  if(DESK==="issue"){
+    notes.push("<b>Cross-check e shortlist calcolati dal desk</b> — nessun modello coinvolto.");
+    notes.push(ranked
+      ? `<b>Shortlist ordinata per impatto</b>${session?` — ${esc(session)}`:""}.`
+      : "<b>Non ancora ordinata per impatto</b> — l'ordine è per data finché issue-triage non la legge.");
+    const stale=issues.filter(r=>r.analysis_stale).length;
+    if(stale)notes.push(`<b>${stale} analisi da aggiornare:</b> l'issue si è mossa dopo che erano state scritte.`);
+  }
   else{
     const missing=prs.filter(r=>r.triage_status==="missing").length;
     const stale=prs.filter(r=>r.triage_status==="stale").length;

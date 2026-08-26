@@ -90,21 +90,28 @@ def _note(row, refs, prs):
 
 def shortlist(issue_rows, limit=10):
     """The batch worth a model's attention: never looked at, nobody on it,
-    no PR, newest first. The ranking by impact stays with the model — this
-    only decides WHICH bodies it has to read."""
+    no PR. Newest first until a triage has ranked them — the ranking by
+    impact needs the bodies read, so it is the model's, and it arrives as
+    `impact` on the rows this filter chose."""
     fresh = [r for r in issue_rows
              if not r["assignees"]
              and not r["cross"]["open_prs"]
              and not r["cross"]["seen_by_me"]]
     fresh.sort(key=lambda r: r.get("created") or "", reverse=True)
-    return fresh[:limit]
+    fresh = fresh[:limit]
+    if any(r.get("impact") for r in fresh):
+        # unranked rows go last, in date order, rather than jumping to the top
+        fresh.sort(key=lambda r: r.get("impact") or 1e6)
+    return fresh
 
 
 def shortlist_export(issue_rows, limit=10):
-    """The issue-desk grid, computed: the same shape issue-triage exports."""
+    """The issue-desk shortlist. Computed on every read — a filter is not a
+    verdict, and a model copy of it was one more thing to keep in sync."""
     return {"computed": True,
             "rows": [{"n": r["n"], "date": r.get("created"), "author": r.get("author"),
                       "type": r.get("type"), "title": r.get("title"),
+                      "impact": r.get("impact"),
                       "assignee": ", ".join(r["assignees"]) or None,
                       "note": r["cross"]["note"]}
                      for r in shortlist(issue_rows, limit)]}

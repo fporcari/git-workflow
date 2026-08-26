@@ -34,10 +34,10 @@ If SINGLE-PHASE (any size): take it end to end.
   origin/<base>`). Branch `fix|feat|docs/<n>-<slug>`; base = where recent
   merged fix PRs target, not the harness default.
 - The traps and the PR discipline are in
-  `<PLUGIN_ROOT>/skills/issue-loop/SKILL.md` Step 4 — verbatim rules:
-  no forks/remotes, PYTHONPATH into the worktree, no git stash, narrowest
-  check now, `Fixes #<n>` verified in `closingIssuesReferences`,
-  `--assignee` the author, `--reviewer` from CODEOWNERS and confirmed.
+  `<PLUGIN_ROOT>/refs/worktree-traps.md` — verbatim rules: no
+  forks/remotes, PYTHONPATH into the worktree, no git stash, narrowest check
+  now, `Fixes #<n>` verified in `closingIssuesReferences`, `--assignee` the
+  author, `--reviewer` from CODEOWNERS and confirmed.
 - Open **draft** when a decision is open (posted on the ISSUE, linked from
   the body); ready otherwise. Never claim a verification not performed.
 - Remove the worktree, report the PR link, and update the desk state entry

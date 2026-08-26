@@ -1,6 +1,6 @@
 ---
 name: issue-loop
-description: Work the open issues in a loop — take the most urgent, analyze it in a fresh agent, propose it in four lines, and on a go-ahead fix it in a worktree and open the PR, then the next until the user says stop. Takes the numbers to work and a batch size, so several can be proposed together and fixed in parallel worktrees. Notifies the review desk at every step.
+description: Work the open issues in a loop — take the most urgent, analyze it in a fresh agent, propose it in four lines, and on a go-ahead fix it in a worktree and open the PR, then the next until the user says stop. Takes the numbers to work and a batch size, so several can be proposed together and fixed in parallel worktrees; `bugfix` reads every eligible bug's plan and builds all the approved PRs after one single go-ahead. Notifies the review desk at every step.
 ---
 
 # Issue loop — the most urgent one, then the next
@@ -18,6 +18,7 @@ read the mandate from the invocation text
 build the candidate list, unless he named the numbers
 repeat:
     take the next BATCH (default 1) off the list
+        (bugfix: the whole eligible bug set, in one go)
     analyze them in parallel, in fresh agents
     propose them, and wait for one answer covering all of them
     for the approved ones: claim, fix, open the PR
@@ -32,11 +33,13 @@ listed rather than lost.
 **Never analyze ahead of the proposal.** Analysing every candidate and then
 asking him to pick throws most of those reads away; one analysis per proposal
 costs what the user actually accepts. A batch is the exception he asked for
-explicitly, and it is opt-in for exactly that reason.
+explicitly, and it is opt-in for exactly that reason — `bugfix` (Step 2b)
+included.
 
 **Autonomy**: analysis is read-only and free. Branches, commits and PRs are
 approved by the go-ahead on that issue — that word is the gate, whether it
-covers one issue or four. A merge is never autonomous.
+covers one issue, four, or the whole bug set of `bugfix` (Step 2b). A merge is
+never autonomous.
 
 ## Step -1 — The mandate
 
@@ -48,6 +51,7 @@ The invocation mechanism is host-specific; the meaning is identical everywhere.
 | `1145,1128,1059` (`#` optional) | **the working set**: exactly those, **in that order**, and then stop. Skip Step 0 entirely and do not rank — he already chose, his order wins |
 | `batch=N` | propose N together instead of one. Clamped to **1..4** |
 | `mine` | restrict the candidate list to issues assigned to him |
+| `bugfix` | **one via for the whole set of bugs** — see Step 2b. Analyse every eligible DEFECT, show all the plans, ask once, then open every approved PR in parallel |
 | anything else | a scope note, not a filter — say back how you read it |
 
 **Default `batch=1`**: one at a time is the shape that costs nothing when he
@@ -101,14 +105,18 @@ the others and say that one could not be read, with why.
 
 ## Step 2 — Propose, then wait
 
-Same four lines as `pr-loop`'s Lane B, because it is the same act — and the
-format does **not** degrade in a batch, it repeats:
+Same block as `pr-loop`'s Lane B, because it is the same act — **as text,
+never inside a code fence**: a fence reads as something to copy and flattens
+the labels he is scanning. The format does not degrade in a batch, it repeats.
 
-```
-#<n> — <author> opened it, <TYPE>, <age>
-what:    <one line: what is actually broken or asked>
-finding: <one line: the verified root cause, or the gap>
-propose: <one line: exactly what you will do if he says go>
+(the fence below delimits the template — your output has no fence)
+
+```markdown
+**#<n>** — <TYPE>, <age>, aperta da @<author>
+
+**Problema** · <one line: what is actually broken or asked>
+**Causa** · <one line: the verified root cause, or the gap>
+**Proposta** · <one line: exactly what you will do if he says go>
 ```
 
 `propose` is a single concrete action, never a menu. If it cannot be one
@@ -132,6 +140,52 @@ Say plainly when a proposal is not yours to execute: an issue somebody else
 holds (never touch it), a WORKFLOW-sized one that needs phases rather than a
 PR, a new issue whose assignment belongs to the Owner. Those end with what he
 should do, and you move on.
+
+## Step 2b — `bugfix`: one via for the whole set
+
+Asked for explicitly (`bugfix`, or "un via unico", "fai le PR di tutti i bug").
+It exists because **a bug rarely carries an architectural decision**, and
+because the PR is reviewed afterwards anyway: the control step is not lost by
+approving the set, it moves to where it already was. So he reads the plans
+once, says go once, and the PRs are built in parallel.
+
+**Eligible** — every condition, checked on the analyst's verdict, not on the
+title:
+
+- `type` DEFECT;
+- SINGLE-PHASE, size EASY or MEDIUM;
+- **no open decision** in the verdict. This is the gate that makes the mode
+  safe: the moment an analysis names alternatives, that issue is not a bug
+  with an obvious fix, whatever its label says;
+- the verdict names the files its minimal change touches (unknown files
+  cannot be conflict-checked, and Step 3 needs them);
+- unassigned, or assigned to him; no open PR on it.
+
+Everything else stays in the normal lane, **said out loud, with the reason**,
+one line each: `#1204 fuori dal via unico: WORKFLOW`, `#1188 fuori: decisione
+aperta (due nomi possibili per l'hook)`. A set presented as "all the bugs"
+that quietly dropped three is worse than no mode at all.
+
+**How it runs.** Analyse the eligible set in parallel (this is him saying
+*spend the reads*), print every plan in the Step 2 format, say how many there
+are, then ask **once**:
+
+> Otto piani. Vai su tutte, o quali lascio fuori?
+
+`vai` / `ok` / `procedi` / `si` approves the whole set. Naming numbers
+excludes exactly those and approves the rest. Anything else is a conversation:
+answer it, and re-ask the one question.
+
+The 1..4 clamp of `batch=N` does **not** apply here — it exists to keep a
+host answer box readable, and this answer is typed. What does apply is Step 3:
+the conflict graph over the approved set, and the components run in parallel
+while the members of one component run in sequence. Sixteen bugs are not
+sixteen agents.
+
+The merge stays out of it, as always: every PR opens with its reviewer
+requested, and nothing is merged unattended. That is the later control step
+this mode leans on — say so in the closing report rather than implying the
+work is done.
 
 ## Step 3 — What can run in parallel, and what cannot
 
@@ -160,40 +214,13 @@ never touch an issue somebody else holds. Base branch: the repo's default
 branch read with `gh repo view --json defaultBranchRef`, never the one the
 harness reports.
 
-Every fix agent runs with `isolation: "worktree"` and its prompt carries,
-verbatim:
+Every fix agent runs one worktree of its own, under
+`<PLUGIN_ROOT>/refs/worktree-traps.md` — the shared stash stack, the
+`PYTHONPATH`, the per-agent scratch `GENRO_GNRFOLDER`, which test count is
+worth believing, the push and PR rules to hand the agent verbatim. That file
+is the protocol; hand the agent the analyst's verdict verbatim with it.
 
-> Push to `origin`. Open the PR with `gh pr create --repo <owner>/<repo>
-> --base <base>`. Do NOT fork, do NOT add remotes, do NOT open a PR against
-> any other repo. If a push is rejected for permissions, STOP and report.
-
-plus **the worktree traps — this list is the protocol, and `pr-loop` and
-`issue-work` both point at it.** Every one of them bites harder with several
-agents at once:
-
-- `gnr.*` imports resolve to the **main checkout** unless
-  `PYTHONPATH=<worktree>/gnrpy`, and `module.__file__` is asserted inside the
-  worktree;
-- anything under `resources/`/`projects/` needs a scratch `GENRO_GNRFOLDER`
-  whose directory is named `gnr` — **a distinct one per agent**. One shared
-  scratch folder across concurrent agents is a race that only shows up at
-  runtime;
-- **never `git stash`**: worktrees share one stash stack. Use a patch file;
-- full-suite counts from concurrent agents are worthless under `tests/sql/`
-  (the pg fixture pkills sibling postgres), so gate on
-  `pytest gnrpy/tests/ -q --ignore=gnrpy/tests/sql`. With several agents even
-  that is noisy: each reports **both** its narrowest test and the suite, and
-  **the gate is the narrow one**.
-
-Hand the agent the analyst's verdict verbatim. One accepted issue = one PR,
-every type and size: **draft** when a decision is open (posted on the ISSUE,
-linked from the body), **ready** when complete and verified. Body sections:
-Problem/Root cause or Motivation, Change, Verification (never claim what was
-not run), Related issue with `Fixes #<n>` **in the PR body** — then verify
-`closingIssuesReferences` is non-empty. `--assignee` the author,
-`--reviewer` resolved from CODEOWNERS on the touched paths and checked
-against `gh api repos/<owner>/<repo>/collaborators` (a login with no access
-is dropped without an error), then confirm `reviewRequests` landed.
+One accepted issue = one PR.
 
 Then loop: back to Step 1 with the next batch, unless he has said stop.
 
@@ -215,7 +242,9 @@ Each agent returns `{n, status: ok|failed, pr, why}`. Then:
 Reached by `basta` / `stop` / `per ora ok`, by an exhausted list, or by a
 proposal he did not answer. Do not keep pushing the queue at him.
 
-Tables: PRs opened (issue → PR → draft/ready → verified → assignee+reviewer),
+Tables: PRs opened (issue → PR → draft/ready → verified → assignee+reviewer)
+— after a `bugfix` run, say in the same breath that the review of those PRs is
+the control step that is still owed,
 the failures with their reason, WORKFLOW ones with their phases, decisions
 left to the user, finished work found on stale branches, and — the one that
 makes stopping halfway clean — **what was never reached**, in queue order,

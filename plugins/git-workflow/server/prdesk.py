@@ -334,34 +334,50 @@ class Desk:
                 "gates": gates,
                 "grid": self._current_grid(state.get("grid"), rows, state),
                 "triage_complete": complete,
-                "triage_counts": counts,
-                "shortlist": state.get("shortlist")}
+                "triage_counts": counts}
 
     def issues(self, refresh=False):
         raw = self._raw_issues(refresh)
         rows = [dict(row) for row in raw["rows"]]
-        for row in rows:
-            row["type"] = issue_type(row["labels"], row["title"])
-            row["action"] = issue_handoff(row, self.repo)
         state = deskstate.load(self.repo)
+        notes = state.get("issues") or {}
+        for row in rows:
+            record = notes.get(str(row["n"])) or {}
+            # a reading of the body beats a guess from the labels, so the
+            # model's type wins where it wrote one — and there is one type
+            # per row, not one here and another in the analysis panel
+            row["type"] = record.get("type") or issue_type(row["labels"],
+                                                           row["title"])
+            row["impact"] = record.get("impact")
+            # an analysis is dated, and the issue's own last activity says
+            # whether it has been overtaken. No fingerprint to copy: the
+            # date is a fact the model already knows how to write.
+            at = record.get("at")
+            row["analysis_at"] = at
+            row["analysis_stale"] = bool(
+                at and row.get("updated") and at[:10] < row["updated"][:10])
+            row["action"] = issue_handoff(row, self.repo)
         deskstate.annotate_issues(rows, state)
         deskstate.annotate_requests(rows, state)
         try:
             check = self._crosscheck(self._raw_queue(False)["rows"], refresh)
             issuecheck.annotate(rows, check)
-            computed = issuecheck.shortlist_export(rows)
+            shortlist = issuecheck.shortlist_export(rows)
         except Exception as exc:
             for row in rows:
                 row.setdefault("cross", {"branches": [], "open_prs": [],
                                          "seen_by_me": None, "mine": None,
                                          "note": "cross-check non disponibile: %s"
                                                  % str(exc)[:80]})
-            computed = None
-        shortlist = state.get("shortlist") or computed
+            shortlist = None
+        picked = {r["n"] for r in (shortlist or {}).get("rows", [])}
+        for row in rows:
+            row["in_shortlist"] = row["n"] in picked
         return {"rows": rows, "total": raw.get("total", len(rows)),
                 "truncated": raw.get("truncated", False),
                 "shortlist": shortlist,
-                "shortlist_computed": not state.get("shortlist")}
+                "ranked": bool(shortlist and any(r.get("impact")
+                                                 for r in shortlist["rows"]))}
 
     def live_state(self):
         st = deskstate.load(self.repo)
@@ -378,7 +394,6 @@ class Desk:
                 # from /api/queue rather than matching fingerprints a second
                 # time in its own copy of the rule
                 "triage": {"generated": grid.get("generated")},
-                "shortlist": st.get("shortlist"),
                 "chase": st.get("chase") or {},
                 "session": st.get("session"), "pong": st.get("pong"),
                 "watcher": {"alive": self.chat and age is not None and age < 10,

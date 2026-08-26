@@ -903,11 +903,43 @@ class IssueCrossCheck(unittest.TestCase):
                                     "open_prs": {}})
         self.assertIn("lavoro fermo", row["cross"]["note"])
 
-    def test_the_desk_computes_the_shortlist_and_says_so(self):
+    def test_the_desk_computes_the_shortlist_every_read(self):
         got = fresh_desk().issues()
-        self.assertTrue(got["shortlist_computed"])
         self.assertTrue(got["shortlist"]["rows"])
+        self.assertFalse(got["ranked"])
         self.assertTrue(all("cross" in row for row in got["rows"]))
+        self.assertTrue(all("in_shortlist" in row for row in got["rows"]))
+
+    def test_a_model_ranking_reorders_it_and_nothing_else(self):
+        desk = fresh_desk()
+        before = [r["n"] for r in desk.issues()["shortlist"]["rows"]]
+        last = before[-1]
+        deskstate.save(REPO, {"issues": {str(last): {"impact": 1,
+                                                     "finding": "rompe il salvataggio"}}})
+        got = desk.issues()
+        after = [r["n"] for r in got["shortlist"]["rows"]]
+        self.assertTrue(got["ranked"])
+        self.assertEqual(after[0], last)
+        self.assertEqual(sorted(after), sorted(before), "the filter is not the model's")
+
+    def test_the_model_type_wins_over_the_label_guess(self):
+        desk = fresh_desk()
+        n = desk.issues()["rows"][0]["n"]
+        deskstate.save(REPO, {"issues": {str(n): {"type": "REQUEST"}}})
+        row = next(r for r in desk.issues()["rows"] if r["n"] == n)
+        self.assertEqual(row["type"], "REQUEST")
+
+    def test_an_analysis_the_issue_moved_past_is_marked_stale(self):
+        desk = fresh_desk()
+        row = desk.issues()["rows"][0]
+        deskstate.save(REPO, {"issues": {str(row["n"]): {
+            "finding": "vecchia", "at": "2020-01-01T10:00:00"}}})
+        got = next(r for r in desk.issues()["rows"] if r["n"] == row["n"])
+        self.assertTrue(got["analysis_stale"])
+        deskstate.save(REPO, {"issues": {str(row["n"]): {
+            "finding": "fresca", "at": row["updated"]}}})
+        got = next(r for r in desk.issues()["rows"] if r["n"] == row["n"])
+        self.assertFalse(got["analysis_stale"])
 
     def test_the_cross_check_is_loaded_once_per_snapshot(self):
         desk = fresh_desk()

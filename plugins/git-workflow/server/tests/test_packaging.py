@@ -74,6 +74,42 @@ class Packaging(unittest.TestCase):
             self.assertIn("**Proposta** ·", text, name)
             self.assertIn("code fence", text, name)
 
+    def test_the_worktree_protocol_has_one_home(self):
+        traps = (PLUGIN / "refs" / "worktree-traps.md").read_text()
+        for rule in ("PYTHONPATH", "GENRO_GNRFOLDER", "git stash",
+                     "Do NOT fork", "Fixes #"):
+            self.assertIn(rule, traps, rule)
+        for name in ("pr-loop", "issue-loop", "issue-work"):
+            text = (PLUGIN / "skills" / name / "SKILL.md").read_text()
+            self.assertIn("refs/worktree-traps.md", text, name)
+            self.assertNotIn("worktrees share one stash stack", text,
+                             "%s copies the traps instead of citing them" % name)
+
+    def test_the_issue_decision_blocks_are_not_fences_either(self):
+        for name in ("issue-analyze", "issue-loop"):
+            text = (PLUGIN / "skills" / name / "SKILL.md").read_text()
+            self.assertIn("**Proposta** ·", text, name)
+            self.assertIn("code fence", text, name)
+
+    def test_the_wide_bug_mode_states_its_gate(self):
+        """One go-ahead over many PRs is safe only because a bug rarely
+        carries a decision — so the mode must exclude the ones that do, out
+        loud."""
+        text = (PLUGIN / "skills" / "issue-loop" / "SKILL.md").read_text()
+        self.assertIn("bugfix", text)
+        for gate in ("no open decision", "DEFECT", "SINGLE-PHASE",
+                     "said out loud"):
+            self.assertIn(gate, text, gate)
+
+    def test_no_skill_writes_a_shortlist_or_a_grid_back(self):
+        """Both are the desk's: computed on every read (shortlist) or
+        published on the press (grid). A model copy of either was one more
+        thing to keep in sync, and it drifted."""
+        for name in ("issue-triage", "issue-desk", "pr-triage", "review-desk"):
+            text = (PLUGIN / "skills" / name / "SKILL.md").read_text()
+            self.assertNotIn('"shortlist": {', text, name)
+            self.assertNotIn('"grid": {', text, name)
+
     def test_the_verification_checklist_keeps_its_cases(self):
         why = (PLUGIN / "refs" / "pr-verification-WHY.md").read_text()
         self.assertIn("claim, not evidence", why)

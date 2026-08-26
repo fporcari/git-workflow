@@ -191,6 +191,7 @@ class GitHubProvider(Provider):
                 "n": issue["number"],
                 "title": issue["title"],
                 "created": issue["createdAt"][:10],
+                "updated": issue["updatedAt"],
                 "author": (issue.get("author") or {}).get("login") or "ghost",
                 "labels": [label["name"] for label in issue["labels"]["nodes"]],
                 "assignees": [a["login"] for a in issue["assignees"]["nodes"]],

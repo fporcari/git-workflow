@@ -116,6 +116,7 @@ class ForgejoProvider(Provider):
                 "n": issue["number"],
                 "title": issue["title"],
                 "created": (issue.get("created_at") or "")[:10],
+                "updated": issue.get("updated_at") or "",
                 "author": (issue.get("user") or {}).get("login"),
                 "labels": [label["name"] for label in issue.get("labels") or []],
                 "assignees": [a["login"] for a in issue.get("assignees") or []],

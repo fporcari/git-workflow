@@ -127,9 +127,11 @@ then for each event in order:
   `grid` and `chase` to the state file: do not copy them anywhere, and never
   rewrite them. Add only what a model can add, per PR, under `prs.<n>` — the
   one-line `what`, the reading of an `asks` row, `conflict_kind` on a DIRTY
-  branch — plus §8's repo-level findings in chat. For issue-triage the export
-  section still applies (`shortlist`). Skip the skill's closing handover
-  question — the user drives from the dashboard.
+  branch — plus §8's repo-level findings in chat. For issue-triage the same
+  rule holds: the cross-check and the shortlist are recomputed by the desk on
+  every read, so what you write is per issue under `issues.<n>` — the impact
+  rank, the verified type, the finding, and `at`. Skip the skill's closing
+  handover question — the user drives from the dashboard.
 - **`{"kind": "run", "flow": "pr-loop"|"issue-loop", "ns": [...], "batch": N}`**
   — run that skill here in chat, step by step. `ns` is the rows the user
   picked by hand in the dashboard: it means *exactly those, in that order,
@@ -237,7 +239,10 @@ explicit `pr-triage` click the server computes §7 verdicts, §5 blocks and §6
 chase and **writes them itself**, keyed to a fingerprint of the fields each
 verdict reads: a PR the provider has moved since becomes `stale`, one never
 triaged is `missing`. The issue cross-check remains a deterministic provider
-annotation.
+annotation, and so is the issue shortlist — a filter is not a verdict, and
+neither is ever a model's copy to keep in sync. An issue analysis is DATED
+instead: the desk compares `issues.<n>.at` with the issue's last activity and
+says *analisi da aggiornare* when the issue has moved past the reading.
 What the model is called for is what only it can do, one PR at a time: the
 rows marked `asks`, one-line explanations on request, the impact ranking, and
 pr-analyze's diff read. It writes those under `prs.<n>`, never over the grid.

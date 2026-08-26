@@ -52,12 +52,31 @@ other keys):
 
 ```json
 {"issues": {"<n>": {"type": "DEFECT", "finding": "<una riga, in italiano>",
-                     "size": "EASY", "phase": "SINGLE-PHASE"}}}
+                     "size": "EASY", "phase": "SINGLE-PHASE",
+                     "at": "<ISO timestamp, now>"}}}
 ```
 
 `finding` is user-facing (the desk shows it): write it in Italian. Anything
-meant to be posted on the issue stays in English.
+meant to be posted on the issue stays in English. `at` is not decoration: the
+desk compares it with the issue's last activity and marks the analysis *da
+aggiornare* rather than showing a reading the issue has moved past. `type`
+overrides the desk's guess from the labels — write the one you verified.
 
 When run for a caller (issue-loop, the desk), the final message is one JSON
-object with those five fields plus `finding`; when run for a human in chat,
-report in prose and persist the same entry.
+object with those fields. In chat, show the decision as text — **not inside a
+code fence**, which flattens the labels he is scanning and offers a copy
+nobody wants:
+
+(the fence below delimits the template — your output has no fence)
+
+```markdown
+**#<n>** — <TYPE>, <EASY|MEDIUM|HARD>, <SINGLE-PHASE|WORKFLOW>
+
+**Problema** · <cosa è rotto o richiesto, una riga>
+**Causa** · <la causa verificata nel codice, o il gap>
+**Proposta** · <la mossa minima, una riga>
+**Verifica** · <come si dimostra, con l'infra di test che esiste>
+```
+
+An open decision goes after the block, as a question with the named
+alternatives and their one-line consequence — never folded into `Proposta`.

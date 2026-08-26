@@ -359,11 +359,11 @@ group:
 > gruppo 2 (sequenziale): #1145 → #1128, toccano entrambe
 > `gnrpy/gnr/web/gnrbaseclasses.py`
 
-Every agent that touches a working tree runs with `isolation: "worktree"`, one
-per PR, under the traps in `<PLUGIN_ROOT>/skills/issue-loop/SKILL.md`
-Step 4 — a shared stash stack, `PYTHONPATH`, a per-agent scratch
-`GENRO_GNRFOLDER`, which test count is worth reading. That list is the
-protocol; every one of its entries bites harder with several agents at once.
+Every agent that touches a working tree runs one worktree per PR, under
+`<PLUGIN_ROOT>/refs/worktree-traps.md` — a shared stash stack,
+`PYTHONPATH`, a per-agent scratch `GENRO_GNRFOLDER`, which test count is
+worth reading. That file is the protocol; every one of its entries bites
+harder with several agents at once.
 
 ### When one of them fails
 
