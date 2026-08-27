@@ -1,7 +1,7 @@
 {
   "name": "git-workflow",
   "description": "PR and issue workflow toolkit: pr-triage / pr-loop / issue-triage / issue-loop skills plus a local review-desk dashboard. Startup and reload fetch provider facts; explicit triage publishes fingerprinted verdicts, while the model reads only what needs judgement. The loops take the numbers to work and a batch size, so several can be proposed together and executed in parallel worktrees. Pluggable git hosting providers (GitHub today, Forgejo ready).",
-  "version": "0.19.0",
+  "version": "0.20.0",
   "author": {
     "name": "Francesco Porcari",
     "email": "fporcari@softwell.it"

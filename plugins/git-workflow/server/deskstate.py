@@ -78,17 +78,28 @@ def load(repo):
     return safejson.read(state_path(repo))
 
 
+DURABLE = ("grid", "chase", "prs", "issues")
+
+
 def reset(repo):
-    """Archive the previous session's state so the desk starts empty:
-    stale analyses and feed lines read as fresh data otherwise. The old
-    file survives as .prev next to it. The published grid goes with them —
-    a relaunch is a request for the truth now, and re-publishing it costs
-    one press and no model turn; `--keep-state` is for keeping it. The inbox
+    """Archive the previous session's ephemera so the desk starts clean:
+    old feed lines, requests and working markers read as fresh data
+    otherwise. The old file survives as .prev next to it.
+
+    The TRIAGE is durable and stays: the grid re-verdicts itself on every
+    read (the engine recomputes; a relaunch cannot make it lie) and the
+    model's per-PR/per-issue notes are dated, so what has expired shows as
+    expired instead of being thrown away with the session. `--keep-state`
+    keeps everything, ephemera included. The inbox
     is emptied only when its events are stale: the two desks start back to
     back and a click received while the sibling starts must survive its
     reset."""
     path = state_path(repo)
+    kept = {key: value for key, value in safejson.read(path).items()
+            if key in DURABLE}
     safejson.archive(path, path.with_suffix(".json.prev"))
+    if kept:
+        save(repo, kept)
     inbox = runtime_path(repo, "inbox.jsonl")
     if inbox.exists() and inbox.stat().st_size and time.time() - inbox.stat().st_mtime > 60:
         inbox.write_text("")

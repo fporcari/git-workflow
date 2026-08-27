@@ -1,6 +1,6 @@
 ---
 name: pr-desk
-description: Launch the PR desk — the dashboard of the pull request queue, attached to this chat. Startup and reload fetch provider facts only; an explicit pr-triage button publishes the grid and chase from the rows already downloaded, while missing and stale triages stay highlighted. Merge orders, pr-analyze and pr-loop also come back here as events. Use when the user asks for the PR desk or a PR dashboard.
+description: Launch the PR desk — the dashboard of the pull request queue, attached to this chat. Startup and reload fetch provider facts only; an explicit pr-triage button publishes the grid and chase on a fresh provider read, and from then on the engine re-verdicts moved PRs on every read — only never-triaged rows stay highlighted. Merge orders, pr-analyze and pr-loop also come back here as events. Use when the user asks for the PR desk or a PR dashboard.
 ---
 
 # PR desk
@@ -31,6 +31,7 @@ fetches that paint in seconds. `pr-triage` arrives only when the user presses
 its button. That press computes and publishes the whole deterministic grid on
 the server, and the event carries `rows` — the path of the JSON the desk has
 already downloaded. Run the skill on that file rather than re-querying, and
-add only per-PR work: the grid is already on screen. The desk marks every PR
-whose published triage is absent as `missing` and every PR whose provider
-fingerprint changed as `stale`.
+add only per-PR work: the grid is already on screen, and the file's
+`needs_model` names the only rows still owing a reading. A PR the provider
+moves is re-verdicted by the engine itself on every read — the published
+triage never expires; only a PR no press has ever seen is `missing`.

@@ -14,10 +14,12 @@ RUN_BENCH=false
 [ "${1:-}" = "--bench" ] && RUN_BENCH=true
 TEST_LOG=$(mktemp -t git-workflow-tests.XXXXXX)
 DESK=""
+UI_HOME=""
 
 cleanup() {
   [ -n "$DESK" ] && kill "$DESK" 2>/dev/null || true
   rm -f "$TEST_LOG"
+  [ -n "$UI_HOME" ] && rm -rf "$UI_HOME"
 }
 trap cleanup EXIT INT TERM
 
@@ -31,8 +33,11 @@ fi
 
 echo
 echo "== ui (real page, real server, fixture provider) =="
-# no --no-prefetch: the UI tests exercise the real boot, gate fill included
-python3 prdesk.py --provider fixture --port "$PORT" --repo desk-tests/ui 2>/dev/null &
+# no --no-prefetch: the UI tests exercise the real boot, gate fill included.
+# Throwaway HOME: the triage is durable across relaunches by design, and a
+# grid left by the previous run would make the virgin-boot checks lie.
+UI_HOME=$(mktemp -d -t git-workflow-ui-home.XXXXXX)
+HOME="$UI_HOME" python3 prdesk.py --provider fixture --port "$PORT" --repo desk-tests/ui 2>/dev/null &
 DESK=$!
 for _ in $(seq 40); do
   curl -sf -m 1 "http://127.0.0.1:$PORT/api/meta" >/dev/null 2>&1 && break

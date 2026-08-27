@@ -165,10 +165,12 @@ Options: `--repo`, `--provider github|forgejo|fixture`, `--me`, `--port`,
 
 **It does not triage at startup.** It fetches the provider itself and paints
 in seconds. Reload performs the same pure fetch. Pressing the triage button
-computes and publishes the whole grid on the spot, then hands the chat the
-rows already downloaded rather than making the skill re-query. Every PR is
-marked as never triaged, current, or stale — stale meaning the fields its
-verdict was read from have changed since.
+reads the provider fresh, computes and publishes the whole grid on the spot,
+then hands the chat the rows already downloaded rather than making the skill
+re-query — and only the rows still owing a model reading (`needs_model`).
+From then on the triage is durable: a PR the provider moves is re-verdicted
+by the engine on every read and the grid survives a desk relaunch; only a PR
+no press has ever seen is marked as never triaged.
 
 **Choosing what the loop works.** cmd-click (shift-click for a stretch) picks
 rows; ▶ then runs `pr-loop`/`issue-loop` on **exactly those, in that order,

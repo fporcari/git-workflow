@@ -709,20 +709,58 @@ class Blocks(unittest.TestCase):
                             for r in queue["rows"]))
         self.assertEqual(len(queue["grid"]["blocks"]), 5)
 
-    def test_a_mismatched_fingerprint_stales_only_that_pr(self):
+    def test_a_moved_pr_is_reverdicted_not_expired(self):
+        """The grid is pure engine output: a row the provider moved is
+        recomputed on read (0.07 ms), never handed back as `da triagiare`.
+        This is what used to make 'molti triage scadono subito'."""
         desk = fresh_desk()
         self.exported(desk)
-        state = deskstate.load(REPO)
-        first = next(r for b in state["grid"]["blocks"] for r in b["rows"])
-        first["triage_key"] = "old"
-        deskstate.save(REPO, state)
+        row = next(r for r in desk.provider.data["rows"] if r["n"] == 1145)
+        row["last"] = {"t": "2026-08-27T13:00:00Z", "who": "cgabriel",
+                       "ch": "comment"}
+        cache.store(REPO, "queue", desk.provider.queue(REPO, desk.me))
         queue = desk.queue()
-        stale = [r for r in queue["rows"] if r["triage_status"] == "stale"]
-        self.assertEqual([r["n"] for r in stale], [first["n"]])
-        self.assertFalse(queue["triage_complete"])
+        moved = next(r for r in queue["rows"] if r["n"] == 1145)
+        self.assertEqual(moved["triage_status"], "current")
+        self.assertEqual(moved["todo"], "answer the review")   # live verdict
+        self.assertTrue(queue["triage_complete"])
+        self.assertEqual(queue["triage_counts"]["stale"], 0)
         self.assertEqual(sum(len(b["rows"]) for b in queue["grid"]["blocks"]),
-                         len(queue["rows"]) - 1)
-        self.assertEqual(queue["chase"], {})
+                         len(queue["rows"]))
+
+    def test_cold_gates_do_not_expire_the_triage(self):
+        """A relaunch clears the cache but keeps the grid; the warm-up must
+        not read as 51 righe 'da aggiornare'."""
+        desk = fresh_desk()
+        self.exported(desk)
+        cache.clear(REPO)
+        counts = desk.queue()["triage_counts"]
+        self.assertEqual(counts["stale"], 0)
+        self.assertEqual(counts["missing"], 0)
+
+    def test_a_conflict_note_upgrades_the_row_without_a_press(self):
+        """conflict_kind used to expire the row it explained (it is a
+        VERDICT_FIELD); now the engine folds it in on the next read."""
+        desk = fresh_desk()
+        self.exported(desk)
+        deskstate.update(REPO, lambda s: s.setdefault("prs", {}).update(
+            {"1083": {"conflict_kind": "mechanical"}}))
+        row = next(r for r in desk.queue()["rows"] if r["n"] == 1083)
+        self.assertEqual(row["triage_status"], "current")
+        self.assertEqual(row["autorun"], "A3")
+
+    def test_a_new_pr_is_the_only_untriaged_one(self):
+        desk = fresh_desk()
+        self.exported(desk)
+        template = dict(desk.provider.data["rows"][0], n=9999,
+                        title="brand new", author="dgpaci")
+        desk.provider.data["rows"].append(template)
+        cache.store(REPO, "queue", desk.provider.queue(REPO, desk.me))
+        queue = desk.queue()
+        missing = [r["n"] for r in queue["rows"]
+                   if r["triage_status"] == "missing"]
+        self.assertEqual(missing, [9999])
+        self.assertFalse(queue["triage_complete"])
 
 
 class TriageOwnership(unittest.TestCase):
@@ -780,17 +818,63 @@ class TriageOwnership(unittest.TestCase):
         self.assertEqual(row["autorun"], "A3")
 
 
-class RelaunchStartsUntriaged(unittest.TestCase):
-    """A relaunch is a request for the truth now. Re-publishing the grid is
-    one press and no model turn, so nothing is carried over silently;
-    --keep-state is the way to keep it."""
+class RelaunchKeepsTheTriage(unittest.TestCase):
+    """The triage is durable: the grid re-verdicts itself on every read and
+    the model's notes are dated, so a relaunch keeps them and drops only the
+    session's ephemera — feed, requests, working markers."""
 
-    def test_a_relaunch_drops_the_published_grid(self):
+    def test_a_relaunch_keeps_grid_and_notes_drops_the_ephemera(self):
         desk = fresh_desk()
         desk.run_triage()
+        deskstate.update(REPO, lambda s: s.update(
+            prs={"1145": {"what": "una riga"}},
+            feed=[{"msg": "vecchia"}],
+            requests={"run:pr-loop": {"status": "pending"}}))
         deskstate.reset(REPO)
-        self.assertNotIn("grid", deskstate.load(REPO))
-        self.assertFalse(desk.queue()["triage_complete"])
+        state = deskstate.load(REPO)
+        self.assertIn("grid", state)
+        self.assertEqual(state["prs"]["1145"]["what"], "una riga")
+        self.assertNotIn("feed", state)
+        self.assertNotIn("requests", state)
+        self.assertTrue(desk.queue()["triage_complete"])
+
+
+class IncrementalModelTriage(unittest.TestCase):
+    """The press re-reads the provider but asks the model only for what is
+    new or moved past its note: `needs_model` in the rows export."""
+
+    def setUp(self):
+        deskstate.save(REPO, {})
+
+    def test_noted_rows_are_not_asked_again(self):
+        desk = fresh_desk()
+        rows = json.loads(Path(desk.run_triage()).read_text())
+        self.assertEqual(sorted(rows["needs_model"]),
+                         sorted(r["n"] for r in rows["queue"]))
+        deskstate.update(REPO, lambda s: s.update(prs={
+            str(r["n"]): {"what": "letta", "at": "2026-08-27T10:00:00"}
+            for r in rows["queue"]}))
+        again = json.loads(Path(desk.run_triage()).read_text())
+        self.assertEqual(again["needs_model"], [])
+
+    def test_a_note_the_pr_moved_past_is_asked_again(self):
+        desk = fresh_desk()
+        rows = json.loads(Path(desk.run_triage()).read_text())
+        n = rows["queue"][0]["n"]
+        deskstate.update(REPO, lambda s: s.update(prs={
+            str(r["n"]): {"what": "letta", "at": "2026-08-27T10:00:00"}
+            for r in rows["queue"]}))
+        row = next(r for r in desk.provider.data["rows"] if r["n"] == n)
+        row["last"] = {"t": "2026-08-28T09:00:00Z", "who": "genro",
+                       "ch": "comment"}
+        again = json.loads(Path(desk.run_triage()).read_text())
+        self.assertEqual(again["needs_model"], [n])
+
+    def test_an_undated_note_counts_as_owed(self):
+        self.assertEqual(
+            prdesk.needs_model(
+                [{"n": 1, "last": None}], {"1": {"what": "senza data"}}),
+            [1])
 
 
 class TriageKey(unittest.TestCase):

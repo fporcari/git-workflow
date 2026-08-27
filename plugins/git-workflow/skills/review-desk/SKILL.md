@@ -133,8 +133,11 @@ then for each event in order:
   instruction to follow `<PLUGIN_ROOT>/skills/pr-triage/SKILL.md`
   (or issue-triage) report-only from that file. The agent does what the
   skill's desk mode prescribes — never touches `grid`/`chase` (the desk has
-  ALREADY published them), writes per PR under `prs.<n>` (the one-line
-  `what`, the reading of an `asks` row, `conflict_kind` on a DIRTY branch)
+  ALREADY published them), works **only the rows the file's `needs_model`
+  names** (the triage is incremental: a dated note not overtaken stands),
+  writes per PR under `prs.<n>` (the one-line
+  `what`, the reading of an `asks` row, `conflict_kind` on a DIRTY branch,
+  and `at` — the date that spares the re-read)
   or per issue under `issues.<n>` (impact, verified type, finding, `at`),
   posts progress with `notify.py`, and closes `triage:<flow>` itself. The
   state file takes concurrent writers safely (safejson locks), so other
@@ -246,10 +249,13 @@ the user says so or the preview server is stopped; a watcher exit code 3
 
 **Fetch paints facts; triage publishes verdicts.** On the PR desk, boot and
 reload show the provider queue without pretending it has been triaged. On the
-explicit `pr-triage` click the server computes §7 verdicts, §5 blocks and §6
-chase and **writes them itself**, keyed to a fingerprint of the fields each
-verdict reads: a PR the provider has moved since becomes `stale`, one never
-triaged is `missing`. The issue cross-check remains a deterministic provider
+explicit `pr-triage` click the server reads the provider FRESH, computes §7
+verdicts, §5 blocks and §6 chase and **writes them itself**. From then on the
+triage is durable: a PR the provider moves is re-verdicted by the engine on
+every read (nothing in the grid is a model's to expire) and survives a desk
+relaunch; only a PR no press has ever seen is `missing`, and the next press
+asks the model only for those plus the notes the PRs moved past
+(`needs_model`). The issue cross-check remains a deterministic provider
 annotation, and so is the issue shortlist — a filter is not a verdict, and
 neither is ever a model's copy to keep in sync. An issue analysis is DATED
 instead: the desk compares `issues.<n>.at` with the issue's last activity and

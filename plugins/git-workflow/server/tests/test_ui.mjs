@@ -325,21 +325,23 @@ ok("the blocks render as their own cards",
 ok("a block row is clickable through to the detail panel",
    document.getElementById("chaseWrap").querySelectorAll("[data-n]").length > 0);
 
-/* a PR the provider has moved since the triage: the server marks that row
-   stale and drops it from the grid — the page must show it as such */
-const staleN = triaged.queue.rows[0].n;
-const staleDesk = {...triaged, queue: {...triaged.queue,
+/* a PR no triage press has ever seen: the server hands it as `missing`
+   and keeps it out of the grid — the page must show it as such. (A changed
+   PR is re-verdicted by the engine itself and never expires: `stale` is no
+   longer a state the server emits.) */
+const newN = triaged.queue.rows[0].n;
+const newDesk = {...triaged, queue: {...triaged.queue,
   triage_complete: false, chase: {},
-  rows: triaged.queue.rows.map(r => r.n !== staleN ? r : ({...r,
+  rows: triaged.queue.rows.map(r => r.n !== newN ? r : ({...r,
     state: "untriaged", autorun: "-", action: null, waiting_on: null,
-    todo: "triage da aggiornare", triage_status: "stale"})),
+    todo: "da triagiare", triage_status: "missing"})),
   grid: {...triaged.queue.grid, blocks: triaged.queue.grid.blocks.map(b =>
-    ({...b, rows: b.rows.filter(r => +r.n !== staleN)}))}}};
-page.applyDesk(staleDesk);
+    ({...b, rows: b.rows.filter(r => +r.n !== newN)}))}}};
+page.applyDesk(newDesk);
 page.view = "untriaged"; page.render();
-ok("a changed PR alone becomes stale",
-   page.visiblePrs().length === 1 && page.visiblePrs()[0].n === staleN &&
-   document.getElementById("tbody").innerHTML.includes("triage scaduto"));
+ok("a never-triaged PR alone reads as da triagiare",
+   page.visiblePrs().length === 1 && page.visiblePrs()[0].n === newN &&
+   document.getElementById("tbody").innerHTML.includes("da triagiare"));
 page.applyDesk(triaged);
 
 page.view = "todo";

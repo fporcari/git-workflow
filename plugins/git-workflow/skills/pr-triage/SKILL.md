@@ -67,14 +67,18 @@ screen before you read a line. The file holds:
 | `grid` | the five blocks of §5, published; every row keyed by `triage_key` |
 | `chase` | the §6 blocks, per person, oldest first, with the dates — published |
 | `gates` | the §3 gate of every base: who may land, approvals, conversation resolution, CODEOWNERS |
+| `needs_model` | the numbers still owing a reading: no note yet, or the PR moved past its dated note |
 | `shortlist` | the ten issues worth reading |
 
 **Do not recompute any of it, and do not copy it anywhere.** Reproducing that
 grid costs ~28k tokens and a whole turn to re-derive a mapping the desk
 computes in 0.07 ms — and a row dropped in the copy reads as a PR nobody ever
-triaged. Your job is only what the fields cannot answer:
+triaged. Your job is only what the fields cannot answer, and **only on the
+rows in `needs_model`** — the triage is incremental: a note already written
+and not overtaken stands, and re-reading its PR re-buys a reading the state
+file already holds. On those rows:
 
-1. the rows marked `asks` — those need the diff or the review read (§4's
+1. the ones marked `asks` — those need the diff or the review read (§4's
    DIRTY/UNSTABLE rules, and the CODEOWNERS per-path question when
    `gates.<base>.per_path` is true);
 2. **what each PR is FOR**, one line, in the user's language — the desk shows
@@ -360,10 +364,15 @@ preserve every other key):
     "1027": {"what": "<one line in the user's language, no verdict>",
              "analysis": "<in italiano: cosa fa + perché quel verdetto>",
              "next": "<what is to be done>",
+             "at": "<ISO timestamp, now>",
              "conflict_kind": "mechanical"}
   }
 }
 ```
+
+`at` is what makes the note durable: the desk compares it with the PR's own
+last activity to decide whether the next press asks for this PR again
+(`needs_model`). A note without it is re-asked every time.
 
 `what` replaces the raw title in the desk's blocks. `conflict_kind` is the one
 value that feeds the engine back: on a `DIRTY` branch of his own, `mechanical`
@@ -372,8 +381,8 @@ value that feeds the engine back: on a `DIRTY` branch of his own, `mechanical`
 Write it only for a conflict you actually inspected — §4's rule stands.
 
 A direct invocation with no desk behind it writes nothing: report the blocks
-in chat. There is no `triage_key` to hang them on, and a grid published
-without one is stale the moment the provider moves.
+in chat. The desk's engine re-verdicts its own grid on every read; a grid
+written from outside it is a copy nothing keeps honest.
 
 **Triggered from the desk** (a `{"kind": "triage"}` inbox event): run
 report-only — blocks, findings, the per-PR notes — and skip the §9 handover

@@ -112,6 +112,21 @@ def triage_records(grid):
             if row_number(row) is not None}
 
 
+def needs_model(rows, notes):
+    """The rows the model half of a triage still owes a reading: no note
+    yet, an undated note, or a note the PR has moved past. Dates compared as
+    dates — the note's `at` is local, the provider's `last.t` is UTC, and a
+    timezone should never expire a reading on its own."""
+    out = []
+    for row in rows:
+        note = (notes or {}).get(str(row["n"])) or {}
+        at = note.get("at")
+        last = (row.get("last") or {}).get("t")
+        if not note or not at or (last and at[:10] < last[:10]):
+            out.append(row["n"])
+    return out
+
+
 class Desk:
     def __init__(self, provider, repo, me, cwd, chat=False, kind="pr", agent="auto"):
         self.provider = provider
@@ -272,64 +287,65 @@ class Desk:
             row["triage_key"] = triage_key(row, gate)
         return rows, raw, states, gates
 
-    def _apply_triage(self, rows, grid):
+    def _apply_triage(self, rows, grid, gates):
+        """Live verdicts on the rows a triage has seen.
+
+        The grid has been pure engine output since 0.17 — nothing in it is a
+        model's to protect — so a published row whose provider facts moved is
+        RE-VERDICTED here (decorate, 0.07 ms) instead of expiring. `stale` is
+        gone as a state: what the fingerprint used to guard, the engine now
+        recomputes on every read. `missing` remains what it was — a row no
+        triage press has ever seen — and is what the next press works.
+        """
         records = triage_records(grid)
         counts = {"current": 0, "missing": 0, "stale": 0}
+        if records:
+            decorate(rows, self.me, gates)
         for row in rows:
-            verdict = records.get(row["n"])
-            required = ("state", "todo", "autorun", "triage_key")
-            if (verdict and all(key in verdict for key in required) and
-                    verdict["triage_key"] == row["triage_key"]):
+            if records and row["n"] in records:
                 status = "current"
-                for key in ("state", "todo", "autorun", "waiting_on"):
-                    row[key] = verdict.get(key)
                 row["action"] = handoff(
                     row, self.repo,
                     self.provider.merge_command(self.repo, row["n"]))
             else:
-                status = "stale" if verdict else "missing"
+                status = "missing"
                 row.update(state="untriaged", autorun="-", waiting_on=None,
-                           action=None,
-                           todo=("triage da aggiornare" if verdict
-                                 else "da triagiare"))
+                           action=None, todo="da triagiare")
             row["triage_status"] = status
             counts[status] += 1
         return counts
 
     def _current_grid(self, grid, rows, state):
-        """The published grid minus every row the provider has moved since,
-        with the model's one-line `what` where it wrote one."""
+        """The published grid, rebuilt on the live verdicts, with the model's
+        one-line `what` where it wrote one. Only the `generated` stamp is the
+        press's own; the blocks follow the provider."""
         if not grid:
             return None
-        current = {row["n"]: row["triage_key"] for row in rows
-                   if row["triage_status"] == "current"}
+        current = [row for row in rows if row["triage_status"] == "current"]
         notes = state.get("prs") or {}
-        visible = copy.deepcopy(grid)
-        for block in visible.get("blocks", []):
-            kept = []
-            for row in block.get("rows", []) or []:
-                n = row_number(row)
-                if n is None or current.get(n) != row.get("triage_key"):
-                    continue
-                row["what"] = (notes.get(str(n)) or {}).get("what") or row.get("what")
-                kept.append(row)
-            block["rows"] = kept
+        visible = {"generated": grid.get("generated"),
+                   "blocks": verdicts.blocks(current)}
+        for block in visible["blocks"]:
+            for row in block["rows"]:
+                row["what"] = (notes.get(str(row["n"])) or {}).get("what") \
+                    or row.get("what")
         return visible
 
     def queue(self, refresh=False):
         state = deskstate.load(self.repo)
         rows, raw, states, gates = self._queue_facts(refresh, state=state)
-        counts = self._apply_triage(rows, state.get("grid"))
+        counts = self._apply_triage(rows, state.get("grid"), gates)
         deskstate.annotate_prs(rows, state)
         deskstate.annotate_requests(rows, state)
         orders = state.get("orders") or {}
         for row in rows:
             row["order"] = orders.get(str(row["n"]))
-        complete = counts["missing"] == 0 and counts["stale"] == 0
+        complete = counts["missing"] == 0
+        triaged = [row for row in rows if row["triage_status"] == "current"]
         return {"rows": rows, "total": raw.get("total", len(rows)),
                 "truncated": raw.get("truncated", False),
                 "mergestate_pending": not states,
-                "chase": (state.get("chase") or {}) if complete else {},
+                "chase": verdicts.chase(triaged, self.me) if triaged else {},
                 "session": state.get("session"),
                 "gates": gates,
                 "grid": self._current_grid(state.get("grid"), rows, state),
@@ -425,8 +441,17 @@ class Desk:
         adds is written per PR, in `prs.<n>` — the one-line `what`, the
         analysis, and `conflict_kind`, the single fact the engine cannot read
         off a field. Publishing stays explicit: nothing here runs at boot.
+
+        The press pays a FRESH provider read: publishing on a
+        stale-while-revalidate snapshot meant the refresh it triggered landed
+        seconds later and contradicted the grid it had just published. And it
+        is incremental for the model: `needs_model` names the rows still
+        owing a reading — no note, or a note the PR moved past — so a press
+        after a fetch re-reads only what is new.
         """
-        rows, _, _, gates = self._queue_facts(complete_gates=True)
+        state = deskstate.load(self.repo)
+        rows, _, _, gates = self._queue_facts(refresh=True,
+                                              complete_gates=True, state=state)
         decorate(rows, self.me, gates)
         for row in rows:
             row["action"] = handoff(
@@ -447,6 +472,7 @@ class Desk:
                    "generated": grid["generated"],
                    "queue": rows, "issues": issues["rows"],
                    "grid": grid, "chase": chase, "gates": gates,
+                   "needs_model": needs_model(rows, state.get("prs")),
                    # the numbers only: every one of them is already a full row
                    # under "issues", and repeating them doubled the payload
                    "shortlist": [r["n"] for r in (issues["shortlist"] or {}).get("rows", [])]}
