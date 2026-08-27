@@ -38,6 +38,14 @@ keeps the task active and waits on the watcher process in bounded intervals;
 after processing and truncating the inbox it starts the watcher again. Do not
 finish the task while an attached desk is meant to remain connected.
 
+## Background delegation
+
+When a workflow explicitly calls for a background subagent, use the host's
+internal delegation mechanism: Claude Code's Agent tool in background mode, or
+Codex's collaboration/subagent tool. The subagent reports back to the
+supervising session and shares its working context. Do not create a user-owned
+Codex task/thread for this internal work.
+
 ## Dedicated work
 
 A desk click requesting a dedicated issue session is the user's explicit

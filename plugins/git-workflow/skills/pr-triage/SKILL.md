@@ -50,9 +50,9 @@ triage or no triage.
 date +%F && gh repo view --json name --jq .name
 ```
 
-`set_session_title` on `self` with `PR triage · <repo> · <YYYY-MM-DD>`. Read the
-date from `date`, never from memory or the context block. Leave a hand-written
-title alone.
+Set the session/task title to `PR triage · <repo> · <YYYY-MM-DD>` when the host
+exposes that capability. Read the date from `date`, never from memory or the
+context block. Leave a hand-written title alone.
 
 ## 2 · Read the queue
 

@@ -36,13 +36,21 @@ class Packaging(unittest.TestCase):
                 self.assertTrue((skill / "agents" / "openai.yaml").is_file(),
                                 skill.name)
 
-    def test_shared_skills_do_not_depend_on_claude_runtime_symbols(self):
+    def test_shared_skills_do_not_depend_on_host_runtime_symbols(self):
         forbidden = ("CLAUDE_PLUGIN_ROOT", "$ARGUMENTS", "AskUserQuestion",
-                     "spawn_task")
+                     "spawn_task", "set_session_title", "set_thread_title",
+                     "create_thread", "spawn_agent")
         for path in (PLUGIN / "skills").glob("*/SKILL.md"):
             text = path.read_text()
             for token in forbidden:
                 self.assertNotIn(token, text, "%s in %s" % (token, path.name))
+
+    def test_background_delegation_is_not_a_codex_task(self):
+        runtime = (PLUGIN / "refs" / "runtime.md").read_text()
+        desk = (PLUGIN / "skills" / "review-desk" / "SKILL.md").read_text()
+        self.assertIn("Codex's collaboration/subagent tool", runtime)
+        self.assertIn("Codex task/thread", runtime)
+        self.assertNotIn("Codex: a task", desk)
 
     def test_claude_command_is_only_a_thin_host_wrapper(self):
         wrapper = (PLUGIN / "commands" / "issue-triage.md").read_text()

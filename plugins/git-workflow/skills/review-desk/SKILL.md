@@ -127,9 +127,9 @@ then for each event in order:
 - **`{"kind": "triage", "flow": ..., "rows": "<path>"}`** — hand it to a
   **background subagent** and stay free: the model half of a triage is the
   slowest thing the desk asks for, and running it here wedges every
-  `analyze`/`order`/`explain` behind it. Spawn the host's background agent
-  (Claude: the Agent tool, background; Codex: a task) with a self-contained
-  prompt: the repo, the `rows` path, the state file path, and the
+  `analyze`/`order`/`explain` behind it. Spawn the host's internal background
+  subagent described in the runtime reference, with a self-contained prompt:
+  the repo, the `rows` path, the state file path, and the
   instruction to follow `<PLUGIN_ROOT>/skills/pr-triage/SKILL.md`
   (or issue-triage) report-only from that file. The agent does what the
   skill's desk mode prescribes — never touches `grid`/`chase` (the desk has

@@ -220,9 +220,9 @@ plugins/git-workflow/server/tests/run.sh
 ```
 
 No network, no GitHub, no rate limit: a few seconds on the fixture provider.
-119 Python tests over the row contract, the verdict engine, the merge gate,
-the five-block partition, the issue cross-check, the cache and the cross-host
-packaging invariants (`test_packaging.py`); plus 73 checks that drive the
-**real** `static/index.html` against a **real** desk process through a small
-DOM shim, so it is the page's own render path that runs.
+The Python suite covers the row contract, verdict engine, merge gate,
+five-block partition, issue cross-check, cache and cross-host packaging
+invariants (`test_packaging.py`). The UI checks drive the **real**
+`static/index.html` against a **real** desk process through a small DOM shim,
+so it is the page's own render path that runs.
 `plugins/git-workflow/server/tests/README.md` says what each file is for.
