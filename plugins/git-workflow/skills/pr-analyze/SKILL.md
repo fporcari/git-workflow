@@ -10,8 +10,11 @@ explicitly authorized step. **Never** post, push, merge, edit, assign or
 resolve anything here.
 
 Input: a PR number and a repo (`owner/repo`). Work from `gh` alone, so no
-local checkout is required. `<PLUGIN_ROOT>` is the plugin directory containing
-this skill's `skills/`, `refs/` and `server/` siblings.
+local checkout is required. **No triage is required first**: a PR the user
+already knows — somebody flagged it, it came up in chat — is analyzed
+directly, even while a triage runs in a background agent. `<PLUGIN_ROOT>` is
+the plugin directory containing this skill's `skills/`, `refs/` and `server/`
+siblings.
 
 ## 1 · Gather once
 
@@ -79,9 +82,14 @@ fences or prose. The schema is:
 ```
 
 In chat, show exactly this Italian decision block — **as text, never inside a
-code fence**. A fence turns it into something to copy, and the labels stop
-standing out; here they are the whole point, because he reads the three lines
-and answers.
+code fence**. A fence turns it into something to copy, kills the word-wrap
+(long lines break mid-word instead of flowing), and the labels stop standing
+out; here they are the whole point, because he reads the three lines and
+answers. Same ban on the fence's cousins: never the English field names
+(`problem:` / `history:` / `propose:` are the JSON's, not the user's) and
+never alignment indentation to make values line up under a label — an
+indented continuation renders as code and wraps unreadably. A long value is
+one plain paragraph after its bold label, nothing more.
 
 (the fence below delimits the template — your output has no fence)
 

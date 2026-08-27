@@ -35,6 +35,7 @@ import gate as gatelib  # noqa: E402
 import inbox            # noqa: E402
 import issuecheck       # noqa: E402
 import jobs             # noqa: E402
+import lane_check       # noqa: E402
 import prdesk           # noqa: E402
 import safejson         # noqa: E402
 import verdicts         # noqa: E402
@@ -1304,3 +1305,64 @@ class WorkingMarker(unittest.TestCase):
             capture_output=True, text=True, env=dict(os.environ, HOME=_HOME))
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertIsNone(deskstate.working(REPO))
+
+
+class LaneCheck(unittest.TestCase):
+    """One deterministic Lane A pass — pr-loop reads this instead of one
+    `gh pr view` per PR per pass."""
+
+    def setUp(self):
+        deskstate.save(REPO, {})
+        cache.clear(REPO)
+        self.provider = get_provider("fixture")
+        self.me = self.provider.whoami()
+
+    def _check(self, **kw):
+        cache.clear(REPO)
+        return lane_check.check(self.provider, REPO, self.me, **kw)
+
+    def test_every_row_lands_in_exactly_one_lane(self):
+        got = self._check()
+        counted = [n for ns in got["lanes"].values() for n in ns]
+        self.assertEqual(sorted(counted), sorted(r["n"] for r in got["rows"]))
+        self.assertEqual(got["fixed_point"],
+                         not got["lanes"]["A1"] and not got["lanes"]["A3"])
+        for row in got["rows"]:
+            self.assertTrue(set(lane_check.ROW_FIELDS) <= set(row))
+
+    def test_a2_is_never_the_engine_s_call(self):
+        """An A2 needs the review body read — that is the model's work."""
+        self.assertEqual(self._check()["lanes"]["A2"], [])
+
+    def test_ns_narrows_and_names_the_unseen(self):
+        got = self._check(ns=[1145, 99999])
+        self.assertEqual([r["n"] for r in got["rows"]], [1145])
+        self.assertEqual(got["not_in_queue"], [99999])
+
+    def test_an_inspected_mechanical_conflict_becomes_a3(self):
+        """The model writes conflict_kind after reading the diff; the next
+        pass reads it and the DIRTY row classifies itself."""
+        before = self._check()
+        self.assertNotIn(1083, before["lanes"]["A3"])
+        deskstate.save(REPO, {"prs": {"1083": {"conflict_kind": "mechanical"}}})
+        after = self._check()
+        self.assertIn(1083, after["lanes"]["A3"])
+        self.assertFalse(after["fixed_point"])
+
+    def test_a_fully_approved_own_pr_is_an_a1(self):
+        row = next(r for r in self.provider.data["rows"] if r["n"] == 1113)
+        row["req"] = []
+        row["assignees"] = [self.me]
+        self.provider.data["gates"]["develop"]["can_land"] = True
+        got = self._check()
+        self.assertIn(1113, got["lanes"]["A1"])
+
+    def test_the_cli_prints_the_same_pass(self):
+        cache.clear(REPO)
+        out = subprocess.run(
+            (sys.executable, str(ROOT / "lane_check.py"), "--provider",
+             "fixture", "--repo", REPO, "--ns", "#1145,1128"),
+            capture_output=True, text=True, env=dict(os.environ, HOME=_HOME))
+        self.assertEqual(out.returncode, 0, out.stderr)
+        got = json.loads(out.stdout)
+        self.assertEqual(sorted(r["n"] for r in got["rows"]), [1128, 1145])

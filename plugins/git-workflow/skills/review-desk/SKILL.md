@@ -80,11 +80,15 @@ python3 <PLUGIN_ROOT>/server/inbox.py --repo <owner/repo> --truncate
 then for each event in order:
 
 - **`{"kind": "analyze", "n": N}`** — run the `pr-analyze` skill on PR #N
-  right here (read-only; full playbook in `../pr-analyze/SKILL.md`). Write
+  right here (read-only; full playbook in `../pr-analyze/SKILL.md`). **An
+  analyze never waits for a triage**: it needs nothing a triage produces, so
+  a PR the user already knows is analyzed immediately, including while a
+  triage agent is still grinding in the background. Write
   the result into the desk state file as that skill specifies — the desk is
   polling and will show the block. In chat, report its compact decision block
   **in Italian** (author / problem / history / proposal), then ask `Procedo
-  con questa proposta?`; NEVER paste raw JSON or the English draft into chat —
+  con questa proposta?`; NEVER paste raw JSON or the English draft into chat,
+  and never the block inside a code fence or with the English field labels —
   the draft lives in the desk panel. A chat go-ahead authorizes exactly that
   displayed proposal; execute it under `pr-loop` and report what was done.
 - **`{"kind": "order", "n": N}`** — the user clicked Go on the analysis
@@ -120,18 +124,25 @@ then for each event in order:
   nothing to paraphrase — read the issue it closes and the diff's shape (file
   names, not contents), write `prs.<N>.what`, close the request. One
   sentence.
-- **`{"kind": "triage", "flow": ..., "rows": "<path>"}`** — run that
-  skill here, report-only, **reading `rows` instead of querying the
-  provider**. That file holds `{repo, me, generated, queue, issues, grid,
-  chase, gates, shortlist}`. For pr-triage the desk has ALREADY published
-  `grid` and `chase` to the state file: do not copy them anywhere, and never
-  rewrite them. Add only what a model can add, per PR, under `prs.<n>` — the
-  one-line `what`, the reading of an `asks` row, `conflict_kind` on a DIRTY
-  branch — plus §8's repo-level findings in chat. For issue-triage the same
-  rule holds: the cross-check and the shortlist are recomputed by the desk on
-  every read, so what you write is per issue under `issues.<n>` — the impact
-  rank, the verified type, the finding, and `at`. Skip the skill's closing
-  handover question — the user drives from the dashboard.
+- **`{"kind": "triage", "flow": ..., "rows": "<path>"}`** — hand it to a
+  **background subagent** and stay free: the model half of a triage is the
+  slowest thing the desk asks for, and running it here wedges every
+  `analyze`/`order`/`explain` behind it. Spawn the host's background agent
+  (Claude: the Agent tool, background; Codex: a task) with a self-contained
+  prompt: the repo, the `rows` path, the state file path, and the
+  instruction to follow `<PLUGIN_ROOT>/skills/pr-triage/SKILL.md`
+  (or issue-triage) report-only from that file. The agent does what the
+  skill's desk mode prescribes — never touches `grid`/`chase` (the desk has
+  ALREADY published them), writes per PR under `prs.<n>` (the one-line
+  `what`, the reading of an `asks` row, `conflict_kind` on a DIRTY branch)
+  or per issue under `issues.<n>` (impact, verified type, finding, `at`),
+  posts progress with `notify.py`, and closes `triage:<flow>` itself. The
+  state file takes concurrent writers safely (safejson locks), so other
+  events run here in parallel without waiting. Restart the watcher right
+  away; when the agent's completion lands, relay §8's repo-level findings
+  in chat in a few lines — nothing else, the grid is already on screen.
+  Skip the skill's closing handover question — the user drives from the
+  dashboard.
 - **`{"kind": "run", "flow": "pr-loop"|"issue-loop", "ns": [...], "batch": N}`**
   — run that skill here in chat, step by step. `ns` is the rows the user
   picked by hand in the dashboard: it means *exactly those, in that order,

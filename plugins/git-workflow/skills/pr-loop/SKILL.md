@@ -75,8 +75,28 @@ PR can bring a stacked one from unmergeable to mergeable, realigning a branch ca
 turn it into an A1, and a merge into the base can put a second PR into conflict.
 One pass leaves work on the table that the same pass created.
 
-Re-read the fields on each pass rather than trusting the previous one. Stop
-iterating when a pass finds nothing — never on a count of passes.
+**A pass is ONE command**, not a `gh` call per PR:
+
+```bash
+python3 <PLUGIN_ROOT>/server/lane_check.py --repo <owner/repo> [--ns 1145,1128]
+```
+
+It re-reads the provider fresh (through the shared disk cache, so a running
+desk and the loop pay for one search, not two) and runs the desk's own
+verdict engine on every row, gates included. Read the result, not the fields:
+
+- `lanes.A1` / `lanes.A3` — the candidates, gates already checked on facts
+  read this pass; act on them (minus the veto list);
+- `fixed_point: true` — a pass that found nothing: Lane A is done;
+- `--ns` narrows the pass to the working set, and `not_in_queue` names the
+  numbers it could not see;
+- **`lanes.A2` is always empty by design**: an A2 needs the review body read
+  and its premises verified — that is your work. Its candidates sit in the
+  `asks` rows whose `todo` is `answer the review`.
+
+Stop iterating when a pass finds nothing — never on a count of passes. The
+per-PR commands under *Reading the state* are the fallback for when the
+script cannot run, not the pass.
 
 **Lane A is the work the user delegated by invoking this skill**: do it, report
 it, do not ask. **Lane B is everything else**, presented one PR at a time.
@@ -106,6 +126,10 @@ unattended costs more than one question.
 
 ## Reading the state
 
+`lane_check.py` applies every rule below deterministically — read them to
+understand a verdict, not to re-derive one. The per-PR commands at the end
+are the fallback for a host where the script cannot run.
+
 `pr-triage` carries the full field semantics. The gates this skill needs before
 it may act:
 
@@ -119,6 +143,8 @@ it may act:
   the user's own comment is the last event, he has already answered and there is
   nothing to do.
 - **`CLEAN` means nothing on an unprotected base** — read `baseRefName`.
+
+Fallback only — the script answers all of this in one pass:
 
 ```bash
 gh pr view <n> --json isDraft,baseRefName,mergeStateStatus,reviewDecision,reviewRequests,reviews,assignees,author,headRefOid \
@@ -151,6 +177,12 @@ skill is for Lane A: execute the order first, without re-asking.
 Three operations, on the user's own PRs only. Everything else is Lane B.
 
 ## A1. Merge his own fully-approved PRs
+
+**An `n` in this pass's `lanes.A1` has already passed all five gates on facts
+read this pass** — plus the assignee rule and the base's push restriction,
+which the engine also reads. Merge it; do not re-derive the gates by hand.
+They are listed here as the definition, and as the checklist for a fallback
+run without the script.
 
 All of these, checked fresh, or it is not an A1:
 
@@ -237,6 +269,12 @@ it with `gh pr comment <n> --edit-last` rather than stacking a third telling.
 "Update branch": `git merge origin/<base>`, in a throwaway worktree so the user's
 tree stays put.
 
+`lanes.A3` carries only the DIRTY branches whose `conflict_kind` a model
+already inspected and wrote as `mechanical`; every other DIRTY row is `asks`.
+When you inspect one, write `conflict_kind` under `prs.<n>` in the desk state
+(`mechanical` or `substantive`, pr-triage §10) — the next pass reads it and
+the row classifies itself.
+
 Read the conflict before deciding it is an A3:
 
 ```bash
@@ -300,8 +338,11 @@ remaining work all needs him.
 # Lane B — one PR at a time, or one batch
 
 Ordered by who is blocked. For each, four lines and then stop — **as text,
-never inside a code fence**: a fence reads as something to copy and flattens
-the labels he is scanning for.
+never inside a code fence**: a fence reads as something to copy, flattens
+the labels he is scanning for, and wraps long lines unreadably. Never the
+English field labels (`problem:`/`history:`/`propose:`) and never alignment
+indentation under a label — an indented continuation renders as code. A long
+value is one plain paragraph after its bold Italian label.
 
 (the fence below delimits the template — your output has no fence)
 

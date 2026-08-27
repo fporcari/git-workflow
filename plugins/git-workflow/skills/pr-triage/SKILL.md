@@ -29,6 +29,21 @@ the case behind each one — **read the relevant section when you are about to s
 a rule, when one looks wrong for this repo, or when the user asks why.** Do not
 read it to run a normal triage.
 
+## 0 · Always in its own agent
+
+The model half of a triage (§2–§8) runs in a **background subagent**, never in
+the session the user is talking to: it is minutes of reads, and while it runs
+the user wants to analyze PRs he already knows about. The supervising session
+does §1, spawns the agent with a self-contained prompt (repo, login, this
+file's path, the rows path when a desk handed one, the state file path), stays
+free, and when the agent returns reports the blocks and asks §9's one
+question. From a desk the delegation is the same and lives in
+`../review-desk/SKILL.md` §3, which also skips the question.
+
+**A triage in progress never blocks a single analysis.** `pr-analyze` needs
+nothing a triage produces — a PR somebody flagged is analyzed right away,
+triage or no triage.
+
 ## 1 · Date the session
 
 ```bash
