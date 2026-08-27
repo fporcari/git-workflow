@@ -52,10 +52,25 @@ class Packaging(unittest.TestCase):
         self.assertIn("Codex task/thread", runtime)
         self.assertNotIn("Codex: a task", desk)
 
-    def test_claude_command_is_only_a_thin_host_wrapper(self):
-        wrapper = (PLUGIN / "commands" / "issue-triage.md").read_text()
-        self.assertIn("CLAUDE_PLUGIN_ROOT", wrapper)
-        self.assertIn("skills/issue-triage/SKILL.md", wrapper)
+    def test_the_title_tool_has_a_host_mapping(self):
+        """Host-neutral skills need the mapping to live somewhere, and
+        Claude's title tool is deferred: unnamed is never loaded."""
+        runtime = (PLUGIN / "refs" / "runtime.md").read_text()
+        self.assertIn("mcp__ccd_session_mgmt__set_session_title", runtime)
+        self.assertIn("ToolSearch", runtime)
+
+    def test_claude_commands_are_only_thin_host_wrappers(self):
+        """Both triages run their model half in a background subagent and
+        title their session: a wrapper that allows neither contradicts the
+        skill it loads."""
+        for name in ("pr-triage", "issue-triage"):
+            wrapper = (PLUGIN / "commands" / ("%s.md" % name)).read_text()
+            self.assertIn("CLAUDE_PLUGIN_ROOT", wrapper, name)
+            self.assertIn("skills/%s/SKILL.md" % name, wrapper, name)
+            allowed = next(line for line in wrapper.splitlines()
+                           if line.startswith("allowed-tools:"))
+            for tool in ("Agent", "mcp__ccd_session_mgmt__set_session_title"):
+                self.assertIn(tool, allowed, "%s in %s" % (tool, name))
 
     def test_analysis_schema_is_valid_json(self):
         schema = json.loads(

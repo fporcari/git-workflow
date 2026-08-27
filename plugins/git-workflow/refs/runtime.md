@@ -62,5 +62,12 @@ to start manually; do not silently run it in the supervising chat.
 
 ## Session metadata
 
-Set a session/task title only when the host exposes a title tool. Missing title
-support never blocks the workflow.
+Set a session/task title only when the host exposes a title tool.
+
+- Claude Code: `mcp__ccd_session_mgmt__set_session_title`. It is a deferred
+  tool, so it must be loaded with ToolSearch before the call, or declared in
+  the `allowed-tools` of the command wrapper that loads the skill. A tool the
+  skill does not name is a tool the model never looks for.
+- Codex: the host's own thread/task title tool, when one is exposed.
+
+Missing title support never blocks the workflow.

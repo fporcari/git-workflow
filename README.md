@@ -46,8 +46,11 @@ The plugin lives in `plugins/git-workflow/`, with a manifest per host
 `agents/openai.yaml` per skill. The skills themselves are host-agnostic: they
 say `<PLUGIN_ROOT>` instead of any host variable, and `refs/runtime.md` is the
 one place that resolves it and answers the other host-specific questions —
-how to ask the user a question, how to launch a desk, how to spawn a dedicated
-session. The desk's headless Analyze picks its backend with
+how to ask the user a question, how to launch a desk, how to title a session,
+how to delegate to a background subagent, how to spawn a dedicated one. The
+two Claude Code command wrappers in `commands/` are the only host adapters,
+and they carry nothing but that host's tool names. The desk's headless
+Analyze picks its backend with
 `--agent auto|claude|codex`. `server/tests/test_packaging.py` pins the
 cross-host invariants.
 
