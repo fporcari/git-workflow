@@ -8,6 +8,7 @@ The server validates the result and is the only writer of durable desk state.
 import json
 import os
 import queue
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -25,7 +26,19 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 READ_TOOLS = ("Bash(gh api graphql:*),Bash(gh pr diff:*),Read,Grep,Glob")
 TRIAGE_TOOLS = (READ_TOOLS + ",Bash(gh issue view:*),Bash(git show:*),"
                 "Bash(git log:*)")
-ANALYZE_TIMEOUT = 900
+
+
+def _env_timeout(name, default):
+    try:
+        value = int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
+
+
+ANALYZE_TIMEOUT = _env_timeout("GIT_WORKFLOW_ANALYZE_TIMEOUT", 900)
+OPERATION_TIMEOUT = _env_timeout("GIT_WORKFLOW_OPERATION_TIMEOUT", 3600)
+JOB_RETENTION = 7 * 24 * 60 * 60
 SCHEMA = PLUGIN_ROOT / "server" / "schemas" / "pr-analysis.json"
 EXPLAIN_SCHEMA = PLUGIN_ROOT / "server" / "schemas" / "pr-explanation.json"
 TRIAGE_SCHEMA = PLUGIN_ROOT / "server" / "schemas" / "triage-result.json"
@@ -33,6 +46,8 @@ OPERATION_SCHEMA = PLUGIN_ROOT / "server" / "schemas" / "operation-result.json"
 ISSUE_SCHEMA = PLUGIN_ROOT / "server" / "schemas" / "issue-analysis.json"
 
 _running = {}
+_children = {}
+_reconciled = set()
 _lock = threading.Lock()
 MAX_EVENTS = 40
 
@@ -196,10 +211,53 @@ def _record_progress(repo, job_id, event=None, elapsed=0):
     safejson.update(job_path(repo, job_id), mutate, indent=1)
 
 
-def _execute(cmd, cwd, timeout, agent, progress):
+def _process_identity(pid):
+    try:
+        started = subprocess.run(
+            ("ps", "-o", "lstart=", "-p", str(pid)), capture_output=True,
+            text=True, timeout=2)
+        command_line = subprocess.run(
+            ("ps", "-o", "command=", "-p", str(pid)), capture_output=True,
+            text=True, timeout=2)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if started.returncode or command_line.returncode:
+        return None
+    started_at = started.stdout.strip()
+    command_line = command_line.stdout.strip()
+    if not started_at or not command_line:
+        return None
+    return {"started": started_at, "command": command_line}
+
+
+def _is_our_agent(record):
+    try:
+        pid = int(record["pid"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    identity = _process_identity(pid)
+    if not identity or identity["started"] != record.get("pid_started"):
+        return False
+    try:
+        command_parts = shlex.split(identity["command"])
+    except ValueError:
+        return False
+    agent = record.get("agent")
+    return agent in ("codex", "claude") and any(
+        Path(part).name == agent for part in command_parts)
+
+
+def _execute(cmd, cwd, timeout, agent, progress, started=None):
     process = subprocess.Popen(
         cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, bufsize=1)
+    if started:
+        try:
+            started(process)
+        except Exception:
+            process.terminate()
+            process.wait()
+            raise
     messages = queue.Queue()
 
     def read_stream(name, stream):
@@ -388,7 +446,7 @@ def parse_operation(agent, stdout, output_path=None):
     return result
 
 
-def persist_operation(repo, result, key, n=None):
+def persist_operation(repo, result, n=None):
     if n is not None:
         def mutate(state):
             order = state.setdefault("orders", {}).setdefault(str(n), {})
@@ -401,7 +459,7 @@ def persist_operation(repo, result, key, n=None):
 def _run(job_id, key, agent, repo, prompt, tools, timeout, cwd, schema,
          parser, persister, read_only):
     output_path = None
-    started = time.monotonic()
+    started_at = time.monotonic()
     try:
         agent = resolve_agent(agent)
         _update(repo, job_id, agent=agent)
@@ -413,10 +471,20 @@ def _run(job_id, key, agent, repo, prompt, tools, timeout, cwd, schema,
                 prefix="git-workflow-result-", suffix=".json")
             os.close(descriptor)
         cmd = command(agent, prompt, tools, cwd, output_path, schema, read_only)
+
+        def process_started(process):
+            identity = _process_identity(process.pid)
+            with _lock:
+                _children[job_id] = (repo, key, process)
+            fields = {"pid": process.pid}
+            if identity:
+                fields["pid_started"] = identity["started"]
+            _update(repo, job_id, **fields)
+
         out = _execute(
             cmd, cwd, timeout, agent,
             lambda event, elapsed: _record_progress(
-                repo, job_id, event, elapsed))
+                repo, job_id, event, elapsed), process_started)
         if out.returncode:
             raise RuntimeError(out.stderr.strip()[:600] or
                                "%s exited %s" % (agent, out.returncode))
@@ -426,17 +494,26 @@ def _run(job_id, key, agent, repo, prompt, tools, timeout, cwd, schema,
         _record_progress(
             repo, job_id,
             {"stage": status, "detail": "Job finished"},
-            time.monotonic() - started)
+            time.monotonic() - started_at)
         _update(repo, job_id, status=status, result=result, agent=agent)
     except Exception as exc:
-        _record_progress(
-            repo, job_id,
-            {"stage": "error", "detail": _short(exc)},
-            time.monotonic() - started)
-        _update(repo, job_id, status="error", error=str(exc)[:600])
+        if isinstance(exc, subprocess.TimeoutExpired):
+            budget = ("GIT_WORKFLOW_ANALYZE_TIMEOUT" if read_only else
+                      "GIT_WORKFLOW_OPERATION_TIMEOUT")
+            exc = RuntimeError("%s budget exceeded after %s seconds"
+                               % (budget, timeout))
+        if (get(repo, job_id) or {}).get("status") != "aborted":
+            _record_progress(
+                repo, job_id,
+                {"stage": "error", "detail": _short(exc)},
+                time.monotonic() - started_at)
+            _update(repo, job_id, status="error", error=str(exc)[:600])
     finally:
         with _lock:
-            _running.pop((repo, key), None)
+            if _running.get((repo, key)) == job_id:
+                _running.pop((repo, key), None)
+            _children.pop(job_id, None)
+            _reconciled.discard((repo, job_id))
         if output_path:
             try:
                 Path(output_path).unlink()
@@ -471,11 +548,94 @@ def get(repo, job_id):
     return safejson.read(path) if path.exists() else None
 
 
+def _mark_terminal(repo, job_id, status, detail):
+    _record_progress(repo, job_id, {"stage": status, "detail": detail})
+    _update(repo, job_id, status=status)
+
+
+def reconcile(repo, retention=JOB_RETENTION):
+    prefix = "%s__job-*.json" % repo.replace("/", "__")
+    now = time.time()
+    for path in deskstate.runtime_dir().glob(prefix):
+        try:
+            record = safejson.read(path)
+            status = record.get("status")
+            if (status in ("done", "error", "aborted", "orphaned") and
+                    now - path.stat().st_mtime > retention):
+                path.unlink()
+                continue
+            if status != "running":
+                continue
+            job_id = record.get("id") or path.stem.rsplit("job-", 1)[-1]
+            key = record.get("key")
+            if job_id and key and _is_our_agent(record):
+                with _lock:
+                    _running.setdefault((repo, key), job_id)
+                    _reconciled.add((repo, job_id))
+            else:
+                _mark_terminal(
+                    repo, job_id,
+                    "orphaned", "Job process could not be verified")
+        except (OSError, ValueError):
+            continue
+
+
 def active(repo):
     with _lock:
-        ids = [job_id for (target, _), job_id in _running.items()
-               if target == repo]
+        ids = {job_id for (target, _), job_id in _running.items()
+               if target == repo}
+        reconciled = {job_id for target, job_id in _reconciled
+                      if target == repo}
+    for job_id in reconciled:
+        record = get(repo, job_id)
+        if record and _is_our_agent(record):
+            continue
+        if record and record.get("status") == "running":
+            _mark_terminal(repo, job_id, "orphaned",
+                           "Job process could not be verified")
+        with _lock:
+            _reconciled.discard((repo, job_id))
+            key = (record or {}).get("key")
+            if key and _running.get((repo, key)) == job_id:
+                _running.pop((repo, key), None)
+        ids.discard(job_id)
     return [record for record in (get(repo, job_id) for job_id in ids) if record]
+
+
+def shutdown(grace=2):
+    with _lock:
+        running = list(_children.items())
+    targets = []
+    for job_id, (repo, key, process) in running:
+        if process.poll() is None:
+            try:
+                process.terminate()
+                targets.append((job_id, repo, key, process))
+            except OSError:
+                pass
+    deadline = time.monotonic() + max(0, grace)
+    while any(process.poll() is None for _, _, _, process in targets):
+        if time.monotonic() >= deadline:
+            break
+        time.sleep(0.05)
+    for _, _, _, process in targets:
+        if process.poll() is None:
+            try:
+                process.kill()
+            except OSError:
+                pass
+    for job_id, repo, key, process in targets:
+        try:
+            process.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            pass
+        _mark_terminal(repo, job_id, "aborted", "Desk stopped the job")
+        with _lock:
+            if _running.get((repo, key)) == job_id:
+                _running.pop((repo, key), None)
+            _children.pop(job_id, None)
+            _reconciled.discard((repo, job_id))
+    return len(targets)
 
 
 def analyze_pr(repo, n, me, cwd, agent="auto", analysis_key=None):
@@ -567,8 +727,8 @@ def operation(repo, flow, payload, me, cwd, agent="auto"):
         "if you actually changed GitHub or Forgejo."
         % (PLUGIN_ROOT, skill, repo, me, mandate, OPERATION_SCHEMA))
     persister = lambda target, result: persist_operation(  # noqa: E731
-        target, result, "order:%s" % n if n is not None else flow, n)
+        target, result, n)
     key = "order:%s" % n if n is not None else flow
     return _spawn("operation", key, agent, repo, dict(payload, flow=flow),
-                  prompt, "", ANALYZE_TIMEOUT, cwd, OPERATION_SCHEMA,
+                  prompt, "", OPERATION_TIMEOUT, cwd, OPERATION_SCHEMA,
                   parse_operation, persister, read_only=False)

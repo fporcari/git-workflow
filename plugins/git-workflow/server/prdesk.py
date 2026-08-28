@@ -41,6 +41,7 @@ import copy
 import hashlib
 import json
 import secrets
+import signal
 import subprocess
 import sys
 import threading
@@ -546,6 +547,11 @@ class Desk:
         return path
 
 
+def stop_server(server):
+    jobs.shutdown()
+    server.shutdown()
+
+
 class Handler(BaseHTTPRequestHandler):
     desk = None
     protocol_version = "HTTP/1.1"      # keep-alive: the UI polls every few seconds
@@ -566,6 +572,11 @@ class Handler(BaseHTTPRequestHandler):
 
     VOLATILE = ("generated", "timings")
 
+    def _valid_host(self):
+        port = self.server.server_address[1]
+        return self.headers.get("Host", "").lower() in (
+            "127.0.0.1:%s" % port, "localhost:%s" % port)
+
     def _send_tagged(self, body):
         """304 when the caller already has this payload — the UI polls a few
         times a minute and most polls change nothing. Anything that moves on
@@ -585,6 +596,9 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, payload, etag=etag)
 
     def do_GET(self):
+        if not self._valid_host():
+            self._send(403, {"error": "invalid Host header"})
+            return
         url = urlparse(self.path)
         refresh = "refresh" in parse_qs(url.query)
         try:
@@ -645,6 +659,9 @@ class Handler(BaseHTTPRequestHandler):
         return out
 
     def do_POST(self):
+        if not self._valid_host():
+            self._send(403, {"error": "invalid Host header"})
+            return
         url = urlparse(self.path)
         try:
             if self.headers.get("X-Git-Workflow-Token") != self.desk.write_token:
@@ -692,7 +709,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, {"path": str(path)})
             elif parts == ["api", "shutdown"]:
                 self._send(200, {"bye": True})
-                threading.Thread(target=self.server.shutdown, daemon=True).start()
+                threading.Thread(target=stop_server,
+                                 args=(self.server,), daemon=True).start()
             elif parts == ["api", "run"]:
                 flow = body.get("flow", "pr-loop")
                 if flow not in ("pr-loop", "issue-loop"):
@@ -783,6 +801,7 @@ def main():
     me = args.me or provider.whoami()
     port = args.port or (8399 if args.desk == "pr" else 8398)
     swept = deskstate.sweep_legacy()
+    jobs.reconcile(repo)
     if not args.keep_state:
         deskstate.reset(repo)
     cache_action = "kept" if args.keep_cache else cache.reset(repo)
@@ -791,6 +810,16 @@ def main():
                 kind=args.desk, agent=args.agent)
     Handler.desk = desk
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    stopping = threading.Event()
+
+    def request_stop(*_):
+        if not stopping.is_set():
+            stopping.set()
+            threading.Thread(target=stop_server,
+                             args=(server,), daemon=True).start()
+
+    signal.signal(signal.SIGTERM, request_stop)
+    signal.signal(signal.SIGINT, request_stop)
     if not args.no_prefetch:
         desk.prefetch()
     sys.stderr.write("%s desk on http://127.0.0.1:%s  repo=%s me=%s provider=%s "
@@ -800,7 +829,11 @@ def main():
         sys.stderr.write("swept %d session file(s) the old layout left in "
                          "~/.local/state\n" % swept)
     sys.stderr.flush()
-    server.serve_forever()
+    try:
+        server.serve_forever()
+    finally:
+        jobs.shutdown()
+        server.server_close()
 
 
 if __name__ == "__main__":

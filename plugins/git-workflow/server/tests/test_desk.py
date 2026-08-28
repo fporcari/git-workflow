@@ -436,6 +436,139 @@ class HeadlessAgents(unittest.TestCase):
                 jobs._running.pop((repo, "pr-loop"), None)
             safejson.remove(jobs.job_path(repo, job_id))
 
+    def test_a_dead_running_job_is_reconciled_as_orphaned(self):
+        """A restart must not leave a dead PID looking live forever."""
+        repo = REPO + "-dead-job"
+        job_id = "dead123"
+        path = jobs.job_path(repo, job_id)
+        safejson.write(path, {
+            "id": job_id, "kind": "analyze", "key": "pr:17:analyze",
+            "status": "running", "agent": "codex", "pid": 999999,
+            "pid_started": "old", "progress": {}, "events": []}, indent=1)
+        self.addCleanup(safejson.remove, path)
+        with mock.patch.object(jobs, "_process_identity", return_value=None):
+            jobs.reconcile(repo)
+        record = jobs.get(repo, job_id)
+        self.assertEqual(record["status"], "orphaned")
+        self.assertEqual(record["events"][-1]["stage"], "orphaned")
+        self.assertIn("jobs.reconcile(repo)",
+                      (ROOT / "prdesk.py").read_text())
+
+    def test_a_verified_running_job_restores_its_duplicate_lock(self):
+        """A live matching agent must survive reconciliation and block a twin."""
+        repo = REPO + "-live-job"
+        job_id, key = "live456", "pr-loop"
+        path = jobs.job_path(repo, job_id)
+        safejson.write(path, {
+            "id": job_id, "kind": "operation", "key": key,
+            "status": "running", "agent": "codex", "pid": 123,
+            "pid_started": "same", "progress": {}, "events": []}, indent=1)
+
+        def cleanup():
+            with jobs._lock:
+                jobs._running.pop((repo, key), None)
+                jobs._reconciled.discard((repo, job_id))
+            safejson.remove(path)
+
+        self.addCleanup(cleanup)
+        identity = {"started": "same", "command": "/usr/bin/codex exec"}
+        with mock.patch.object(jobs, "_process_identity", return_value=identity):
+            jobs.reconcile(repo)
+            with mock.patch.object(jobs.threading, "Thread") as thread:
+                duplicate = jobs._spawn(
+                    "operation", key, "codex", repo, {}, "prompt", "", 1,
+                    str(ROOT), None, None, None, read_only=False)
+            active = jobs.active(repo)
+        self.assertEqual(duplicate, job_id)
+        self.assertEqual(active[0]["id"], job_id)
+        thread.assert_not_called()
+
+    def test_reconcile_prunes_only_expired_finished_jobs(self):
+        """Retention removes old terminal files and preserves recent ones."""
+        repo = REPO + "-job-retention"
+        old = jobs.job_path(repo, "old")
+        young = jobs.job_path(repo, "young")
+        safejson.write(old, {"id": "old", "status": "done"}, indent=1)
+        safejson.write(young, {"id": "young", "status": "error"}, indent=1)
+        os.utime(old, (time.time() - 11, time.time() - 11))
+        self.addCleanup(safejson.remove, old)
+        self.addCleanup(safejson.remove, young)
+        jobs.reconcile(repo, retention=10)
+        self.assertFalse(old.exists())
+        self.assertTrue(young.exists())
+
+    def test_shutdown_terminates_a_child_and_records_aborted(self):
+        """Stopping the desk must terminate its child and record the abort."""
+        repo = REPO + "-shutdown-job"
+        job_id, key = "stop123", "pr-loop"
+        path = jobs.job_path(repo, job_id)
+        safejson.write(path, {
+            "id": job_id, "kind": "operation", "key": key,
+            "status": "running", "progress": {}, "events": []}, indent=1)
+        self.addCleanup(safejson.remove, path)
+        process = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(30)"])
+        with jobs._lock:
+            jobs._running[(repo, key)] = job_id
+            jobs._children[job_id] = (repo, key, process)
+        try:
+            self.assertEqual(jobs.shutdown(grace=0.05), 1)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+        self.assertIsNotNone(process.returncode)
+        record = jobs.get(repo, job_id)
+        self.assertEqual(record["status"], "aborted")
+        self.assertEqual(record["events"][-1]["stage"], "aborted")
+
+    def test_job_kinds_receive_their_own_timeout_and_env_override(self):
+        """Read-only and operational work must use separate overridable budgets."""
+        with mock.patch.object(jobs, "_spawn", return_value="job") as spawn:
+            jobs.analyze_pr(REPO, 17, "me", str(ROOT))
+            analyze_timeout = spawn.call_args.args[7]
+            jobs.operation(REPO, "pr-loop", {}, "me", str(ROOT))
+            operation_timeout = spawn.call_args.args[7]
+        self.assertEqual(analyze_timeout, jobs.ANALYZE_TIMEOUT)
+        self.assertEqual(operation_timeout, jobs.OPERATION_TIMEOUT)
+        script = ("import jobs; print(jobs.ANALYZE_TIMEOUT, "
+                  "jobs.OPERATION_TIMEOUT)")
+        env = dict(os.environ, GIT_WORKFLOW_ANALYZE_TIMEOUT="12",
+                   GIT_WORKFLOW_OPERATION_TIMEOUT="34")
+        override = subprocess.run(
+            [sys.executable, "-c", script], cwd=ROOT, env=env,
+            capture_output=True, text=True, check=True)
+        self.assertEqual(override.stdout.strip(), "12 34")
+        env.update(GIT_WORKFLOW_ANALYZE_TIMEOUT="invalid",
+                   GIT_WORKFLOW_OPERATION_TIMEOUT="0")
+        fallback = subprocess.run(
+            [sys.executable, "-c", script], cwd=ROOT, env=env,
+            capture_output=True, text=True, check=True)
+        self.assertEqual(fallback.stdout.strip(), "900 3600")
+
+    def test_timeout_errors_name_the_exhausted_budget(self):
+        """A timed-out job must say which configured budget was exhausted."""
+        repo = REPO + "-timeout-job"
+        job_id, key = "timeout123", "pr-loop"
+        path = jobs.job_path(repo, job_id)
+        safejson.write(path, {
+            "id": job_id, "kind": "operation", "key": key,
+            "status": "running", "progress": {}, "events": []}, indent=1)
+        self.addCleanup(safejson.remove, path)
+        with jobs._lock:
+            jobs._running[(repo, key)] = job_id
+        with mock.patch.object(jobs, "resolve_agent", return_value="claude"), \
+                mock.patch.object(jobs, "command", return_value=["claude"]), \
+                mock.patch.object(
+                    jobs, "_execute",
+                    side_effect=subprocess.TimeoutExpired(["claude"], 11)):
+            jobs._run(job_id, key, "claude", repo, "prompt", "", 11,
+                      str(ROOT), None, None, None, read_only=False)
+        record = jobs.get(repo, job_id)
+        self.assertEqual(record["status"], "error")
+        self.assertIn("GIT_WORKFLOW_OPERATION_TIMEOUT", record["error"])
+        self.assertIn("11 seconds", record["error"])
+
     def test_both_agents_accept_the_same_explicit_schema(self):
         for agent in ("claude", "codex"):
             command = jobs.command(
@@ -498,7 +631,7 @@ class HeadlessAgents(unittest.TestCase):
         deskstate.save(repo, {"orders": {"17": {"status": "pending"}}})
         result = {"status": "done", "report": "merged #17",
                   "provider_changed": True}
-        jobs.persist_operation(repo, result, "order:17", 17)
+        jobs.persist_operation(repo, result, 17)
         state = deskstate.load(repo)
         self.assertEqual(state["orders"]["17"]["report"], "merged #17")
         self.assertIn("provider_refresh", state)
@@ -611,21 +744,25 @@ class Http(unittest.TestCase):
     def url(self, path):
         return "http://127.0.0.1:%s%s" % (self.port, path)
 
-    def get(self, path, etag=None):
+    def get(self, path, etag=None, host=None):
         req = Request(self.url(path))
         if etag:
             req.add_header("If-None-Match", etag)
+        if host:
+            req.add_header("Host", host)
         try:
             with urlopen(req, timeout=30) as resp:
                 return resp.status, resp.headers.get("ETag"), resp.read()
         except HTTPError as exc:          # urllib raises on 304
             return exc.code, exc.headers.get("ETag"), exc.read()
 
-    def post(self, path, body=None, token=True):
+    def post(self, path, body=None, token=True, host=None):
         data = json.dumps(body or {}).encode()
         headers = {"Content-Type": "application/json"}
         if token:
             headers["X-Git-Workflow-Token"] = self.server.RequestHandlerClass.desk.write_token
+        if host:
+            headers["Host"] = host
         req = Request(self.url(path), data=data,
                       headers=headers)
         try:
@@ -643,6 +780,15 @@ class Http(unittest.TestCase):
         status, payload = self.post("/api/rows", token=False)
         self.assertEqual(status, 403)
         self.assertIn("token", payload["error"])
+
+    def test_foreign_hosts_are_rejected_for_reads_and_writes(self):
+        """Neither HTTP method may trust a rebound foreign host."""
+        get_status, _, _ = self.get("/api/meta", host="rebound.example")
+        post_status, payload = self.post(
+            "/api/run", {"flow": "pr-loop"}, host="rebound.example")
+        self.assertEqual(get_status, 403)
+        self.assertEqual(post_status, 403)
+        self.assertIn("Host", payload["error"])
 
     def test_unknown_flow_is_rejected(self):
         status, payload = self.post("/api/run", {"flow": "anything"})

@@ -73,6 +73,6 @@ unchanged prior result remains reusable without spending tokens.
 
 ## Stop
 
-The Stop button terminates the Python server only. Agent jobs already running
-finish independently and leave their final JSON for the next launch. No model
-or watcher should remain resident merely because a browser tab is open.
+The Stop button terminates the Python server and the agent jobs it started. A
+job stopped this way is recorded as aborted, not left pending. No model or
+watcher should remain resident merely because a browser tab is open.
