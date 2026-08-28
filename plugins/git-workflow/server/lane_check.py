@@ -36,7 +36,8 @@ from providers import get_provider  # noqa: E402
 ROW_FIELDS = ("n", "title", "author", "created", "draft", "base", "head",
               "merge", "decision", "req", "unresolved", "threads",
               "assignees", "incomplete", "conflict_kind", "gate",
-              "todo", "state", "autorun", "waiting_on", "triage_key")
+              "todo", "state", "autorun", "waiting_on", "triage_key",
+              "model_keys")
 
 LANES = ("A1", "A2", "A3", "asks", "yours", "-")
 

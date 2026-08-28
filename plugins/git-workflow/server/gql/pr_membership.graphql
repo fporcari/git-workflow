@@ -1,0 +1,7 @@
+query($q:String!){
+  search(type:ISSUE,first:100,query:$q){
+    nodes{
+      ...on PullRequest{number state}
+    }
+  }
+}

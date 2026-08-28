@@ -41,11 +41,17 @@ class FixtureProvider(Provider):
         for source in self.data["rows"]:
             row = dict(source, merge=None)
             row.setdefault("assignees", [row["author"]])
+            row.setdefault("base_head", None)
             row.setdefault("head", None)
             row.setdefault("incomplete", False)
             rows.append(row)
         return {"rows": rows, "total": self.data.get("queue_total", len(rows)),
                 "truncated": bool(self.data.get("queue_truncated"))}
+
+    def open_numbers(self, repo, me):
+        self._sleep()
+        return [row["n"] for row in self.data["rows"]
+                if row.get("state", "OPEN") == "OPEN"]
 
     def mergestates(self, repo, me):
         self._sleep()

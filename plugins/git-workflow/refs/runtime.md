@@ -20,23 +20,35 @@ Never split one batch into several questions merely to fit a tool schema.
 
 ## Desks
 
-Start the requested desk with `python3 <PLUGIN_ROOT>/server/prdesk.py --chat`
-and the appropriate `--desk` value.
+Start the requested desk with the appropriate `--desk` value and a one-shot
+agent backend:
+
+```sh
+python3 <PLUGIN_ROOT>/server/prdesk.py --desk pr --agent codex
+python3 <PLUGIN_ROOT>/server/prdesk.py --desk issue --agent claude
+```
 
 - Claude Code: use its browser-preview launch configuration when available.
 - Codex: start the process in a persistent terminal session, then open the
   localhost URL with the Codex browser panel/tool when available. Otherwise
   give the URL to the user.
 
-Without `--chat`, pass `--agent claude` when launched from Claude Code and
-`--agent codex` when launched from Codex. `--agent auto` is the compatibility
-fallback for a manual launch.
+Use `--agent claude` from Claude Code and `--agent codex` from Codex.
+`--agent auto` is the compatibility fallback for a manual launch.
 
-The attached chat must keep consuming `watch_inbox.py` events while the desk is
-live. Claude may park a background watcher whose exit wakes the session. Codex
-keeps the task active and waits on the watcher process in bounded intervals;
-after processing and truncating the inbox it starts the watcher again. Do not
-finish the task while an attached desk is meant to remain connected.
+The server is detached from the launching conversation. It reads provider
+cache, rows and job JSON files by itself, and it never starts a model merely
+because the desk is open or polling. Analyze, explain, triage and workflow
+buttons each start one ephemeral CLI process, wait through the corresponding
+job JSON, then let the process exit. The launching conversation may finish as
+soon as it has opened the desk.
+
+Active jobs expose their elapsed time, phase and sanitized public tool events
+through the same JSON. The browser reads that local progress once a second
+only while work is running; it never receives thinking blocks or raw command
+output.
+
+`--chat` is accepted only so old launch commands do not fail; it has no effect.
 
 ## Background delegation
 

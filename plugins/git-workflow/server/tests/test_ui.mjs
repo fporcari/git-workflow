@@ -197,7 +197,7 @@ const page = new Function(`${script}\nreturn {applyDesk,applyState,render,render
   rowClick,togglePick,clearPicks,doRun,MAX_BATCH,
   get state(){return {prs,issues,selected,tab,view,loaded,DESK,truncated,pendingMerge,sort,
                       picked:[...picked],askBatch};},
-  set view(v){view=v;}, set query(v){query=v;}, set watcher(v){watcherAlive=v;}};`)();
+  set view(v){view=v;}, set query(v){query=v;}, set agent(v){agentReady=v;}};`)();
 
 /* ---- 1. what the server handed over ---- */
 ok("server answers /api/desk in one round trip",
@@ -256,11 +256,12 @@ analyzedRow.skill = previousSkill;
 page.renderDetail();
 
 /* ---- 5. actions are wired and act directly (no modal in between) ---- */
-page.watcher = false;
+page.agent = false;
 page.render();
-ok("standalone Analyze stays enabled without a chat watcher",
-   !document.getElementById("aAnalyze").disabled);
-page.watcher = true;
+ok("actions disable when neither one-shot backend is available",
+   /id="aAnalyze" disabled/.test(
+     document.getElementById("detailActions").innerHTML));
+page.agent = true;
 page.render();
 const actions = document.getElementById("detailActions");
 ok("the action button is in the detail head, not a dialog",
@@ -353,7 +354,7 @@ ok("the gate says who may land",
    /riservato a|non protetta|codeowner/.test(quadro.innerHTML),
    quadro.innerHTML.slice(quadro.innerHTML.indexOf("Gate di"),
                           quadro.innerHTML.indexOf("Gate di") + 160));
-/* Analizza is THE action button — it hands the PR to the chat. Spiega is a
+/* Analizza is THE action button — it starts one read-only job. Spiega is a
    fallback that only shows up when the desk cannot answer "what is this for"
    from the data itself. */
 ok("Analizza is always offered: it is the action button",
@@ -385,9 +386,9 @@ target.requests = { analyze: { status: "queued", at: "10:00:00", kind: "analyze"
 page.render();
 const acts = document.getElementById("detailActions").innerHTML;
 ok("an outstanding request locks its button instead of re-arming it",
-   acts.includes("in chat") && !acts.includes('id="aAnalyze"'));
+   acts.includes("richiesta precedente") && !acts.includes('id="aAnalyze"'));
 ok("the panel says where the ball is",
-   /passata alla chat/.test(document.getElementById("detailGrid").innerHTML));
+   /richiesta alle/.test(document.getElementById("detailGrid").innerHTML));
 target.requests = { analyze: { status: "done", at: "10:00:00",
                                closed_at: "10:02:00", report: "niente da rispondere" } };
 page.render();
@@ -414,11 +415,28 @@ for (const word of BANNED)
 
 /* ---- 7e. the row under the needle ---- */
 const runner = page.visiblePrs()[1];
+const liveJob = { id: "job-live", kind: "operation", status: "running", agent: "codex",
+  request: { flow: "pr-loop", ns: [runner.n], batch: 1 },
+  progress: { stage: "testing", detail: "Command · pytest tests/test_api.py", elapsed: 68 },
+  events: [
+    { at: "19:09:58", stage: "inspecting", detail: "Command · gh pr view" },
+    { at: "19:10:00", stage: "testing", detail: "Command · pytest tests/test_api.py" },
+  ] };
+page.applyState({ agent: { mode: "on-demand", busy: true, jobs: [liveJob] }, feed: [] });
+page.render();
+const jobPanel = document.getElementById("jobPanel");
+ok("a detached job shows its live phase and elapsed time",
+   jobPanel.classList.contains("on") && /verifica/.test(jobPanel.innerHTML) &&
+   /1:08/.test(jobPanel.innerHTML));
+ok("observable agent activity is shown below the current phase",
+   /gh pr view/.test(jobPanel.innerHTML) && /pytest tests\/test_api.py/.test(jobPanel.innerHTML));
+ok("the progress card identifies its one-shot backend",
+   /codex/.test(jobPanel.innerHTML));
 page.applyState({ working: { n: runner.n, msg: "riallineo il branch", at: "19:10:00" },
-                  watcher: { alive: true, chat: true }, feed: [] });
+                  agent: { mode: "on-demand", busy: true }, feed: [] });
 page.render();
 const tbodyNow = document.getElementById("tbody");
-ok("the row the chat is on is marked in the table",
+ok("the row the one-shot job is on is marked in the table",
    tbodyNow.querySelectorAll("tr").some(
      tr => +tr.dataset.n === runner.n && tr.classList.contains("working")));
 ok("only that row is marked",
@@ -433,13 +451,13 @@ ok("a bar says which PR and what is happening", (() => {
 ok("the bar offers a jump to the row",
    document.getElementById("workingBar").innerHTML.includes("goWorking"));
 page.select(runner.n);
-ok("the detail panel says the chat is on this one",
-   /la chat sta lavorando questa/.test(document.getElementById("detailGrid").innerHTML));
+ok("the detail panel says the one-shot job is on this one",
+   /job one-shot sta lavorando questa/.test(document.getElementById("detailGrid").innerHTML));
 /* ---- 7f. a batch marks every row it is working ---- */
 const three = page.visiblePrs().slice(0, 3).map(r => r.n);
 page.applyState({ working: { n: three[0], ns: three, items: {}, msg: "3 in parallelo",
                              at: "19:20:00" },
-                  watcher: { alive: true, chat: true }, feed: [] });
+                  agent: { mode: "on-demand", busy: true }, feed: [] });
 page.render();
 ok("every row of a batch glows, not just the first",
    document.getElementById("tbody").querySelectorAll("tr")
@@ -451,7 +469,7 @@ ok("the bar names the whole batch", (() => {
 page.applyState({ working: { n: three[0], ns: three,
                              items: { [three[1]]: "giro i test" },
                              msg: "3 in parallelo", at: "19:20:00" },
-                  watcher: { alive: true, chat: true }, feed: [] });
+                  agent: { mode: "on-demand", busy: true }, feed: [] });
 page.select(three[1]);
 ok("the detail of one batch member shows its own line, not the batch label",
    /giro i test/.test(document.getElementById("detailGrid").innerHTML));
@@ -553,11 +571,26 @@ ok("svuota leaves nothing picked and nothing marked",
    page.state.picked.length === 0 &&
    !document.getElementById("pickBar").classList.contains("on"));
 
-page.applyState({ working: null, watcher: { alive: true, chat: true }, feed: [] });
+page.applyState({ working: null, agent: { mode: "on-demand", busy: false }, feed: [] });
 page.render();
 ok("when the loop ends nothing is left glowing",
    !document.getElementById("workingBar").classList.contains("on") &&
    !document.getElementById("tbody").innerHTML.includes("nowChip"));
+
+/* ---- 7h. a completed provider mutation refreshes facts, not triage ---- */
+let forcedReads = 0;
+globalThis.fetch = async url => {
+  if (url === "/api/fetch") forcedReads++;
+  return {status: 304, headers: {get: () => null}, json: async () => ({})};
+};
+page.applyState({provider_refresh: {token: "ui-refresh-1"},
+                 working: null, agent: {mode: "on-demand", busy: false}, feed: []});
+await Promise.resolve();
+ok("a provider mutation forces one factual refresh",
+   forcedReads === 1);
+ok("a stale-while-revalidate response gets a short repaint retry",
+   html.includes('t.source==="stale"') && html.includes('},7000)'));
+globalThis.fetch = async () => { throw new Error("network is off in this test"); };
 
 /* ---- 7h. Chase is people, not PRs ---- */
 const tabsNow = () => document.getElementById("tabs").querySelectorAll("button");

@@ -32,7 +32,6 @@ os.environ["HOME"] = _HOME
 import cache            # noqa: E402
 import deskstate        # noqa: E402
 import gate as gatelib  # noqa: E402
-import inbox            # noqa: E402
 import issuecheck       # noqa: E402
 import jobs             # noqa: E402
 import lane_check       # noqa: E402
@@ -40,6 +39,7 @@ import prdesk           # noqa: E402
 import safejson         # noqa: E402
 import verdicts         # noqa: E402
 from providers import get_provider  # noqa: E402
+from providers import github as github_provider  # noqa: E402
 
 deskstate.STATE_DIR = Path(_HOME) / ".local" / "state" / "git-workflow"
 deskstate.RUNTIME_DIR = Path(_HOME) / "runtime"
@@ -70,10 +70,11 @@ class RowContract(unittest.TestCase):
     """The shape every skill and the UI read. Breaking it breaks them."""
 
     PR_KEYS = {"n", "title", "created", "author", "assignees", "draft", "base",
-               "head", "incomplete", "merge",
+               "base_head", "head", "incomplete", "merge",
                "decision", "req", "reviews", "unresolved", "threads", "closes",
                "last", "url", "todo", "state", "autorun", "action",
-               "triage_key", "triage_status"}
+               "triage_key", "triage_status", "model_keys", "analysis_stale",
+               "what_stale", "conflict_stale"}
     ISSUE_KEYS = {"n", "title", "created", "author", "labels", "assignees",
                   "comments", "url", "type", "action"}
 
@@ -112,6 +113,46 @@ class RowContract(unittest.TestCase):
         got = desk.issues()
         self.assertTrue(got["truncated"])
         self.assertEqual(got["total"], 228)
+
+
+class QueueMembership(unittest.TestCase):
+    def test_github_drops_a_merged_node_from_a_stale_open_search(self):
+        search = {"search": {"issueCount": 2,
+                             "pageInfo": {"hasNextPage": False},
+                             "nodes": [{"number": 1, "state": "OPEN"},
+                                       {"number": 2, "state": "MERGED"}]}}
+        provider = github_provider.GitHubProvider()
+        with mock.patch.object(github_provider, "_graphql", return_value=search), \
+                mock.patch.object(provider, "_row",
+                                  side_effect=lambda repo, node: {
+                                      "n": node["number"], "created": "2026-01-01"}):
+            queue = provider.queue(REPO, "me")
+            membership = provider.open_numbers(REPO, "me")
+        self.assertEqual([row["n"] for row in queue["rows"]], [1])
+        self.assertEqual(queue["total"], 1)
+        self.assertEqual(membership, [1])
+
+    def test_fresh_membership_filters_a_stale_detailed_queue(self):
+        desk = fresh_desk()
+        first = desk.queue()
+        n = first["rows"][0]["n"]
+        source = next(row for row in desk.provider.data["rows"] if row["n"] == n)
+        source["state"] = "MERGED"
+        desk._membership(True)
+        queue = desk.queue()
+        detailed = cache.peek(REPO, "queue")[1]
+        self.assertTrue(any(row["n"] == n for row in detailed["rows"]))
+        self.assertFalse(any(row["n"] == n for row in queue["rows"]))
+
+    def test_a_new_membership_forces_the_detailed_queue_forward(self):
+        desk = fresh_desk()
+        first = desk.queue()
+        source = dict(desk.provider.data["rows"][0], n=9999, state="OPEN")
+        desk.provider.data["rows"].insert(0, source)
+        desk._membership(True)
+        queue = desk.queue()
+        self.assertIn(9999, [row["n"] for row in queue["rows"]])
+        self.assertEqual(len(queue["rows"]), len(first["rows"]) + 1)
 
 
 class MergeStatePhase(unittest.TestCase):
@@ -225,6 +266,23 @@ class Cache(unittest.TestCase):
         [t.join() for t in threads]
         self.assertEqual(len(calls), 1)
 
+    def test_concurrent_forced_refreshes_collapse_into_one_load(self):
+        cache.clear(REPO)
+        cache.store(REPO, "forced", {"v": 0})
+        calls = []
+
+        def loader():
+            calls.append(1)
+            time.sleep(0.3)
+            return {"v": len(calls)}
+
+        threads = [threading.Thread(
+            target=lambda: cache.get(REPO, "forced", loader, refresh=True))
+            for _ in range(6)]
+        [t.start() for t in threads]
+        [t.join() for t in threads]
+        self.assertEqual(len(calls), 1)
+
     def test_survives_a_corrupt_file(self):
         repo = REPO + "-corrupt"
         cache.clear(repo)
@@ -270,15 +328,60 @@ class HeadlessAgents(unittest.TestCase):
                                "/tmp/repo", "/tmp/result.json")
         self.assertEqual(command[:2], ["codex", "exec"])
         self.assertIn("--ephemeral", command)
+        self.assertIn("--json", command)
         self.assertEqual(command[command.index("--sandbox") + 1], "read-only")
         self.assertIn("--output-schema", command)
 
     def test_claude_command_has_no_write_tool(self):
         command = jobs.command("claude", "prompt", jobs.READ_TOOLS, "/tmp/repo")
         self.assertIn("--json-schema", command)
+        self.assertEqual(command[command.index("--output-format") + 1],
+                         "stream-json")
+        self.assertIn("--verbose", command)
         self.assertNotIn("Write", command[command.index("--allowedTools") + 1])
         self.assertNotIn("gh pr view", jobs.READ_TOOLS)
         self.assertNotIn("gh pr checks", jobs.READ_TOOLS)
+
+    def test_claude_stream_result_uses_the_structured_final_event(self):
+        stream = "\n".join((
+            "non-json diagnostic ignored",
+            json.dumps({"type": "system", "subtype": "init"}),
+            json.dumps({"type": "assistant", "message": {"content": [
+                {"type": "thinking", "thinking": "private"}]}}),
+            json.dumps({"type": "result", "structured_output": self.RESULT})))
+        self.assertEqual(jobs.parse_structured("claude", stream), self.RESULT)
+
+    def test_progress_exposes_tools_but_never_thinking_or_raw_output(self):
+        thinking = json.dumps({"type": "assistant", "message": {"content": [
+            {"type": "thinking", "thinking": "private reasoning"}]}})
+        tool = json.dumps({"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "name": "Bash",
+             "input": {"command": "pytest tests/test_api.py"}}]}})
+        self.assertIsNone(jobs.progress_event("claude", thinking))
+        progress = jobs.progress_event("claude", tool)
+        self.assertEqual(progress["stage"], "testing")
+        self.assertIn("pytest", progress["detail"])
+        self.assertNotIn("private reasoning", progress["detail"])
+
+    def test_codex_jsonl_activity_is_normalized(self):
+        progress = jobs.progress_event("codex", json.dumps({
+            "type": "item.started", "item": {
+                "type": "command_execution", "command": "gh pr view 17"}}))
+        self.assertEqual(progress["stage"], "inspecting")
+        self.assertIn("gh pr view 17", progress["detail"])
+
+    def test_stream_runner_reports_activity_before_completion(self):
+        lines = [json.dumps({"type": "thread.started"}),
+                 json.dumps({"type": "turn.completed"})]
+        script = ("import time; print(%r, flush=True); time.sleep(.05); "
+                  "print(%r, flush=True)" % tuple(lines))
+        seen = []
+        out = jobs._execute(
+            [sys.executable, "-c", script], str(ROOT), 5, "codex",
+            lambda event, elapsed: seen.append(event) if event else None)
+        self.assertEqual(out.returncode, 0)
+        self.assertEqual([event["stage"] for event in seen],
+                         ["starting", "finalizing"])
 
     def test_result_cannot_escape_to_another_pr(self):
         with self.assertRaisesRegex(ValueError, "expected #18"):
@@ -294,13 +397,125 @@ class HeadlessAgents(unittest.TestCase):
     def test_valid_result_is_merged_into_desk_state(self):
         repo = REPO + "-headless-result"
         deskstate.reset(repo)
-        jobs.persist(repo, self.RESULT)
+        deskstate.save(repo, {"prs": {"17": {"what": "già presente",
+                                                "draft": "vecchia bozza"}}})
+        jobs.persist(repo, self.RESULT, "analysis-v1")
         record = deskstate.load(repo)["prs"]["17"]
         self.assertEqual(record["next"], "proposta")
         self.assertEqual(record["author"], "alice")
         self.assertEqual(record["problem"], "problema")
         self.assertEqual(record["history"], "storia")
         self.assertIn("storia", record["analysis"])
+        self.assertEqual(record["analysis_key"], "analysis-v1")
+        self.assertEqual(record["what"], "già presente")
+        self.assertNotIn("draft", record)
+
+    def test_job_status_is_a_runtime_json_file(self):
+        repo = REPO + "-job-file"
+        job_id = "abc123"
+        safejson.write(
+            jobs.job_path(repo, job_id),
+            {"id": job_id, "kind": "analyze", "status": "running"}, indent=1)
+        self.assertEqual(jobs.get(repo, job_id)["status"], "running")
+        self.assertTrue(str(jobs.job_path(repo, job_id)).startswith(
+            str(deskstate.RUNTIME_DIR)))
+
+    def test_active_jobs_can_be_restored_after_a_browser_reload(self):
+        repo = REPO + "-active-job"
+        job_id = "live123"
+        safejson.write(jobs.job_path(repo, job_id), {
+            "id": job_id, "kind": "operation", "status": "running",
+            "progress": {"stage": "testing", "elapsed": 12}}, indent=1)
+        with jobs._lock:
+            jobs._running[(repo, "pr-loop")] = job_id
+        try:
+            self.assertEqual(jobs.active(repo)[0]["progress"]["stage"],
+                             "testing")
+        finally:
+            with jobs._lock:
+                jobs._running.pop((repo, "pr-loop"), None)
+            safejson.remove(jobs.job_path(repo, job_id))
+
+    def test_both_agents_accept_the_same_explicit_schema(self):
+        for agent in ("claude", "codex"):
+            command = jobs.command(
+                agent, "prompt", jobs.READ_TOOLS, "/tmp/repo",
+                "/tmp/result.json", jobs.EXPLAIN_SCHEMA)
+            expected = (str(jobs.EXPLAIN_SCHEMA) if agent == "codex"
+                        else jobs.EXPLAIN_SCHEMA.read_text())
+            self.assertIn(expected, command)
+
+    def test_explanation_is_written_with_its_fingerprint(self):
+        repo = REPO + "-explanation"
+        deskstate.save(repo, {})
+        jobs.persist_explanation(repo, {"n": 17, "what": "  una riga  "},
+                                 17, "what-v1")
+        self.assertEqual(deskstate.load(repo)["prs"]["17"],
+                         {"what": "una riga", "what_key": "what-v1"})
+
+    def test_pr_triage_writes_only_the_requested_artifact_keys(self):
+        repo = REPO + "-triage-result"
+        deskstate.save(repo, {})
+        exported = {
+            "model_tasks": {"17": ["analysis"], "18": ["conflict"]},
+            "queue": [
+                {"n": 17, "model_keys": {"analysis": "a17", "conflict": "c17"}},
+                {"n": 18, "model_keys": {"analysis": "a18", "conflict": "c18"}}]}
+        empty = {"author": None, "problem": None, "history": None,
+                 "propose": None, "draft": None, "verified": [],
+                 "not_verified": [], "conflict_kind": None, "finding": None}
+        result = {"flow": "pr-triage", "report": "ok", "issues": [], "prs": [
+            dict(empty, n=17, author="alice", problem="p", history="h",
+                 propose="next", verified=["diff"]),
+            dict(empty, n=18, conflict_kind="mechanical", finding="lock file")]}
+        jobs.persist_triage(repo, result, "pr-triage", exported)
+        records = deskstate.load(repo)["prs"]
+        self.assertEqual(records["17"]["analysis_key"], "a17")
+        self.assertEqual(records["18"]["conflict_key"], "c18")
+        self.assertNotIn("analysis_key", records["18"])
+
+    def test_triage_rejects_an_item_not_in_the_request_file(self):
+        with self.assertRaisesRegex(ValueError, "wrong PR triage items"):
+            jobs.persist_triage(
+                REPO, {"flow": "pr-triage", "report": "", "issues": [],
+                       "prs": [{"n": 99}]}, "pr-triage",
+                {"model_tasks": {}, "queue": []})
+
+    def test_operational_commands_exist_only_for_an_explicit_job(self):
+        for agent in ("claude", "codex"):
+            command = jobs.command(
+                agent, "prompt", "", str(ROOT), "/tmp/result.json",
+                jobs.OPERATION_SCHEMA, read_only=False)
+            if agent == "codex":
+                self.assertIn("--approve-for-me", command)
+                self.assertNotIn("--sandbox", command)
+            else:
+                self.assertIn("auto", command)
+                self.assertNotIn("--dangerously-skip-permissions", command)
+
+    def test_operation_result_updates_the_order_and_refreshes_facts(self):
+        repo = REPO + "-operation-result"
+        deskstate.save(repo, {"orders": {"17": {"status": "pending"}}})
+        result = {"status": "done", "report": "merged #17",
+                  "provider_changed": True}
+        jobs.persist_operation(repo, result, "order:17", 17)
+        state = deskstate.load(repo)
+        self.assertEqual(state["orders"]["17"]["report"], "merged #17")
+        self.assertIn("provider_refresh", state)
+
+    def test_issue_analysis_is_persisted_by_the_server(self):
+        repo = REPO + "-issue-analysis"
+        deskstate.save(repo, {})
+        result = {"n": 42, "type": "DEFECT", "finding": "causa verificata",
+                  "size": "EASY", "phase": "SINGLE-PHASE",
+                  "problem": "rotto", "cause": "guardia mancante",
+                  "propose": "aggiungere guardia", "verify": "test mirato",
+                  "decision": None}
+        jobs.persist_issue_analysis(repo, result, 42)
+        record = deskstate.load(repo)["issues"]["42"]
+        self.assertEqual(record["finding"], "causa verificata")
+        self.assertEqual(record["phase"], "SINGLE-PHASE")
+        self.assertTrue(record["at"])
 
 
 class WhereThingsLive(unittest.TestCase):
@@ -308,8 +523,7 @@ class WhereThingsLive(unittest.TestCase):
 
     def test_the_session_files_live_under_the_temp_dir(self):
         for path in (cache.cache_path(REPO),
-                     inbox.inbox_path(REPO),
-                     deskstate.heartbeat_path(REPO),
+                     jobs.job_path(REPO, "sample"),
                      deskstate.runtime_path(REPO, "rows.json")):
             self.assertTrue(str(path).startswith(str(deskstate.RUNTIME_DIR)), path)
 
@@ -332,13 +546,6 @@ class WhereThingsLive(unittest.TestCase):
         self.assertEqual(deskstate.sweep_legacy(), 1)
         self.assertFalse(stale.exists())
         self.assertTrue(keep.exists(), "the model's work must survive the sweep")
-
-    def test_the_inbox_can_be_truncated_without_knowing_the_path(self):
-        inbox.push(REPO, {"kind": "ping"})
-        self.assertTrue(inbox.inbox_path(REPO).stat().st_size)
-        inbox.truncate(REPO)
-        self.assertFalse(inbox.inbox_path(REPO).stat().st_size)
-
 
 class LaunchClearsTheCache(unittest.TestCase):
     """The cache is for what happens while the desk is up — a browser reload,
@@ -458,18 +665,15 @@ class Http(unittest.TestCase):
         self.assertEqual(status, 304)
         self.assertEqual(body, b"")
 
-    def test_a_ticking_watcher_age_does_not_defeat_the_304(self):
-        deskstate.heartbeat_path(REPO).parent.mkdir(parents=True, exist_ok=True)
-        deskstate.heartbeat_path(REPO).touch()
+    def test_idle_agent_state_does_not_defeat_the_304(self):
         _, etag, _ = self.get("/api/state")
         time.sleep(1.05)                      # the age in seconds has moved
         status, _, _ = self.get("/api/state", etag)
         self.assertEqual(status, 304)
 
-    def test_the_watcher_age_still_reaches_the_client(self):
-        deskstate.heartbeat_path(REPO).touch()
+    def test_the_agent_is_explicitly_on_demand(self):
         _, _, body = self.get("/api/state")
-        self.assertIsNotNone(json.loads(body)["watcher"]["age"])
+        self.assertEqual(json.loads(body)["agent"]["mode"], "on-demand")
 
     def test_a_cold_snapshot_pays_its_misses_in_parallel(self):
         os.environ["DESK_FIXTURE_LATENCY"] = "0.4"
@@ -489,7 +693,7 @@ class Http(unittest.TestCase):
     def test_state_endpoint_shape(self):
         _, _, body = self.get("/api/state")
         payload = json.loads(body)
-        self.assertIn("watcher", payload)
+        self.assertIn("agent", payload)
         self.assertIn("feed", payload)
 
     def test_rows_export_is_what_the_triage_reads(self):
@@ -500,15 +704,18 @@ class Http(unittest.TestCase):
         self.assertTrue(exported["queue"])
         self.assertTrue(exported["issues"])
 
-    def test_chat_only_endpoints_refuse_outside_chat_mode(self):
-        for path in ("/api/run", "/api/triage", "/api/ping", "/api/issue/1/analyze"):
-            status, payload = self.post(path)
-            self.assertEqual(status, 409, path)
-            self.assertIn("error", payload)
+    def test_ping_is_local_and_does_not_start_an_agent(self):
+        with mock.patch.object(jobs, "operation") as operation:
+            status, payload = self.post("/api/ping", {"token": "one"})
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["pong"], "one")
+        operation.assert_not_called()
 
     def test_order_is_recorded_for_pr_run(self):
-        status, payload = self.post("/api/pr/1152/order", {"propose": "merge it"})
-        self.assertEqual(status, 200)
+        with mock.patch.object(jobs, "operation", return_value="job-order"):
+            status, payload = self.post("/api/pr/1152/order", {"propose": "merge it"})
+        self.assertEqual(status, 202)
+        self.assertEqual(payload["job"], "job-order")
         self.assertEqual(payload["order"]["status"], "pending")
         self.assertEqual(deskstate.load(REPO)["orders"]["1152"]["propose"], "merge it")
 
@@ -743,8 +950,10 @@ class Blocks(unittest.TestCase):
         VERDICT_FIELD); now the engine folds it in on the next read."""
         desk = fresh_desk()
         self.exported(desk)
+        row = next(r for r in desk.queue()["rows"] if r["n"] == 1083)
         deskstate.update(REPO, lambda s: s.setdefault("prs", {}).update(
-            {"1083": {"conflict_kind": "mechanical"}}))
+            {"1083": {"conflict_kind": "mechanical",
+                       "conflict_key": row["model_keys"]["conflict"]}}))
         row = next(r for r in desk.queue()["rows"] if r["n"] == 1083)
         self.assertEqual(row["triage_status"], "current")
         self.assertEqual(row["autorun"], "A3")
@@ -756,6 +965,7 @@ class Blocks(unittest.TestCase):
                         title="brand new", author="dgpaci")
         desk.provider.data["rows"].append(template)
         cache.store(REPO, "queue", desk.provider.queue(REPO, desk.me))
+        cache.store(REPO, "membership", desk.provider.open_numbers(REPO, desk.me))
         queue = desk.queue()
         missing = [r["n"] for r in queue["rows"]
                    if r["triage_status"] == "missing"]
@@ -786,9 +996,11 @@ class TriageOwnership(unittest.TestCase):
     def test_the_model_line_reaches_the_published_grid(self):
         desk = fresh_desk()
         desk.run_triage()
-        n = desk.queue()["rows"][0]["n"]
+        live = desk.queue()["rows"][0]
+        n = live["n"]
         state = deskstate.load(REPO)
-        state["prs"] = {str(n): {"what": "riscrive il dispatch dei trigger"}}
+        state["prs"] = {str(n): {"what": "riscrive il dispatch dei trigger",
+                                  "what_key": live["model_keys"]["what"]}}
         deskstate.save(REPO, state)
         rows = [row for block in desk.queue()["grid"]["blocks"]
                 for row in block["rows"] if row["n"] == n]
@@ -811,8 +1023,11 @@ class TriageOwnership(unittest.TestCase):
                  if r["merge"] == "DIRTY" and r["author"] == desk.me
                  and not r["incomplete"]]
         self.assertTrue(dirty, "the fixture needs a DIRTY PR of his own")
-        n = dirty[0]["n"]
-        deskstate.save(REPO, {"prs": {str(n): {"conflict_kind": "mechanical"}}})
+        live = dirty[0]
+        n = live["n"]
+        deskstate.save(REPO, {"prs": {str(n): {
+            "conflict_kind": "mechanical",
+            "conflict_key": live["model_keys"]["conflict"]}}})
         desk.run_triage()
         row = next(r for r in desk.queue()["rows"] if r["n"] == n)
         self.assertEqual(row["autorun"], "A3")
@@ -840,41 +1055,77 @@ class RelaunchKeepsTheTriage(unittest.TestCase):
 
 
 class IncrementalModelTriage(unittest.TestCase):
-    """The press re-reads the provider but asks the model only for what is
-    new or moved past its note: `needs_model` in the rows export."""
+    """The press asks only for stale model-owned artifacts."""
 
     def setUp(self):
         deskstate.save(REPO, {})
 
-    def test_noted_rows_are_not_asked_again(self):
+    def test_only_asks_and_dirty_conflicts_need_the_model(self):
         desk = fresh_desk()
         rows = json.loads(Path(desk.run_triage()).read_text())
-        self.assertEqual(sorted(rows["needs_model"]),
-                         sorted(r["n"] for r in rows["queue"]))
-        deskstate.update(REPO, lambda s: s.update(prs={
-            str(r["n"]): {"what": "letta", "at": "2026-08-27T10:00:00"}
-            for r in rows["queue"]}))
+        by_n = {str(row["n"]): row for row in rows["queue"]}
+        self.assertEqual(set(rows["needs_model"]),
+                         {row["n"] for row in rows["queue"]
+                          if row["autorun"] == "asks"})
+        self.assertEqual(rows["model_tasks"]["1083"], ["conflict"])
+        notes = {}
+        for n, tasks in rows["model_tasks"].items():
+            row = by_n[n]
+            if tasks == ["conflict"]:
+                notes[n] = {"conflict_kind": "substantive",
+                            "conflict_key": row["model_keys"]["conflict"]}
+            else:
+                notes[n] = {"analysis": "letta",
+                            "analysis_key": row["model_keys"]["analysis"]}
+        deskstate.update(REPO, lambda s: s.update(prs=notes))
         again = json.loads(Path(desk.run_triage()).read_text())
         self.assertEqual(again["needs_model"], [])
 
-    def test_a_note_the_pr_moved_past_is_asked_again(self):
+    def test_a_same_day_push_invalidates_an_analysis(self):
         desk = fresh_desk()
         rows = json.loads(Path(desk.run_triage()).read_text())
-        n = rows["queue"][0]["n"]
-        deskstate.update(REPO, lambda s: s.update(prs={
-            str(r["n"]): {"what": "letta", "at": "2026-08-27T10:00:00"}
-            for r in rows["queue"]}))
-        row = next(r for r in desk.provider.data["rows"] if r["n"] == n)
-        row["last"] = {"t": "2026-08-28T09:00:00Z", "who": "genro",
-                       "ch": "comment"}
+        row = next(r for r in rows["queue"] if r["n"] == 1145)
+        deskstate.update(REPO, lambda s: s.update(prs={"1145": {
+            "analysis": "letta", "analysis_key": row["model_keys"]["analysis"]}}))
+        source = next(r for r in desk.provider.data["rows"] if r["n"] == 1145)
+        source["head"] = "a-new-head-on-the-same-day"
+        cache.clear(REPO)
         again = json.loads(Path(desk.run_triage()).read_text())
-        self.assertEqual(again["needs_model"], [n])
+        self.assertIn(1145, again["needs_model"])
 
-    def test_an_undated_note_counts_as_owed(self):
-        self.assertEqual(
-            prdesk.needs_model(
-                [{"n": 1, "last": None}], {"1": {"what": "senza data"}}),
-            [1])
+    def test_a_new_base_invalidates_a_conflict_read(self):
+        desk = fresh_desk()
+        rows = json.loads(Path(desk.run_triage()).read_text())
+        row = next(r for r in rows["queue"] if r["n"] == 1083)
+        deskstate.update(REPO, lambda s: s.update(prs={"1083": {
+            "conflict_kind": "mechanical",
+            "conflict_key": row["model_keys"]["conflict"]}}))
+        source = next(r for r in desk.provider.data["rows"] if r["n"] == 1083)
+        source["base_head"] = "base-moved"
+        cache.clear(REPO)
+        again = json.loads(Path(desk.run_triage()).read_text())
+        self.assertEqual(again["model_tasks"]["1083"], ["conflict"])
+
+    def test_a_title_edit_does_not_invalidate_an_analysis(self):
+        desk = fresh_desk()
+        rows = json.loads(Path(desk.run_triage()).read_text())
+        row = next(r for r in rows["queue"] if r["n"] == 1145)
+        deskstate.update(REPO, lambda s: s.update(prs={"1145": {
+            "analysis": "letta", "analysis_key": row["model_keys"]["analysis"]}}))
+        row = next(r for r in desk.provider.data["rows"] if r["n"] == 1145)
+        row["title"] = "retitled without changing the review"
+        cache.clear(REPO)
+        again = json.loads(Path(desk.run_triage()).read_text())
+        self.assertNotIn(1145, again["needs_model"])
+
+    def test_a_gate_still_loading_does_not_stale_an_analysis(self):
+        row = {"n": 1, "author": "me", "draft": False, "base": "develop",
+               "base_head": "base", "head": "head", "merge": "BLOCKED",
+               "decision": None, "req": [], "reviews": [], "unresolved": 0,
+               "incomplete": False, "assignees": ["me"], "last": None,
+               "title": "one", "summary": None, "closes": []}
+        self.assertIsNone(prdesk.model_keys(row, gate_known=False)["analysis"])
+        self.assertTrue(prdesk.model_keys(row, gate_known=True)["analysis"])
 
 
 class TriageKey(unittest.TestCase):
@@ -904,6 +1155,21 @@ class TriageKey(unittest.TestCase):
         self.assertNotEqual(
             prdesk.triage_key(self.ROW, None),
             prdesk.triage_key(self.ROW, {"branch": "develop", "can_land": False}))
+
+    def test_explanation_validity_ignores_issue_assignment(self):
+        row = dict(self.ROW, closes=[{"issue": 7, "title": "bug",
+                                     "assignees": ["one"]}])
+        moved = dict(row, closes=[{"issue": 7, "title": "bug",
+                                   "assignees": ["two"]}])
+        self.assertEqual(prdesk.model_keys(row)["what"],
+                         prdesk.model_keys(moved)["what"])
+
+    def test_explanation_validity_reads_title_body_and_linked_issue(self):
+        base = prdesk.model_keys(self.ROW)["what"]
+        for changed in (dict(self.ROW, title="two"),
+                        dict(self.ROW, summary="new body"),
+                        dict(self.ROW, closes=[{"issue": 7, "title": "bug"}])):
+            self.assertNotEqual(base, prdesk.model_keys(changed)["what"])
 
 
 class Chase(unittest.TestCase):
@@ -1136,14 +1402,35 @@ class HandOverExactlyOnce(unittest.TestCase):
         got = deskstate.load(REPO)["requests"]["analyze:13"]
         self.assertEqual((got["status"], got["report"]), ("done", "fatto"))
 
+    def test_a_completed_run_requests_one_fresh_provider_read(self):
+        state = deskstate.load(REPO)
+        state.pop("provider_refresh", None)
+        deskstate.save(REPO, state)
+        out = subprocess.run(
+            (sys.executable, str(ROOT / "notify.py"), "--repo", REPO,
+             "--done", "run:pr-loop", "fatto"),
+            capture_output=True, text=True, env=dict(os.environ, HOME=_HOME))
+        self.assertEqual(out.returncode, 0, out.stderr)
+        refresh = deskstate.load(REPO)["provider_refresh"]
+        self.assertTrue(refresh["token"])
+        self.assertEqual(fresh_desk().live_state()["provider_refresh"], refresh)
 
-class ChatButtonsThroughTheLedger(unittest.TestCase):
-    """The HTTP side of the same promise: the ledger is checked BEFORE the
-    inbox, so a duplicate press never becomes a duplicate event."""
+    def test_an_explicit_provider_refresh_is_available_to_every_host(self):
+        state = deskstate.load(REPO)
+        state.pop("provider_refresh", None)
+        deskstate.save(REPO, state)
+        out = subprocess.run(
+            (sys.executable, str(ROOT / "notify.py"), "--repo", REPO,
+             "--refresh-provider", "provider cambiato"),
+            capture_output=True, text=True, env=dict(os.environ, HOME=_HOME))
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn("provider_refresh", deskstate.load(REPO))
 
+
+class DetachedButtons(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.desk = fresh_desk(chat=True, kind="pr")
+        cls.desk = fresh_desk(chat=False, kind="pr")
         prdesk.Handler.desk = cls.desk
         cls.server = ThreadingHTTPServer(("127.0.0.1", 0), prdesk.Handler)
         cls.port = cls.server.server_address[1]
@@ -1154,108 +1441,56 @@ class ChatButtonsThroughTheLedger(unittest.TestCase):
         cls.server.shutdown()
         cls.server.server_close()
 
-    def setUp(self):
-        state = deskstate.load(REPO)
-        state.pop("requests", None)
-        deskstate.save(REPO, state)
-        inbox.truncate(REPO)
-
     def post(self, path, body=None):
         req = Request("http://127.0.0.1:%s%s" % (self.port, path),
                       data=json.dumps(body or {}).encode(),
                       headers={"Content-Type": "application/json",
                                "X-Git-Workflow-Token": self.desk.write_token})
-        try:
-            with urlopen(req, timeout=30) as resp:
-                return resp.status, json.loads(resp.read())
-        except HTTPError as exc:
-            return exc.code, json.loads(exc.read())
+        with urlopen(req, timeout=30) as resp:
+            return resp.status, json.loads(resp.read())
 
-    def events(self):
-        raw = inbox.inbox_path(REPO)
-        if not raw.exists() or not raw.stat().st_size:
-            return []
-        return [json.loads(line) for line in raw.read_text().splitlines() if line]
+    def test_boot_and_snapshot_never_start_an_agent(self):
+        with mock.patch.object(jobs, "analyze_pr") as analyze, \
+                mock.patch.object(jobs, "triage") as triage, \
+                mock.patch.object(jobs, "operation") as operation:
+            self.desk.snapshot()
+        analyze.assert_not_called()
+        triage.assert_not_called()
+        operation.assert_not_called()
 
-    def test_one_press_one_event(self):
-        status, payload = self.post("/api/pr/1145/analyze")
+    def test_analyze_and_explain_start_one_shot_jobs(self):
+        with mock.patch.object(jobs, "analyze_pr", return_value="analyze-job") as analyze:
+            status, payload = self.post("/api/pr/1145/analyze")
+        self.assertEqual((status, payload["job"]), (202, "analyze-job"))
+        self.assertEqual(analyze.call_args.args[1], 1145)
+        with mock.patch.object(jobs, "explain_pr", return_value="explain-job") as explain:
+            status, payload = self.post("/api/pr/1145/explain")
+        self.assertEqual((status, payload["job"]), (202, "explain-job"))
+        self.assertTrue(explain.call_args.args[-1])
+
+    def test_triage_publishes_before_starting_its_optional_job(self):
+        with mock.patch.object(jobs, "triage", return_value="triage-job") as triage:
+            status, payload = self.post("/api/triage", {"flow": "pr-triage"})
         self.assertEqual(status, 202)
-        self.assertTrue(payload["queued"])
-        self.assertEqual(len(self.events()), 1)
+        self.assertTrue(payload["published"])
+        self.assertEqual(payload["job"], "triage-job")
+        self.assertTrue(Path(triage.call_args.args[2]).exists())
 
-    def test_five_presses_still_one_event(self):
-        for _ in range(5):
-            self.post("/api/pr/1145/analyze")
-        self.assertEqual(len(self.events()), 1, "the chat got duplicates")
+    def test_run_records_the_exact_scope_and_clamps_batch(self):
+        with mock.patch.object(jobs, "operation", return_value="run-job") as operation:
+            status, payload = self.post(
+                "/api/run", {"flow": "pr-loop", "ns": [1145, 1128], "batch": 99})
+        self.assertEqual((status, payload["job"]), (202, "run-job"))
+        self.assertEqual(payload["ns"], [1145, 1128])
+        self.assertEqual(payload["batch"], prdesk.MAX_BATCH)
+        self.assertEqual(operation.call_args.args[2],
+                         {"ns": [1145, 1128], "batch": prdesk.MAX_BATCH})
 
-    def test_the_refusal_hands_back_the_outstanding_request(self):
-        self.post("/api/pr/1145/analyze")
-        status, payload = self.post("/api/pr/1145/analyze")
-        self.assertEqual(status, 200)
-        self.assertTrue(payload["already"])
-        self.assertEqual(payload["request"]["status"], "queued")
-
-    def test_every_chat_button_is_covered(self):
-        for path, body in (("/api/pr/1145/analyze", {}),
-                           ("/api/pr/1145/explain", {}),
-                           ("/api/pr/1145/order", {"propose": "x"}),
-                           ("/api/issue/1166/analyze", {}),
-                           ("/api/triage", {"flow": "pr-triage"}),
-                           ("/api/run", {"flow": "pr-loop"})):
-            inbox.truncate(REPO)
-            state = deskstate.load(REPO)
-            state.pop("requests", None)
-            deskstate.save(REPO, state)
-            self.post(path, body)
-            self.post(path, body)
-            self.assertEqual(len(self.events()), 1, path)
-
-    def test_chosen_rows_reach_the_chat_with_the_batch_size(self):
-        """Picking rows in the desk IS the answer to which ones: the loop
-        must receive them, in that order, and be told how many to propose
-        together."""
-        inbox.truncate(REPO)
-        state = deskstate.load(REPO)
-        state.pop("requests", None)
-        deskstate.save(REPO, state)
-        self.post("/api/run", {"flow": "pr-loop", "ns": [1145, 1128], "batch": 2})
-        event = self.events()[-1]
-        self.assertEqual(event["ns"], [1145, 1128])
-        self.assertEqual(event["batch"], 2)
-
-    def test_the_batch_is_clamped_where_the_answer_box_ends(self):
-        """The page is an input like any other: four is what one
-        decision group holds."""
-        inbox.truncate(REPO)
-        state = deskstate.load(REPO)
-        state.pop("requests", None)
-        deskstate.save(REPO, state)
-        self.post("/api/run", {"flow": "pr-loop", "ns": [1, 2, 3, 4, 5, 6],
-                               "batch": 99})
-        self.assertEqual(self.events()[-1]["batch"], prdesk.MAX_BATCH)
-
-    def test_a_whole_queue_run_names_no_rows(self):
-        inbox.truncate(REPO)
-        state = deskstate.load(REPO)
-        state.pop("requests", None)
-        deskstate.save(REPO, state)
-        self.post("/api/run", {"flow": "pr-loop"})
-        event = self.events()[-1]
-        self.assertEqual(event["ns"], [])
-        self.assertEqual(event["batch"], 1, "one at a time is the default")
-
-    def test_a_closed_request_lets_the_button_work_again(self):
-        self.post("/api/pr/1145/analyze")
-        deskstate.close_request(REPO, "analyze:1145", "done", "ok")
-        inbox.truncate(REPO)
-        status, payload = self.post("/api/pr/1145/analyze")
-        self.assertEqual(status, 202)
-        self.assertEqual(len(self.events()), 1)
-
-    def test_outstanding_flows_reach_the_ui(self):
-        self.post("/api/triage", {"flow": "pr-triage"})
-        flows = self.desk.live_state()["flows"]
-        self.assertEqual(flows["pr-triage"]["status"], "queued")
+    def test_issue_analysis_is_an_explicit_read_only_job(self):
+        with mock.patch.object(jobs, "analyze_issue", return_value="issue-job") as analyze:
+            status, payload = self.post("/api/issue/1166/analyze")
+        self.assertEqual((status, payload["job"]), (202, "issue-job"))
+        self.assertEqual(analyze.call_args.args[1], 1166)
 
 
 class SummaryFromData(unittest.TestCase):
@@ -1428,7 +1663,10 @@ class LaneCheck(unittest.TestCase):
         pass reads it and the DIRTY row classifies itself."""
         before = self._check()
         self.assertNotIn(1083, before["lanes"]["A3"])
-        deskstate.save(REPO, {"prs": {"1083": {"conflict_kind": "mechanical"}}})
+        row = next(row for row in before["rows"] if row["n"] == 1083)
+        deskstate.save(REPO, {"prs": {"1083": {
+            "conflict_kind": "mechanical",
+            "conflict_key": row["model_keys"]["conflict"]}}})
         after = self._check()
         self.assertIn(1083, after["lanes"]["A3"])
         self.assertFalse(after["fixed_point"])

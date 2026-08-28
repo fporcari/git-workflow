@@ -4,8 +4,8 @@ The provider's cost is GitHub's, not ours: one `is:open is:pr involves:me`
 search costs 4-7s no matter how the query is written (measured — see
 tests/bench.py). So the desk stops paying it on the critical path:
 
-  * every fetch is written to disk, so a restart serves the previous
-    payload immediately and revalidates behind the browser;
+  * every fetch is written to disk, so tabs, sibling desks and processes share
+    one payload instead of each paying the provider;
   * a stale-but-present entry is served at once and refreshed in a
     background thread (stale-while-revalidate), so nothing blocks on a
     round trip whose answer is already almost right;
@@ -73,6 +73,7 @@ def _refresh(repo, key, loader):
 
 def get(repo, key, loader, refresh=False):
     """Return (data, age, source). source is hit | stale | miss."""
+    started = time.time()
     hit = peek(repo, key)
     if hit and not refresh:
         age, data = hit
@@ -85,6 +86,8 @@ def get(repo, key, loader, refresh=False):
     with lock:
         again = peek(repo, key)          # another thread may have just filled it
         if again and not refresh and again[0] < FRESH:
+            return again[1], again[0], "hit"
+        if refresh and again and again[0] <= time.time() - started:
             return again[1], again[0], "hit"
         return store(repo, key, loader()), 0.0, "miss"
 

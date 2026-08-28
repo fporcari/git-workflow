@@ -1,37 +1,40 @@
 ---
 name: pr-desk
-description: Launch the PR desk — the dashboard of the pull request queue, attached to this chat. Startup and reload fetch provider facts only; an explicit pr-triage button publishes the grid and chase on a fresh provider read, and from then on the engine re-verdicts moved PRs on every read — only never-triaged rows stay highlighted. Merge orders, pr-analyze and pr-loop also come back here as events. Use when the user asks for the PR desk or a PR dashboard.
+description: Launch the detached PR desk. The Python server serves provider/cache JSON without keeping Codex or Claude active; only explicit analyze, explain, triage or workflow clicks start an ephemeral agent process. Use when the user asks for the PR desk or a PR dashboard.
 ---
 
 # PR desk
 
 Read `<PLUGIN_ROOT>/refs/runtime.md` first.
 
-Launch the PR desk in attached-chat mode using the host procedure from the
-runtime reference. The common command is:
+Launch the PR desk using the host procedure from the runtime reference. Select
+the current host as its one-shot backend:
 
 ```bash
-python3 <PLUGIN_ROOT>/server/prdesk.py --chat --desk pr
+python3 <PLUGIN_ROOT>/server/prdesk.py --desk pr --agent <claude|codex>
 ```
 
 Claude browser-preview configuration:
 
 ```json
 {"name": "pr-desk", "runtimeExecutable": "python3",
- "runtimeArgs": ["<PLUGIN_ROOT>/server/prdesk.py", "--chat", "--desk", "pr"],
+ "runtimeArgs": ["<PLUGIN_ROOT>/server/prdesk.py", "--desk", "pr", "--agent", "claude"],
  "port": 8399}
 ```
 
-Then follow `../review-desk/SKILL.md` sections 2–3: park the watcher
-(**one per repo** — skip if a sibling desk already parked it) and process
-the events it prints.
+Open the printed localhost URL, then the launching session may end. Do not wait
+on the server and do not start a watcher. Follow `../review-desk/SKILL.md` for
+the detached job contract shared by both desks.
 
 The desk does **not** triage at startup or reload: both are pure provider
 fetches that paint in seconds. `pr-triage` arrives only when the user presses
-its button. That press computes and publishes the whole deterministic grid on
-the server, and the event carries `rows` — the path of the JSON the desk has
-already downloaded. Run the skill on that file rather than re-querying, and
-add only per-PR work: the grid is already on screen, and the file's
-`needs_model` names the only rows still owing a reading. A PR the provider
-moves is re-verdicted by the engine itself on every read — the published
-triage never expires; only a PR no press has ever seen is `missing`.
+its button. That press reads the provider fresh, computes and publishes the
+whole deterministic grid on the server, then starts one ephemeral
+`pr-triage` process only if `model_tasks` names stale artifacts. The process
+reads the exported rows file; the server validates its structured result and
+writes the durable state. A PR the provider moves is re-verdicted by the
+engine itself on every read.
+
+A completed `pr-loop`, `issue-loop` or order job asks every open tab for one
+fresh provider read when its result reports a provider mutation. Refreshing
+facts never means pressing triage and never spends model tokens.

@@ -46,11 +46,11 @@ The plugin lives in `plugins/git-workflow/`, with a manifest per host
 `agents/openai.yaml` per skill. The skills themselves are host-agnostic: they
 say `<PLUGIN_ROOT>` instead of any host variable, and `refs/runtime.md` is the
 one place that resolves it and answers the other host-specific questions —
-how to ask the user a question, how to launch a desk, how to title a session,
-how to delegate to a background subagent, how to spawn a dedicated one. The
+how to ask the user a question, how to launch a detached desk, how to title a
+session, how to delegate to a background subagent, how to spawn a dedicated one. The
 two Claude Code wrappers in `commands/` are thin by design: they load a skill
-and declare that host's tool names, nothing else. The desk's headless
-Analyze picks its backend with
+and declare that host's tool names, nothing else. Explicit desk actions pick
+their ephemeral backend with
 `--agent auto|claude|codex`. `server/tests/test_packaging.py` pins the
 cross-host invariants.
 
@@ -92,15 +92,18 @@ executed in parallel, each fix in its own worktree.
 **The same three lines on the issue side**: `/issue-triage`, `/issue-loop`,
 `/issue-loop 1156,1149 batch=2`.
 
-**"Show me, don't tell me."** — the dashboards, attached to this chat:
+**"Show me, don't tell me."** — the detached dashboards:
 
 ```
 /pr-desk
 ```
 
 or `/issue-desk`, or `/review-desk` for both. Each opens in the browser, reads
-the provider itself and paints in seconds; its buttons hand work back to this
-chat.
+provider/cache JSON itself and paints in seconds. Opening or polling it spends
+no model tokens; an explicit action button starts one ephemeral Codex or
+Claude process and records its progress and result in a job JSON. While it
+runs, the desk shows elapsed time, current phase and sanitized tool activity;
+opening the progress view does not attach the primary conversation.
 
 ## What is in the box
 
@@ -141,9 +144,9 @@ succeeded.
 
 | skill | what it does |
 |---|---|
-| **`pr-desk`** | The PR queue as a dashboard (port 8399), attached to this chat. Startup and reload fetch provider facts only; the explicit `pr-triage` button computes and publishes the grid and chase blocks from those rows itself. Missing or changed triages are highlighted. Its other buttons — merge orders, `pr-analyze`, and `pr-loop` — come back to the chat as events. |
+| **`pr-desk`** | The detached PR queue dashboard (port 8399). Startup, reload and polling use Python/provider JSON only. Explicit triage, analysis, explanation and workflow clicks each start one ephemeral Codex or Claude process. |
 | **`issue-desk`** | The same for the open issues (port 8398): the cross-check and the shortlist computed without a model on every read, the impact ranking and the verified type from `issue-triage`, an analysis marked *da aggiornare* when its issue has moved since. Buttons for dedicated work sessions, `issue-analyze` and `issue-loop`. |
-| **`review-desk`** | Launches both at once, and is the reference for how an attached chat processes desk events. Canonical home of the desk protocol: the live-row marker, the request ledger, and the exact `notify.py` flags. |
+| **`review-desk`** | Launches both detached servers and defines their JSON/job contract. The launching conversation may finish while the dashboards remain available. |
 
 `plugins/git-workflow/server/` is the code under all three: a zero-dependency
 Python stdlib server that reads the provider, prepares explicit triage work,
@@ -163,17 +166,19 @@ Waiting, All PRs, Issues. Clicking a row opens the detail panel: state of
 play, next move with the `pr-loop` autorun class, reviews, linked issues.
 
 Options: `--repo`, `--provider github|forgejo|fixture`, `--me`, `--port`,
-`--chat` (buttons hand work to the attached chat instead of running headless),
-`--keep-state`, `--keep-cache`, `--no-prefetch`.
+`--agent auto|claude|codex`, `--keep-state`, `--keep-cache`, `--no-prefetch`.
 
 **It does not triage at startup.** It fetches the provider itself and paints
 in seconds. Reload performs the same pure fetch. Pressing the triage button
 reads the provider fresh, computes and publishes the whole grid on the spot,
-then hands the chat the rows already downloaded rather than making the skill
-re-query — and only the rows still owing a model reading (`needs_model`).
+then starts one ephemeral agent only if the freshly exported rows need model
+work. `model_tasks` names only the stale analysis or conflict artifacts;
+`needs_model` remains their compatibility list of PR numbers.
 From then on the triage is durable: a PR the provider moves is re-verdicted
 by the engine on every read and the grid survives a desk relaunch; only a PR
 no press has ever seen is marked as never triaged.
+Completing a loop or order asks every open tab for one fresh provider snapshot;
+fact refreshes do not relaunch triage or spend model tokens.
 
 **Choosing what the loop works.** cmd-click (shift-click for a stretch) picks
 rows; ▶ then runs `pr-loop`/`issue-loop` on **exactly those, in that order,
@@ -188,11 +193,11 @@ Acting belongs to the skills, which log every action on the PR itself.
 
 `plugins/git-workflow/server/verdicts.py` ports section 7 of the pr-triage skill
 — the closed verdict vocabulary (`merge it`, `answer the review`, `realign
-with the base`, `waiting on <login>`, …). It runs only on an explicit
-triage, publishes what it computed, and is restricted to what the fields can
+with the base`, `waiting on <login>`, …). Explicit triage publishes its grid;
+after that the same engine re-verdicts it on every provider read. It is restricted to what the fields can
 honestly answer: anything that would need a diff read is reported as `asks`
 and left to `pr-loop`. The single fact a model hands back to it is
-`conflict_kind` — mechanical or substantive — which is what turns a `DIRTY`
+`conflict_kind` — mechanical or substantive, keyed to the exact head/base pair — which is what turns a `DIRTY`
 row of your own into an unattended realign. The `autorun` column mirrors what `pr-loop` does unattended (A1
 merge, A3 realign) versus what it brings to you for a go-ahead.
 

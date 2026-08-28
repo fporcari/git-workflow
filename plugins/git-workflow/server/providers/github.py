@@ -80,10 +80,19 @@ class GitHubProvider(Provider):
     def queue(self, repo, me):
         q = "repo:%s is:open is:pr involves:%s" % (repo, me)
         search = _graphql("pr_core.graphql", q=q)["search"]
-        rows = [self._row(repo, node) for node in search["nodes"] if node]
+        nodes = [node for node in search["nodes"]
+                 if node and node.get("state", "OPEN") == "OPEN"]
+        rows = [self._row(repo, node) for node in nodes]
         rows.sort(key=lambda r: r["created"], reverse=True)
-        return {"rows": rows, "total": search["issueCount"],
+        total = search["issueCount"] - (len(search["nodes"]) - len(nodes))
+        return {"rows": rows, "total": max(len(rows), total),
                 "truncated": search["pageInfo"]["hasNextPage"]}
+
+    def open_numbers(self, repo, me):
+        q = "repo:%s is:open is:pr involves:%s" % (repo, me)
+        nodes = _graphql("pr_membership.graphql", q=q)["search"]["nodes"]
+        return [node["number"] for node in nodes
+                if node and node.get("state") == "OPEN"]
 
     def mergestates(self, repo, me):
         """Phase two: the expensive field, for the user's own PRs only."""
@@ -117,6 +126,7 @@ class GitHubProvider(Provider):
             "assignees": [a["login"] for a in node["assignees"]["nodes"]],
             "draft": node["isDraft"],
             "base": node["baseRefName"],
+            "base_head": node.get("baseRefOid"),
             "head": node.get("headRefOid"),
             "incomplete": any((
                 node["assignees"]["pageInfo"]["hasNextPage"],

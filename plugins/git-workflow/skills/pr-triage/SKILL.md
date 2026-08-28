@@ -29,16 +29,13 @@ the case behind each one — **read the relevant section when you are about to s
 a rule, when one looks wrong for this repo, or when the user asks why.** Do not
 read it to run a normal triage.
 
-## 0 · Always in its own agent
+## 0 · Execution mode
 
-The model half of a triage (§2–§8) runs in a **background subagent**, never in
-the session the user is talking to: it is minutes of reads, and while it runs
-the user wants to analyze PRs he already knows about. The supervising session
-does §1, spawns the agent with a self-contained prompt (repo, login, this
-file's path, the rows path when a desk handed one, the state file path), stays
-free, and when the agent returns reports the blocks and asks §9's one
-question. From a desk the delegation is the same and lives in
-`../review-desk/SKILL.md` §3, which also skips the question.
+For a direct conversational invocation, the model half (§2–§8) runs in a
+background subagent so the supervising session remains available. In
+**detached desk mode**, this process already is the isolated one-shot worker:
+do not delegate again, do not write desk state, work only the tasks in the
+rows JSON, and return the structured result requested by the launch prompt.
 
 **A triage in progress never blocks a single analysis.** `pr-analyze` needs
 nothing a triage produces — a PR somebody flagged is analyzed right away,
@@ -67,24 +64,20 @@ screen before you read a line. The file holds:
 | `grid` | the five blocks of §5, published; every row keyed by `triage_key` |
 | `chase` | the §6 blocks, per person, oldest first, with the dates — published |
 | `gates` | the §3 gate of every base: who may land, approvals, conversation resolution, CODEOWNERS |
-| `needs_model` | the numbers still owing a reading: no note yet, or the PR moved past its dated note |
+| `model_tasks` | per PR, the exact stale artifacts still owing a reading: `analysis` and/or `conflict` |
+| `needs_model` | compatibility list of the PR numbers in `model_tasks` |
 | `shortlist` | the ten issues worth reading |
 
 **Do not recompute any of it, and do not copy it anywhere.** Reproducing that
 grid costs ~28k tokens and a whole turn to re-derive a mapping the desk
 computes in 0.07 ms — and a row dropped in the copy reads as a PR nobody ever
-triaged. Your job is only what the fields cannot answer, and **only on the
-rows in `needs_model`** — the triage is incremental: a note already written
-and not overtaken stands, and re-reading its PR re-buys a reading the state
-file already holds. On those rows:
-
-1. the ones marked `asks` — those need the diff or the review read (§4's
-   DIRTY/UNSTABLE rules, and the CODEOWNERS per-path question when
-   `gates.<base>.per_path` is true);
-2. **what each PR is FOR**, one line, in the user's language — the desk shows
-   the raw title and asks for this per row (the `explain` event), so write it
-   only for the rows you were asked about;
-3. §8's three repo-level findings, which are patterns nobody can look up.
+triaged. Your job is only what the fields cannot answer, and **only the
+artifacts in `model_tasks`**. An `analysis` task needs the diff or review read;
+a `conflict` task needs the current head/base conflict classified as mechanical
+or substantive. Write the matching key from that row's `model_keys` with the
+artifact, so unrelated provider changes do not rebuy it and a same-day push
+cannot leave it current. One-line explanations are separate `explain` events,
+never bulk triage work. Also report §8's three repo-level findings.
 
 What you find goes under `prs.<n>` (§10), one PR at a time. The grid stays the
 desk's.
@@ -362,29 +355,33 @@ preserve every other key):
   "session": "PR triage · <repo> · <YYYY-MM-DD>",
   "prs": {
     "1027": {"what": "<one line in the user's language, no verdict>",
+             "what_key": "<what_key from its explain event>",
              "analysis": "<in italiano: cosa fa + perché quel verdetto>",
+             "analysis_key": "<model_keys.analysis from this rows export>",
              "next": "<what is to be done>",
              "at": "<ISO timestamp, now>",
-             "conflict_kind": "mechanical"}
+             "conflict_kind": "mechanical",
+             "conflict_key": "<model_keys.conflict from this rows export>"}
   }
 }
 ```
 
-`at` is what makes the note durable: the desk compares it with the PR's own
-last activity to decide whether the next press asks for this PR again
-(`needs_model`). A note without it is re-asked every time.
+`at` is display metadata. Artifact keys decide validity: title/body/linked
+issues for `what`, head/review/gate facts for `analysis`, and the exact
+head/base pair for `conflict_kind`. Preserve unrelated fields when updating
+one artifact.
 
 `what` replaces the raw title in the desk's blocks. `conflict_kind` is the one
 value that feeds the engine back: on a `DIRTY` branch of his own, `mechanical`
 (a changelog, a lock file, disjoint additions) turns that row into
 `realign with the base` / `A3` by itself, and `substantive` leaves it `asks`.
-Write it only for a conflict you actually inspected — §4's rule stands.
+Write it only for a conflict you actually inspected, together with its
+`conflict_key` — §4's rule stands.
 
 A direct invocation with no desk behind it writes nothing: report the blocks
 in chat. The desk's engine re-verdicts its own grid on every read; a grid
 written from outside it is a copy nothing keeps honest.
 
-**Triggered from the desk** (a `{"kind": "triage"}` inbox event): run
-report-only — blocks, findings, the per-PR notes — and skip the §9 handover
-question;
-the user is driving from the dashboard and will press run himself.
+**Triggered from the detached desk**: run report-only — blocks, findings and
+the requested per-PR notes — then return the required structured JSON. Skip
+the §9 handover question; the user is driving from the dashboard.

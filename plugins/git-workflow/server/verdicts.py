@@ -8,9 +8,8 @@ tokens.
 Everything on THIS side of the boundary is deterministic and belongs here
 rather than in a model turn: the todo/state/autorun vocabulary (§7 — 0.07 ms
 for 52 PRs), the partition into the five blocks (§5 — a pure function of
-those three), and the per-person chase grouping (§6). The desk used to ask
-the attached chat to reproduce all of it on every refresh: ~28k tokens of
-input, and a whole turn of latency, to re-derive a mapping.
+those three), and the per-person chase grouping (§6). Keeping it in Python
+avoids spending model input and latency to re-derive the same mapping.
 
 Pass a `gate` (see gate.py) and the verdicts stop being conservative where an
 API read settles the question — above all WHO MAY LAND. On a base whose

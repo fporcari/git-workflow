@@ -48,9 +48,9 @@ Run a desk on the fixture by hand to poke at the UI:
 python3 server/prdesk.py --provider fixture --repo fixture/desk --port 8396
 ```
 
-Where the files go, and why the tests care: the cache, the inbox, the watcher
-heartbeat and the rows export live under the OS temp dir and are cleared when
-a desk launches — so the suite isolates BOTH `deskstate.RUNTIME_DIR` and
-`deskstate.STATE_DIR`. `LaunchClearsTheCache` uses a repo name of its own,
+Where the files go, and why the tests care: the cache, rows export and
+one-shot job JSON files live under the OS temp dir — so the suite isolates
+BOTH `deskstate.RUNTIME_DIR` and `deskstate.STATE_DIR`. `LaunchClearsTheCache`
+uses a repo name of its own,
 because the desk's background warm threads outlive the test that started them
 and would otherwise write fresh entries into a shared cache.

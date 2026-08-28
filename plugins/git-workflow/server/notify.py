@@ -42,6 +42,8 @@ def main():
                              "one being worked right now")
     parser.add_argument("--idle", action="store_true",
                         help="nothing is being worked: drop the highlight")
+    parser.add_argument("--refresh-provider", action="store_true",
+                        help="ask open desk tabs for one fresh provider read")
     parser.add_argument("msg")
     args = parser.parse_args()
     if args.pong:
@@ -50,6 +52,10 @@ def main():
         deskstate.close_request(args.repo, args.done, "done", args.msg)
     if args.failed:
         deskstate.close_request(args.repo, args.failed, "failed", args.msg)
+    queue_changed = (args.done or "").startswith(
+        ("order:", "run:pr-loop", "run:issue-loop"))
+    if args.refresh_provider or queue_changed:
+        deskstate.request_provider_refresh(args.repo)
     if args.working and args.batch:
         ns = [int(x) for x in args.batch.replace("#", "").split(",") if x.strip()]
         deskstate.set_working_batch(args.repo, ns, args.msg)

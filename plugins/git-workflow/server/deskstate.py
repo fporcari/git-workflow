@@ -3,10 +3,9 @@
 TWO DIRECTORIES, and the split is what each thing costs to lose.
 
 RUNTIME (a private dir under the OS temp dir, wiped by the OS): the provider
-cache, the button inbox, the watcher heartbeat, the rows export. Every one of
-them is either session-scoped by design or re-readable in seconds, so none of
-it belongs in the user's home, and a stale one left behind by a dead session
-is noise the OS should collect.
+cache, the rows export, and one request/result JSON per explicit one-shot job.
+Every one of them is either session-scoped by design or re-readable in
+seconds, so none belongs in the user's home.
 
 STATE (~/.local/state/git-workflow/<owner>__<repo>.json): the analyses, the
 drafts, the orders, and the grid published by an explicit triage. That work is
@@ -26,8 +25,10 @@ Schema (all keys optional):
 {
   "generated": "2026-08-25T12:00:00",
   "session":   "PR triage · genropy · 2026-08-25",
-  "prs":    {"1152": {"what": "...", "analysis": "...", "draft": "...",
-                      "next": "...", "conflict_kind": "mechanical"}},
+  "prs":    {"1152": {"what": "...", "what_key": "...",
+                      "analysis": "...", "analysis_key": "...", "draft": "...",
+                      "next": "...", "conflict_kind": "mechanical",
+                      "conflict_key": "..."}},
   "issues": {"1156": {"type": "DEFECT", "finding": "...", "size": "EASY",
                       "phase": "SINGLE-PHASE"}},
   "grid":   {"generated": "...", "blocks": [{"id": "...", "rows": []}]},
@@ -48,8 +49,7 @@ RUNTIME_DIR = Path(tempfile.gettempdir()) / ("git-workflow-%s" % os.getuid())
 
 
 def runtime_dir():
-    """The temp dir for everything session-scoped. 0700: the inbox carries
-    the user's repo names and the cache his queue."""
+    """The private temp dir for session-scoped provider and job data."""
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
     return RUNTIME_DIR
 
@@ -60,18 +60,6 @@ def runtime_path(repo, suffix):
 
 def state_path(repo):
     return STATE_DIR / ("%s.json" % repo.replace("/", "__"))
-
-
-def heartbeat_path(repo):
-    return runtime_path(repo, "watcher.alive")
-
-
-def watcher_age(repo):
-    """Seconds since the inbox watcher last polled, or None if never."""
-    path = heartbeat_path(repo)
-    if not path.exists():
-        return None
-    return time.time() - path.stat().st_mtime
 
 
 def load(repo):
@@ -90,19 +78,13 @@ def reset(repo):
     read (the engine recomputes; a relaunch cannot make it lie) and the
     model's per-PR/per-issue notes are dated, so what has expired shows as
     expired instead of being thrown away with the session. `--keep-state`
-    keeps everything, ephemera included. The inbox
-    is emptied only when its events are stale: the two desks start back to
-    back and a click received while the sibling starts must survive its
-    reset."""
+    keeps everything, ephemera included."""
     path = state_path(repo)
     kept = {key: value for key, value in safejson.read(path).items()
             if key in DURABLE}
     safejson.archive(path, path.with_suffix(".json.prev"))
     if kept:
         save(repo, kept)
-    inbox = runtime_path(repo, "inbox.jsonl")
-    if inbox.exists() and inbox.stat().st_size and time.time() - inbox.stat().st_mtime > 60:
-        inbox.write_text("")
 
 
 LEGACY_SUFFIXES = ("__cache.json", "__inbox.jsonl", "__watcher.alive",
@@ -250,6 +232,15 @@ def close_request(repo, key, status="done", report=""):
                       closed_at=time.strftime("%H:%M:%S"))
         ledger[key] = record
         return record
+    return update(repo, mutate)
+
+
+def request_provider_refresh(repo):
+    """Tell every open desk tab to force one fresh provider snapshot."""
+    def mutate(state):
+        state["provider_refresh"] = {
+            "token": str(time.time_ns()), "at": time.strftime("%H:%M:%S")}
+        return state["provider_refresh"]
     return update(repo, mutate)
 
 

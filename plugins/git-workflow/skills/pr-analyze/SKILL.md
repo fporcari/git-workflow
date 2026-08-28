@@ -106,15 +106,18 @@ Procedo con questa proposta?
 One line each, in that order, with the label in bold. Nothing before the
 block, nothing after the question.
 
-Do not say merely that a draft exists: when attached to the desk, say that the
-English draft is visible there. Outside the desk, include the draft after the
-decision block so the user can inspect what the proposal would post. A `vai`,
+Do not say merely that a draft exists: in detached desk mode it is returned in
+the structured result and the server makes it visible there. Outside the desk,
+include the draft after the decision block so the user can inspect what the proposal would post. A `vai`,
 `ok`, `procedi` or `si` authorizes exactly the displayed proposal, not any
 other action.
 
 ## 5 · Publish to the review desk
 
-In an attached interactive session, merge into
+In detached desk mode, do not write any file. Return the structured JSON from
+the launch prompt; the Python server validates it and merges it with the
+`analysis_key`. For a legacy direct integration that explicitly supplies an
+`analysis_key`, merge the result into
 `~/.local/state/git-workflow/<owner>__<repo>.json` (create dir/file if
 missing, preserve other keys):
 
@@ -123,6 +126,7 @@ missing, preserve other keys):
                   "problem": "<problema + soluzione, in italiano>",
                   "history": "<cronologia + a chi tocca, in italiano>",
                   "analysis": "<problema + storia, in italiano>",
+                  "analysis_key": "<the event's analysis_key>",
                   "next": "<la proposta, in italiano>",
                   "draft": "<the English draft, or omit>"}}}
 ```

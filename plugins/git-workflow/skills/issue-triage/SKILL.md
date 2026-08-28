@@ -15,18 +15,13 @@ Resolve `<PLUGIN_ROOT>` and host-specific questions from
 Read-only: no branches, no comments, no PRs, no assignments. Acting on the
 batch is `issue-loop`.
 
-## Always in its own agent
+## Execution mode
 
-Step 1 and the Step 2 write-back run in a **background subagent**, never in
-the session the user is talking to: the impact ranking reads ten bodies and
-the *lavoro fermo* checks read branch histories — minutes, during which the
-user wants to keep analyzing what he already knows. The supervising session
-does Step 0, spawns the agent with a self-contained prompt (repo, login,
-this file's path, the rows path when a desk handed one, the state file
-path), stays free, and when the agent returns shows the Step 2 table and
-asks Step 3's one question — the selection stays here, because the selection
-is the approval. From a desk the delegation lives in
-`../review-desk/SKILL.md` §3, which also skips the question.
+For a direct conversational invocation, Step 1 and Step 2 run in a background
+subagent so the supervising session remains available. In **detached desk
+mode**, this process already is the isolated one-shot worker: do not delegate
+again, do not write desk state, work only the issues in the rows JSON, and
+return the structured result requested by the launch prompt.
 
 ## Step 0 — Scope
 
@@ -115,8 +110,8 @@ honest: the desk compares it with the issue's own last activity and marks the
 analysis *da aggiornare* when the issue has moved since. issue-analyze fills
 `phase` and `size` later.
 
-**Triggered from the desk** (a `{"kind": "triage", "flow": "issue-triage"}`
-inbox event): run through Step 2 and the per-issue entries, skip the Step 3
+**Triggered from the detached desk**: run through Step 2 and the requested
+per-issue entries, return the required structured JSON, and skip the Step 3
 handover question — the user drives from the dashboard.
 
 ## Step 3 — Handover

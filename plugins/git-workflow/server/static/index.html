@@ -48,6 +48,17 @@ body{font:13px/1.4 system-ui,sans-serif}
 .banner.err{background:color-mix(in srgb,var(--red) 7%,var(--panel));color:var(--red)}
 .banner.warn{background:color-mix(in srgb,var(--amber) 8%,var(--panel));color:var(--amber)}
 .banner.info{background:var(--panel);color:var(--muted)}
+.jobPanel{display:none;padding:9px 18px;border-bottom:1px solid var(--line);background:var(--panel);gap:8px;flex-direction:column}
+.jobPanel.on{display:flex}
+.jobCard{border:1px solid color-mix(in srgb,var(--amber) 45%,var(--line));border-radius:7px;padding:8px 10px;background:color-mix(in srgb,var(--amber) 5%,var(--panel))}
+.jobHead{display:flex;align-items:center;gap:8px;font-size:11.5px}.jobHead b{font:600 11px var(--mono)}
+.jobHead .spin{width:7px;height:7px;border-radius:50%;background:var(--amber);animation:pulse 1s infinite;flex:none}
+.jobHead .elapsed{margin-left:auto;color:var(--muted);font:10px var(--mono)}
+.jobRail{height:2px;background:var(--soft);overflow:hidden;margin:7px 0}.jobRail i{display:block;width:28%;height:100%;background:var(--amber);animation:travel 1.8s ease-in-out infinite}
+@keyframes travel{0%{transform:translateX(-100%)}100%{transform:translateX(460%)}}
+.jobCurrent{font-size:11px;color:var(--ink)}
+.jobEvents{margin-top:6px;padding-top:5px;border-top:1px solid var(--line);font:10.5px/1.55 var(--mono);color:var(--muted);max-height:104px;overflow:auto}
+.jobEvents div{display:flex;gap:8px}.jobEvents time{color:var(--amber);flex:none}.jobEvents span{overflow-wrap:anywhere}
 .feed{display:none;padding:6px 18px;border-bottom:1px solid var(--line);background:var(--panel);max-height:88px;overflow:auto;font:11px var(--mono);color:var(--muted)}
 .feed.on{display:block}
 .feed div{padding:1px 0}.feed b{color:var(--ink);margin-right:7px}
@@ -83,7 +94,7 @@ tbody tr.untriaged.selected td{background:color-mix(in srgb,var(--amber) 11%,var
 .pickBar b{font:600 11px var(--mono)}
 .pickBar .grow{margin-left:auto;display:flex;gap:6px}
 tbody tr.selected td:first-child{box-shadow:inset 3px 0 var(--rust)}
-/* the row the chat is on right now: a moving edge, not a colour swap, so it
+/* the row the one-shot job is on right now: a moving edge, not a colour swap, so it
    reads as work in progress and never competes with the selection */
 tbody tr.working td{background:color-mix(in srgb,var(--amber) 9%,var(--panel))}
 tbody tr.working.selected td{background:color-mix(in srgb,var(--amber) 15%,var(--panel))}
@@ -212,7 +223,7 @@ h2{margin:0 0 7px}
     <div class="topStats">
       <span><b id="cPrs">—</b> PR</span><span><b id="cIssues">—</b> issue</span>
       <button class="btn sync" id="btnFetch" title="Rilegge il provider ignorando la cache"><i></i><span id="syncLabel">avvio…</span></button>
-      <button class="btn" id="btnTest" title="Verifica desk → server → chat collegata → desk">🧪</button>
+      <button class="btn" id="btnTest" title="Verifica desk, file JSON e agente on-demand">🧪</button>
       <button class="btn" id="btnStop" title="Ferma il server del desk">⏻</button>
     </div>
   </header>
@@ -228,7 +239,8 @@ h2{margin:0 0 7px}
   <div class="workingBar" id="workingBar"></div>
   <div class="pickBar" id="pickBar"></div>
   <div class="banner err" id="errBox"></div>
-  <div class="banner warn" id="watcherBox"></div>
+  <div class="banner warn" id="agentBox"></div>
+  <div class="jobPanel" id="jobPanel"></div>
   <div class="banner info" id="noteBox"></div>
   <div class="testBox" id="testBox"></div>
   <div class="feed" id="feedBox"></div>
@@ -255,16 +267,20 @@ const $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const MARK={ready:"✓",attention:"!",waiting:"○",decision:"◆",untriaged:"?"};
 const STATE_LABEL={ready:"mergeable",attention:"mossa tua",waiting:"in attesa",decision:"decisione tua",untriaged:"da triagiare"};
-const AUTORUN_TIP="Cosa può fare pr-loop da solo: A1 merge (tua PR approvata e CLEAN) · A2 edit banale chiesto dal reviewer · A3 riallineo del branch · asks te lo porta in chat · yours decisione solo tua · - tocca ad altri";
+const AUTORUN_TIP="Cosa può fare pr-loop da solo: A1 merge (tua PR approvata e CLEAN) · A2 edit banale chiesto dal reviewer · A3 riallineo del branch · asks richiede una decisione · yours decisione solo tua · - tocca ad altri";
 
 let meta={},writeToken="",DESK="pr",prs=[],issues=[],chase={},grid=null,shortlist=null,session=null;
-let loaded=false,view="todo",query="",stateFilter=null,watcherAlive=false;
+let loaded=false,view="todo",query="",stateFilter=null,agentReady=true;
 let issuesTruncated=null,triageComplete=false,ranked=false,gates={};
 let selected=null,tab="quadro",sort={key:"created",dir:-1},acting={},truncated=null,pendingMerge=false;
 let deskEtag=null,fetching=false,lastGenerated=null,timings={};
+let staleRetry=null;
 let triageStamp=null;   // when the published triage changes, repaint the rows
-let flows={};   // triage/run outstanding, from the server's ledger
-let workingOn=null;  // the rows the chat is on right now
+let providerRefresh=null; // a completed provider mutation forces one fresh read
+let flows={};
+let jobRecords={};
+let agentPoll=null;
+let workingOn=null;
 let picked=new Set();   // the rows chosen by hand for the next loop
 let lastPick=null;      // anchor for a shift-click range, as in a mail client
 let askBatch=false;     // ▶ pressed on a multi-row pick: one at a time, or in parallel?
@@ -287,6 +303,45 @@ function localFeed(msg){
   const box=$("feedBox");box.classList.add("on");
   box.insertAdjacentHTML("afterbegin",`<div><b>${new Date().toTimeString().slice(0,8)}</b>${esc(msg)}</div>`);
 }
+const STAGE_LABEL={queued:"in coda",starting:"avvio",working:"al lavoro",
+  inspecting:"lettura",testing:"verifica",waiting:"in attesa",
+  finalizing:"chiusura",done:"completato","needs-input":"serve una decisione",error:"errore"};
+function jobUiKey(job){
+  const req=job.request||{},flow=req.flow;
+  if(flow&&flow!=="order")return "flow:"+flow;
+  if(req.n!==undefined)return (job.kind==="issue-analyze"?"i":"p")+req.n;
+  return "job:"+job.id;
+}
+function rememberJob(job){
+  if(!job||!job.id)return;
+  jobRecords[job.id]=job;
+  const key=jobUiKey(job);
+  if(key.startsWith("flow:"))flows[key.slice(5)]=job;
+  else acting[key]=job;
+}
+function forgetJob(job,key){
+  if(job&&job.id)delete jobRecords[job.id];
+  if(key&&key.startsWith("flow:"))delete flows[key.slice(5)];
+  else if(key)delete acting[key];
+}
+function jobTitle(job){
+  const req=job.request||{};
+  if(req.flow)return req.flow+(req.ns&&req.ns.length?" · "+req.ns.map(n=>"#"+n).join(" "):req.n?" · #"+req.n:"");
+  return (job.kind||"job")+(req.n?" · #"+req.n:"");
+}
+function renderJobs(){
+  const box=$("jobPanel"),jobs=Object.values(jobRecords).filter(j=>j.status==="running");
+  box.classList.toggle("on",jobs.length>0);
+  if(!jobs.length){box.innerHTML="";return;}
+  box.innerHTML=jobs.map(job=>{
+    const p=job.progress||{},events=(job.events||[]).slice(-7);
+    return `<div class="jobCard"><div class="jobHead"><span class="spin"></span>
+      <b>${esc(jobTitle(job))}</b><span>${esc(STAGE_LABEL[p.stage]||p.stage||"al lavoro")}</span>
+      <span class="elapsed">${Math.floor((p.elapsed||0)/60)}:${String((p.elapsed||0)%60).padStart(2,"0")} · ${esc(job.agent||"")}</span></div>
+      <div class="jobRail"><i></i></div><div class="jobCurrent">${esc(p.detail||"processo avviato")}</div>
+      ${events.length?`<div class="jobEvents">${events.map(e=>`<div><time>${esc(e.at||"")}</time><span>${esc(e.detail||e.stage||"")}</span></div>`).join("")}</div>`:""}</div>`;
+  }).join("");
+}
 
 /* ---------- data ---------- */
 async function loadDesk(refetch){
@@ -305,9 +360,16 @@ async function loadDesk(refetch){
     banner("errBox",`<b>Provider:</b> ${esc(e.message)}`,true);
   }
   fetching=false;render();
+  const stale=Object.values(timings).some(t=>t&&t.source==="stale");
+  if(stale&&!staleRetry){
+    staleRetry=setTimeout(()=>{staleRetry=null;loadDesk(false);},7000);
+  }else if(!stale&&staleRetry){
+    clearTimeout(staleRetry);staleRetry=null;
+  }
 }
 function applyDesk(d){
   meta=d.meta||meta;writeToken=meta.write_token||writeToken;DESK=meta.desk||"pr";timings=d.timings||{};
+  agentReady=meta.detached!==false;
   prs=d.queue.rows;issues=d.issues.rows;chase=d.queue.chase||{};
   session=d.queue.session;lastGenerated=d.generated;
   truncated=d.queue.truncated?d.queue.total:null;
@@ -322,6 +384,7 @@ function applyDesk(d){
   // these rows are already reconciled against this stamp: record it before
   // applyState, or the poll would ask for the paint it just did
   triageStamp=(d.state&&d.state.triage&&d.state.triage.generated)||null;
+  providerRefresh=(d.state&&d.state.provider_refresh&&d.state.provider_refresh.token)||null;
   applyState(d.state);
   loaded=true;
   if(DESK!=="issue"&&view==="todo"&&prs.some(r=>r.triage_status!=="current"))view="untriaged";
@@ -339,15 +402,21 @@ function applyState(st){
     triageStamp=stamp;
     if(loaded)loadDesk(false);
   }
+  const refresh=(st.provider_refresh&&st.provider_refresh.token)||null;
+  if(refresh!==providerRefresh){
+    providerRefresh=refresh;
+    if(loaded&&refresh)loadDesk(true);
+  }
   session=st.session||session;
   if(DESK==="issue"&&Object.keys(st.chase||{}).length)chase=st.chase;
-  const w=st.watcher||{};
-  watcherAlive=!!w.alive||!!(w.chat&&w.busy);
-  if(w.chat&&!w.alive&&w.busy)
-    banner("watcherBox","<b>Chat occupata.</b> La sessione collegata sta lavorando un evento: i click si accodano.",true);
-  else if(w.chat&&!w.alive)
-    banner("watcherBox","<b>Chat non in ascolto.</b> I bottoni che parlano alla chat sono disattivati — rilancia il desk dalla chat.",true);
-  else banner("watcherBox","",false);
+  const agent=st.agent||{};
+  banner("agentBox",agent.busy?"<b>Agente one-shot in esecuzione.</b> Il server continua a servire i JSON del desk.":"",!!agent.busy);
+  const liveJobs=agent.jobs||[],liveIds=new Set(liveJobs.map(job=>job.id));
+  liveJobs.forEach(rememberJob);
+  for(const job of Object.values(jobRecords))
+    if(job.status==="running"&&!liveIds.has(job.id))forgetJob(job,jobUiKey(job));
+  if(agent.busy&&!agentPoll)agentPoll=setInterval(pollState,1000);
+  if(!agent.busy&&agentPoll){clearInterval(agentPoll);agentPoll=null;}
   const wasOn=workingOn&&(workingOn.ns||[workingOn.n]).join(",");
   workingOn=st.working||null;
   if(workingOn&&(workingOn.ns||[workingOn.n]).join(",")!==wasOn)followWorking=true;
@@ -483,7 +552,7 @@ const VIEWS=()=>DESK==="issue"?[
   {id:"free",label:"Unassigned",count:issues.filter(r=>!r.assignees.length).length,tip:"Le candidate per issue-loop: nessuno le ha ancora prese"},
   {id:"all",label:"Tutte",count:loaded?issues.length:"—",tip:"Tutte le issue aperte del repo"},
 ]:[
-  {id:"untriaged",label:"Da triagiare",count:prs.filter(r=>r.triage_status!=="current").length,tip:"PR nuove o cambiate dopo l'ultimo pr-triage"},
+  {id:"untriaged",label:"Da triagiare",count:prs.filter(r=>r.triage_status!=="current").length,tip:"PR aperte che non sono mai passate da pr-triage"},
   {id:"todo",label:"Da fare",count:prs.filter(r=>r.triage_status==="current"&&r.state!=="waiting").length,tip:"Le PR triagiate dove la prossima mossa è tua"},
   {id:"waiting",label:"In attesa",count:prs.filter(r=>r.triage_status==="current"&&r.state==="waiting").length,tip:"PR triagiate ferme in attesa di altri"},
   {id:"all",label:"Tutte",count:loaded?prs.length:"—",tip:"Tutte le PR aperte in cui sei coinvolto"},
@@ -496,25 +565,25 @@ function renderTabs(){
   const onIssue=DESK==="issue";
   const tri=$("btnTriage");
   const triFlow=onIssue?"issue-triage":"pr-triage";
-  const triOut=flows[triFlow]&&flows[triFlow].status==="queued";
+  const triOut=flows[triFlow]&&flows[triFlow].status==="running";
   const untriaged=onIssue?0:prs.filter(r=>r.triage_status!=="current").length;
-  tri.textContent=(triOut?"→ in chat · ":"↻ ")+triFlow+(!onIssue?` · ${untriaged||"✓"}`:"");
+  tri.textContent=(triOut?"in corso · ":"↻ ")+triFlow+(!onIssue?` · ${untriaged||"✓"}`:"");
   tri.title=(onIssue
-    ?"Lancia issue-triage nella chat collegata sulle issue GIÀ scaricate qui (nessuna nuova query al provider)."
-    :"Lancia pr-triage nella chat collegata sulle PR GIÀ scaricate qui: il desk gli passa il JSON, la skill non rifà le query.");
-  tri.disabled=!watcherAlive||triOut||!loaded;
+    ?"Rilegge il provider, pubblica la shortlist fresca e avvia un agente one-shot solo per il giudizio richiesto."
+    :"Rilegge il provider, pubblica i verdetti freschi e avvia un agente one-shot solo per gli artefatti mancanti.");
+  tri.disabled=!agentReady||triOut||!loaded;
   tri.classList.toggle("locked",!!triOut);
   const run=$("btnRun");
   const runFlow=onIssue?"issue-loop":"pr-loop";
-  const runOut=flows[runFlow]&&flows[runFlow].status==="queued";
+  const runOut=flows[runFlow]&&flows[runFlow].status==="running";
   const nPicked=picked.size;
-  run.textContent=(runOut?"→ in chat · ":"▶ ")+runFlow+(nPicked?` · ${nPicked} scelte`:"");
+  run.textContent=(runOut?"in corso · ":"▶ ")+runFlow+(nPicked?` · ${nPicked} scelte`:"");
   run.title=nPicked
     ?`Lancia ${runFlow} SOLO su ${[...picked].map(n=>"#"+n).join(" ")}, in quest'ordine, e poi si ferma. Il resto della coda non lo tocca.`
     :onIssue
-    ?"issue-loop lavora le issue in chat una alla volta: prende la più urgente, la analizza a contesto pulito, te la propone in quattro righe, e su un tuo ok fixa in un worktree e apre la PR. Poi la prossima, finché non dici basta. Scegli delle righe con cmd-clic per lanciarlo solo su quelle."
-    :"pr-loop svuota la coda in chat: prima le mosse che non chiedono permesso (merge delle tue PR approvate, risposte banali, riallineo dei branch), poi il resto una PR alla volta, finché non dici basta. Scegli delle righe con cmd-clic per lanciarlo solo su quelle.";
-  run.disabled=!watcherAlive||runOut;
+    ?"Avvia issue-loop come processo one-shot sulle righe scelte; quando serve una nuova decisione si ferma e la riporta."
+    :"Avvia pr-loop come processo one-shot: esegue le mosse già autorizzate e si ferma quando serve una nuova decisione.";
+  run.disabled=!agentReady||runOut;
   run.classList.toggle("locked",!!runOut);
   renderPick(runFlow,runOut);
   document.querySelectorAll(".metric").forEach(m=>m.classList.toggle("on",stateFilter===m.dataset.filter));
@@ -543,7 +612,7 @@ function renderPick(runFlow,runOut){
   bar.innerHTML=`<b>${n} scelt${n===1?"a":"e"}</b><span>${esc(label)}</span>
     <span style="color:var(--muted)">shift-clic su una casella per un tratto · <span class="kbd">x</span> per la riga sotto il cursore</span>
     <span class="grow">
-      <button class="btn" id="pRun" ${watcherAlive&&!runOut?"":"disabled"}
+      <button class="btn" id="pRun" ${agentReady&&!runOut?"":"disabled"}
         title="Lancia ${esc(runFlow)} solo su queste, e poi si ferma.">▶ ${esc(runFlow)} su queste</button>
       <button class="btn" id="pClear">svuota</button></span>`;
   $("pClear").onclick=clearPicks;
@@ -560,7 +629,7 @@ function renderWorking(){
   const row=list.find(r=>r.n===ns[0]);
   const many=ns.length>1;
   bar.innerHTML=`<span class="spin"></span><b>${ns.map(n=>"#"+n).join(" ")}</b>
-    <span>${esc(many?`${ns.length} in parallelo — ${workingOn.msg||"in lavorazione nella chat"}`
+    <span>${esc(many?`${ns.length} in parallelo — ${workingOn.msg||"in lavorazione"}`
                     :nowMsg(ns[0]))}</span>
     <span style="color:var(--muted)">dalle ${esc(workingOn.at||"")}</span>
     ${row?`<button class="btn" id="goWorking" style="margin-left:auto">${many?"Vai alla prima":"Vai alla riga"}</button>`:""}`;
@@ -588,8 +657,7 @@ function th(key,label,extra){
 }
 function triageChip(r){
   if(r.triage_status==="current")return "";
-  const stale=r.triage_status==="stale";
-  return `<small class="triageChip" title="${stale?"I fatti della PR sono cambiati dopo l'ultimo pr-triage":"Questa PR non è ancora passata da pr-triage"}">${stale?"↻ triage scaduto":"? da triagiare"}</small>`;
+  return `<small class="triageChip" title="Questa PR non è ancora passata da pr-triage">? da triagiare</small>`;
 }
 function renderTable(){
   const tb=$("tbody"),head=$("thead");
@@ -739,39 +807,39 @@ function closed(r,kind){const q=requests(r)[kind];return q&&q.status!=="queued"?
    because nothing visibly happened. */
 function actionButton(id,kind,label,tip,row,primary){
   const q=pending(row,kind);
-  if(q)return `<span class="btn locked" title="Richiesta passata alla chat alle ${esc(q.at)}. Il bottone resta bloccato finché non torna l'esito, così un secondo clic non accoda un doppione.">→ in chat · ${esc(q.at)}</span>`;
+  if(q)return `<span class="btn locked" title="Richiesta precedente ancora registrata alle ${esc(q.at)}.">richiesta precedente · ${esc(q.at)}</span>`;
   const done=closed(row,kind);
-  const enabled=watcherAlive||(!meta.chat&&kind==="analyze");
+  const enabled=agentReady;
   return `<button class="btn ${primary?"primary":""}" id="${id}" ${enabled?"":"disabled"} title="${esc(tip)}">${done?"↻ ":""}${label}</button>`;
 }
 function actBadge(r){
   const out=[];
   if(onNow(r.n))
     out.push(`<div class="actionText" style="color:var(--amber);border-style:solid;border-color:var(--amber)">
-      <span class="nowChip"><i></i>ora</span> la chat sta lavorando questa: ${esc(nowMsg(r.n))} (dalle ${esc(workingOn.at||"")})</div>`);
+      <span class="nowChip"><i></i>ora</span> il job one-shot sta lavorando questa: ${esc(nowMsg(r.n))} (dalle ${esc(workingOn.at||"")})</div>`);
   for(const [kind,q] of Object.entries(requests(r))){
     const name=REQ_LABEL[kind]||kind;
     if(q.status==="queued")
-      out.push(`<div class="actionText">📨 <b>${esc(name)}</b> passata alla chat alle ${esc(q.at)} — l'esito compare qui. Il bottone è bloccato: un altro clic accoderebbe un doppione.</div>`);
+      out.push(`<div class="actionText">📨 <b>${esc(name)}</b> richiesta alle ${esc(q.at)}.</div>`);
     else if(q.status==="failed")
       out.push(`<div class="actionText" style="color:var(--red)">✗ <b>${esc(name)}</b> non riuscita${q.closed_at?" alle "+esc(q.closed_at):""}${q.report?`: ${esc(q.report)}`:""}</div>`);
     else if(q.status==="stale")
-      out.push(`<div class="actionText" style="color:var(--amber)">⚠ <b>${esc(name)}</b> mai chiusa dalla chat — il lucchetto è scaduto, puoi ritentare.</div>`);
+      out.push(`<div class="actionText" style="color:var(--amber)">⚠ <b>${esc(name)}</b> senza esito — puoi ritentare.</div>`);
     else
       out.push(`<div class="actionText" style="color:var(--green)">✓ <b>${esc(name)}</b> chiusa${q.closed_at?" alle "+esc(q.closed_at):""}${q.report?`: ${esc(q.report)}`:""}</div>`);
   }
   const a=acting[(DESK==="issue"?"i":"p")+r.n];
-  if(a&&a.status==="running")out.push(`<div class="actionText">Analisi standalone in corso con ${esc(a.agent||"agent")}…</div>`);
+  if(a&&a.status==="running")out.push(`<div class="actionText">Agente one-shot in corso${a.progress&&a.progress.detail?`: ${esc(a.progress.detail)}`:"…"}</div>`);
   if(a&&a.status==="error")out.push(`<div class="actionText" style="color:var(--red)">Errore: ${esc(a.error)}</div>`);
   return out.join("");
 }
 function renderPrActions(r){
-  const exec=r.autorun==="A1"?{label:"▶ Merge",tip:"Ordina il merge alla chat collegata: pr-loop riverifica i 5 gate freschi (autore, approvazioni sull'ultimo head, CLEAN su base protetta) e solo allora fa squash + delete branch."}
-           :r.autorun==="A3"?{label:"▶ Merge base",tip:"Ordina il riallineo alla chat collegata: merge della base nel branch (mai rebase), regole A3 di pr-loop."}:null;
+  const exec=r.autorun==="A1"?{label:"▶ Merge",tip:"Avvia pr-loop una volta: riverifica i gate freschi e solo allora esegue squash e delete branch."}
+           :r.autorun==="A3"?{label:"▶ Merge base",tip:"Avvia pr-loop una volta per riallineare il branch secondo le regole A3."}:null;
   $("detailActions").innerHTML=`
     ${exec?actionButton("aExec","order",exec.label,exec.tip,r,true):""}
     ${actionButton("aAnalyze","analyze","▶ Analizza",
-       "Passa la palla alla chat: pr-analyze legge tutto il diff, verifica i claim della descrizione e i thread, e riporta qui cosa/storia/proposta con l'eventuale draft. Read-only, non posta nulla.",
+       "Avvia pr-analyze come processo one-shot read-only: legge diff, claim e thread, scrive il risultato JSON e termina.",
        r,!exec)}
     ${r.summary?"":actionButton("aExplain","explain","▶ Spiega",
        "Questa PR non ha descrizione, quindi il desk non può dire da solo cosa risolve: chiede al modello una riga.",r,false)}
@@ -783,7 +851,7 @@ function renderPrActions(r){
 function renderIssueActions(r){
   $("detailActions").innerHTML=`
     ${actionButton("aWork","issue-analyze","▶ Lavora",
-      "Passa la palla alla chat: prepara una sessione dedicata — nella chat primaria compare una chip, un click apre la sessione che analizza fresca e, se è una modifica coerente singola, fixa in un worktree e apre la PR.",
+      "Avvia issue-analyze come processo one-shot read-only, scrive il risultato JSON e termina.",
       r,true)}
     <a class="btn" href="${r.url}" target="_blank" rel="noreferrer">GitHub ↗</a>`;
   const w=$("aWork");if(w)w.onclick=()=>doIssueWork(r,w);
@@ -792,12 +860,15 @@ function renderIssueActions(r){
 function renderPrTab(r){
   const g=$("detailGrid"),sk=r.skill||{};
   const legacyAnalysis=sk.analysis&&!sk.problem&&!sk.history;
+  const currentProblem=!r.analysis_stale&&sk.problem?sk.problem:
+    (!r.what_stale&&sk.what?sk.what:null);
   if(tab==="quadro"){
     const reviews=(r.reviews||[]).map(v=>`<div class="signal"><b>${esc(v.who)}</b><span>${esc(v.state)} · ${esc(v.on)}</span></div>`).join("")
       ||`<div class="signal"><span>ancora nessuna review</span></div>`;
     g.innerHTML=`
       <article><h2>Cosa risolve</h2>
         ${r.summary?`<p style="margin-bottom:10px">${esc(r.summary)}</p>`
+          :sk.what&&!r.what_stale?`<p style="margin-bottom:10px">${esc(sk.what)}</p>`
           :`<p style="margin-bottom:10px;color:var(--muted)">Nessuna descrizione sulla PR${(r.closes||[]).length?"":" e nessuna issue collegata"} — <b>▶ Spiega</b> la fa riassumere al modello.</p>`}
         ${(r.closes||[]).length?`<div class="signal"><b>chiude</b><span>${(r.closes||[]).map(c=>`#${c.issue}${c.title?" "+esc(c.title):""}`).join(" · ")}</span></div>`:""}
         <h2 style="margin-top:12px">Quadro</h2>
@@ -808,14 +879,14 @@ function renderPrTab(r){
           <div><dt>Base</dt><dd>${esc(r.base)}</dd></div>
           <div><dt>Thread</dt><dd>${r.unresolved}/${r.threads} unresolved</dd></div>
           <div><dt>Ultimo a parlare</dt><dd>${r.last?esc(`${r.last.who} · ${r.last.ch} · ${r.last.t.slice(0,10)}`):"—"}</dd></div>
-          <div><dt>PR triage</dt><dd>${r.triage_status==="current"?"corrente":r.triage_status==="stale"?"da aggiornare":"mai eseguito"}</dd></div>
+          <div><dt>PR triage</dt><dd>${r.triage_status==="current"?"corrente":"mai eseguito"}</dd></div>
 
         </dl>
         ${(r.gate||[]).length?`<h2 style="margin-top:11px">Gate di ${esc(r.base)}</h2>
           <ul>${r.gate.map(g=>`<li>${esc(g)}</li>`).join("")}</ul>`:""}
         ${actBadge(r)}</article>
       <article class="nextCard"><h2>Prossima mossa</h2><p>${esc(r.todo)}</p>
-        ${(sk.problem||sk.what)?`<p style="font-weight:400;font-size:12px">${esc(sk.problem||sk.what)}</p>`:""}
+        ${currentProblem?`<p style="font-weight:400;font-size:12px">${esc(currentProblem)}</p>`:""}
         <small>autorun <b>${esc(r.autorun)}</b> — ${esc(AUTORUN_TIP)}</small>${
         r.closes&&r.closes.some(c=>!c.assignees.length)
           ? `<div class="actionText">Issue collegata senza assignee (${r.closes.filter(c=>!c.assignees.length).map(c=>"#"+c.issue).join(" ")}): nel workflow Softwell legge come da fare a tutti.</div>`:""}</article>
@@ -823,7 +894,8 @@ function renderPrTab(r){
   }else if(tab==="analisi"){
     g.innerHTML=`
       <article class="wideArticle"><h2>Problema ${sk.analysis?`<span class="mono">${esc(session||"")}</span>`:""}</h2>
-        ${sk.problem?`<p>${esc(sk.problem)}</p>`:legacyAnalysis?`<p>${esc(sk.analysis)}</p>`:`<div class="tabEmpty">Nessuna analisi ancora. <b>▶ Analizza</b> manda pr-analyze nella chat collegata: legge tutto il diff, verifica i claim e i thread, e riempie questo tab.</div>`}
+        ${r.analysis_stale?`<small class="triageChip" title="Head, review o gate sono cambiati dopo questa lettura">↻ analisi da aggiornare</small>`:""}
+        ${sk.problem?`<p>${esc(sk.problem)}</p>`:legacyAnalysis?`<p>${esc(sk.analysis)}</p>`:`<div class="tabEmpty">Nessuna analisi ancora. <b>▶ Analizza</b> avvia pr-analyze una volta, salva il JSON e riempie questo tab.</div>`}
         ${sk.history?`<h2>Storia</h2><p>${esc(sk.history)}</p>`:""}
         ${sk.next?`<h2>Proposta</h2><p>${esc(sk.next)}</p>`:""}${actBadge(r)}</article>
       <aside><h2>Segnali</h2>
@@ -846,7 +918,7 @@ function renderPrTab(r){
       <article class="wideArticle"><h2>Review draft</h2>
         ${text?`<div class="draft"><span>DA PR-ANALYZE</span><p>${esc(text)}</p></div>
           <div class="draftActions"><button class="btn" id="bCopy">Copia testo</button>
-            <button class="btn primary" id="bSend" ${watcherAlive?"":"disabled"} title="Registra l'ordine: la chat collegata posta questa bozza sulla PR seguendo le regole di pr-loop.">▶ Manda in chat</button></div>`
+            <button class="btn primary" id="bSend" ${agentReady?"":"disabled"} title="Registra l'ordine e avvia pr-loop una volta per questa bozza.">▶ Esegui</button></div>`
           :`<div class="tabEmpty">Nessuna bozza. La produce <b>▶ Analizza</b> quando la PR ne ha bisogno.</div>`}
         ${r.action?`<div class="draftActions"><button class="btn" id="bFallback" title="Ultima spiaggia: il testo pronto da incollare a mano">Copia ${r.action.kind==="command"?"comando":"prompt"}</button></div>`:""}
         ${actBadge(r)}</article>
@@ -915,40 +987,37 @@ async function post(path,body){
   if(d.error)throw new Error(d.error);
   return d;
 }
+async function waitJob(jobId,key,label){
+  acting[key]={status:"running",job:jobId};render();
+  for(;;){
+    await new Promise(resolve=>setTimeout(resolve,1000));
+    const job=await fetch(`/api/job/${jobId}`).then(resp=>resp.json());
+    rememberJob(job);render();
+    if(job.status==="running")continue;
+    if(job.status==="error"||job.status==="failed")
+      throw new Error(job.error||(job.result&&job.result.report)||`${label} fallito`);
+    forgetJob(job,key);
+    const report=job.result&&job.result.report;
+    localFeed(`${label}: ${job.status==="needs-input"?"serve una decisione — ":""}${report||"completato"}`);
+    await loadDesk(!!(job.result&&job.result.provider_changed));
+    return job;
+  }
+}
 async function handOver(r,btn,path,body,kind,note){
   btn.disabled=true;btn.classList.add("working");
   try{
     const d=await post(path,body);
-    // the server owns the lock: adopt what it says, do not invent it here
-    if(d.request)(r.requests=r.requests||{})[kind]=d.request;
     if(d.order)r.order=d.order;
-    localFeed(d.already?`${note} su #${r.n}: già passata alla chat, non la riaccodo`
-                       :`${note} su #${r.n} passata alla chat`);
+    if(!d.job)throw new Error("il server non ha creato il job");
+    localFeed(`${note} su #${r.n}: agente one-shot avviato`);
+    await waitJob(d.job,(DESK==="issue"?"i":"p")+r.n,note);
   }catch(e){acting[(DESK==="issue"?"i":"p")+r.n]={status:"error",error:e.message};}
   render();
 }
 const doOrder=(r,btn,draft)=>handOver(r,btn,`/api/pr/${r.n}/order`,
   {propose:r.todo,draft:draft||(r.skill&&r.skill.draft)||null},"order","ordine");
 async function doAnalyze(r,btn){
-  btn.disabled=true;btn.classList.add("working");
-  try{
-    const d=await post(`/api/pr/${r.n}/analyze`,{});
-    if(!d.job){
-      if(d.request)(r.requests=r.requests||{}).analyze=d.request;
-      localFeed(d.already?`pr-analyze su #${r.n}: già passata alla chat, non la riaccodo`
-                         :`pr-analyze su #${r.n} passata alla chat`);
-      render();return;
-    }
-    acting["p"+r.n]={status:"running",job:d.job};render();
-    for(;;){
-      await new Promise(resolve=>setTimeout(resolve,1000));
-      const job=await fetch(`/api/job/${d.job}`).then(resp=>resp.json());
-      if(job.status==="running")continue;
-      if(job.status==="error")throw new Error(job.error||"analisi fallita");
-      delete acting["p"+r.n];
-      await loadDesk(false);return;
-    }
-  }catch(e){acting["p"+r.n]={status:"error",error:e.message};render();}
+  return handOver(r,btn,`/api/pr/${r.n}/analyze`,{},"analyze","pr-analyze");
 }
 const doExplain=(r,btn)=>handOver(r,btn,`/api/pr/${r.n}/explain`,{},"explain","spiegazione");
 const doIssueWork=(r,btn)=>handOver(r,btn,`/api/issue/${r.n}/analyze`,{},
@@ -956,8 +1025,17 @@ const doIssueWork=(r,btn)=>handOver(r,btn,`/api/issue/${r.n}/analyze`,{},
 async function doFlow(path,flow,note,extra){
   try{
     const d=await post(path,Object.assign({flow},extra||{}));
-    flows[flow]=d.request||{status:"queued",at:""};
-    localFeed(d.already?`${flow}: già in corso nella chat, non lo riaccodo`:note);
+    if(d.model_needed===false){
+      delete flows[flow];
+      localFeed(`${flow}: pubblicato, nessun lavoro del modello dovuto`);
+      await loadDesk(false);return;
+    }
+    if(!d.job)throw new Error("il server non ha creato il job");
+    flows[flow]={status:"running",job:d.job};
+    localFeed(note);
+    render();
+    await waitJob(d.job,"flow:"+flow,flow);
+    delete flows[flow];
   }catch(e){banner("errBox",esc(e.message),true);}
   render();
 }
@@ -970,12 +1048,12 @@ function runPicked(flow,batch){
   picked.clear();
 }
 const doTriage=()=>doFlow("/api/triage",DESK==="issue"?"issue-triage":"pr-triage",
-  "triage lanciato sul JSON già scaricato — nessuna nuova query al provider");
+  "provider riletto e triage pubblicato — agente avviato solo per il giudizio ancora dovuto");
 const doRun=()=>{
   const flow=DESK==="issue"?"issue-loop":"pr-loop";
   if(picked.size>1){askBatch=true;render();return;}
   if(picked.size===1)return runPicked(flow,1);
-  doFlow("/api/run",flow,"run avviato nella chat collegata");
+  doFlow("/api/run",flow,"run one-shot avviato");
 };
 
 /* ---------- summary ---------- */
@@ -1022,9 +1100,8 @@ function renderSummary(){
   }
   else{
     const missing=prs.filter(r=>r.triage_status==="missing").length;
-    const stale=prs.filter(r=>r.triage_status==="stale").length;
     notes.push(`<b>Fetch provider completato</b> — ${prs.length} PR caricate senza eseguire pr-triage.`);
-    if(missing||stale)notes.push(`<b>${missing+stale} da triagiare:</b> ${missing} mai viste · ${stale} cambiate dall'ultimo triage.`);
+    if(missing)notes.push(`<b>${missing} da triagiare:</b> PR mai viste da pr-triage.`);
     else notes.push(`<b>Triage corrente</b>${session?` — ${esc(session)}`:""}.`);
   }
   if(truncated)notes.push(`<b>Coda troncata:</b> il provider dichiara ${truncated} PR e la pagina ne porta ${prs.length}. Le mancanti non sono in tabella.`);
@@ -1035,7 +1112,7 @@ function renderSummary(){
 }
 
 function render(){
-  renderSummary();renderTabs();renderTable();renderWorking();renderDetail();
+  renderSummary();renderTabs();renderTable();renderWorking();renderJobs();renderDetail();
   if(followWorking&&workingOn){followWorking=false;scrollToWorking();}
 }
 
@@ -1066,8 +1143,8 @@ async function runTestMode(){
   const box=$("testBox");box.classList.add("on");
   const line=(id,label)=>box.insertAdjacentHTML("beforeend",`<div id="${id}" data-label="${label}"><span class="pending">…</span> ${label}</div>`);
   const setLine=(id,ok,extra)=>{const el=$(id);el.innerHTML=`<span class="${ok?"ok":"ko"}">${ok?"✓":"✗"}</span> ${esc(el.dataset.label)}${extra?` <span class="${ok?"pending":"ko"}">— ${esc(extra)}</span>`:""}`;};
-  box.innerHTML=`<div><b>Modalità test</b> — desk → server → chat → desk</div>`;
-  ["server del desk raggiungibile","provider autenticato","cache su disco","file di stato scrivibile","watcher della chat in ascolto","ping roundtrip"]
+  box.innerHTML=`<div><b>Modalità test</b> — desk → JSON → agente solo su richiesta</div>`;
+  ["server del desk raggiungibile","provider autenticato","cache su disco","file di stato scrivibile","agente on-demand disponibile","ping locale"]
     .forEach((l,i)=>line("t"+i,l));
   try{
     const st=await fetch("/api/selftest").then(r=>r.json());
@@ -1075,16 +1152,10 @@ async function runTestMode(){
     setLine("t1",st.provider.ok,st.provider.ok?"login "+st.provider.login:st.provider.error);
     setLine("t2",st.cache.ok,st.cache.ok?`dato di ${st.cache.age}s fa`:"vuota");
     setLine("t3",st.state_file.ok,st.state_file.ok?"":st.state_file.error);
-    setLine("t4",st.watcher.ok,st.watcher.chat?(st.watcher.age==null?"mai visto":`ultimo poll ${Math.round(st.watcher.age)}s fa`):"desk non in modalità chat");
-    if(!st.watcher.ok){setLine("t5",false,"saltato: nessuna chat in ascolto");return;}
+    setLine("t4",st.agent.ok,st.agent.ok?st.agent.selected:st.agent.error);
     const token="t"+Date.now();
-    await post("/api/ping",{token});
-    const started=Date.now();
-    const timer=setInterval(async()=>{
-      const stt=await fetch("/api/state").then(r=>r.status===304?{}:r.json()).catch(()=>({}));
-      if(stt.pong===token){clearInterval(timer);setLine("t5",true,((Date.now()-started)/1000).toFixed(1)+"s");}
-      else if(Date.now()-started>90000){clearInterval(timer);setLine("t5",false,"nessuna risposta in 90s");}
-    },2000);
+    const pong=await post("/api/ping",{token});
+    setLine("t5",pong.pong===token,"nessun modello avviato");
   }catch(e){setLine("t0",false,e.message);}
 }
 let stopArmed=null;
@@ -1097,13 +1168,16 @@ $("btnStop").onclick=async()=>{
   }
   clearTimeout(stopArmed);stopArmed=null;b.textContent="fermo…";b.disabled=true;
   try{await post("/api/shutdown",{});}catch(e){}
-  document.body.innerHTML='<div style="padding:40px;font:14px system-ui"><b>Server fermato.</b><br>Per ripartire, avvia <code>pr-desk</code> o <code>issue-desk</code> in chat.</div>';
+  document.body.innerHTML='<div style="padding:40px;font:14px system-ui"><b>Server fermato.</b><br>Per ripartire, avvia <code>pr-desk</code> o <code>issue-desk</code>.</div>';
 };
 
-render();
-loadDesk(false);
-setInterval(()=>loadDesk(false),30000);
-setInterval(pollState,4000);
+if(typeof location!=="undefined"&&location.protocol==="file:"){
+  document.body.innerHTML='<div style="padding:40px;font:14px system-ui"><b>Apri il desk dal server locale.</b><br><code>http://127.0.0.1:8399/</code><br>Il file HTML diretto non avvia polling né animazioni.</div>';
+}else{
+  render();
+  loadDesk(false);
+  setInterval(()=>loadDesk(false),30000);
+}
 </script>
 </body>
 </html>

@@ -6,7 +6,7 @@ verdict engine and the UI never know which service they are talking to.
 PR row (the pr-triage skill's rows.json shape). `merge` may be None on a
 provider whose merge state is a separate phase — see mergestates() below:
     n, title, created (YYYY-MM-DD), author, assignees [logins], draft (bool),
-    base, head (commit oid), incomplete (bool),
+    base, base_head (base commit oid), head (commit oid), incomplete (bool),
     merge (CLEAN|DIRTY|BLOCKED|UNSTABLE|UNKNOWN), decision
     (APPROVED|CHANGES_REQUESTED|REVIEW_REQUIRED|None),
     req [logins], reviews [{who, state, on}], unresolved (int), threads (int),
@@ -31,6 +31,14 @@ class Provider:
         is reported so a page cap never drops PRs silently.
         """
         raise NotImplementedError
+
+    def open_numbers(self, repo, me):
+        """Cheap authoritative membership for the user's open PR queue.
+
+        Providers may override this when their detailed queue is expensive.
+        The default keeps the contract correct for smaller providers.
+        """
+        return [row["n"] for row in self.queue(repo, me)["rows"]]
 
     def mergestates(self, repo, me):
         """Phase two, for providers where the merge state is expensive:

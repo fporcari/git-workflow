@@ -51,10 +51,12 @@ multi-select when it supports one; otherwise accept a compact typed selection.
 and no other: an approved PR of his elsewhere in the queue is not touched,
 and the closing report says so rather than pretending the queue was drained.
 
-**From a desk button** the event is
-`{"kind": "run", "flow": "pr-loop", "ns": [...], "batch": N}`. `ns` is the
-rows he picked by hand in the dashboard, and it means what the typed list
-means. Do not re-ask which ones — the picking was the answer.
+**From a detached desk button**, the launch prompt supplies `ns` and `batch`.
+`ns` is the rows he picked by hand and means what the typed list means. Do not
+re-ask which ones. This is a one-shot process: execute only actions already
+authorized by the skill and launch prompt, return `needs-input` for every
+further decision, and finish with the structured operation JSON requested by
+the prompt. Never wait for chat input.
 
 ## The loop
 
@@ -272,8 +274,9 @@ tree stays put.
 `lanes.A3` carries only the DIRTY branches whose `conflict_kind` a model
 already inspected and wrote as `mechanical`; every other DIRTY row is `asks`.
 When you inspect one, write `conflict_kind` under `prs.<n>` in the desk state
-(`mechanical` or `substantive`, pr-triage §10) — the next pass reads it and
-the row classifies itself.
+(`mechanical` or `substantive`, pr-triage §10) together with the row's
+`model_keys.conflict` as `conflict_key` — the next pass reads it only while
+that exact head/base pair still stands and the row classifies itself.
 
 Read the conflict before deciding it is an A3:
 

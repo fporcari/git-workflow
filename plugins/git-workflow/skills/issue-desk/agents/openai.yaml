@@ -1,4 +1,4 @@
 interface:
   display_name: "Issue Desk"
-  short_description: "Open the attached issue dashboard."
+  short_description: "Open the detached issue dashboard."
   default_prompt: "Use $issue-desk to open the issue dashboard."

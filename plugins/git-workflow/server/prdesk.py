@@ -1,8 +1,9 @@
 """Review desk — local dashboard server for the git-workflow plugin.
 
 Zero dependencies beyond the Python standard library and the provider's own
-CLI/API (gh for GitHub, a token for Forgejo). Read-only against the provider:
-it renders the queue, it never posts, merges or edits anything.
+CLI/API (gh for GitHub, a token for Forgejo). Normal reads are local/provider
+facts only. Explicit action buttons may start one ephemeral Codex or Claude
+process; the Python server remains the sole writer of desk state.
 
 Speed shape (the desk used to be slow for structural reasons, not slow code):
 
@@ -32,7 +33,7 @@ Speed shape (the desk used to be slow for structural reasons, not slow code):
     old field-only verdict said `A1 → merge it` there and was wrong.
 
     python3 prdesk.py [--repo owner/repo] [--provider github|forgejo|fixture]
-                      [--port 8399] [--me login] [--chat]
+                      [--port 8399] [--me login] [--agent auto|codex|claude]
 """
 
 import argparse
@@ -52,7 +53,6 @@ from urllib.parse import urlparse, parse_qs
 import cache
 import deskstate
 import gate as gatelib
-import inbox
 import issuecheck
 import jobs
 import verdicts
@@ -89,9 +89,40 @@ def triage_key(row, gate):
     """Fingerprint the provider facts THIS row's verdict reads."""
     payload = [[row.get(f) for f in VERDICT_FIELDS],
                [(gate or {}).get(f) for f in GATE_FIELDS]]
+    return fingerprint(payload)
+
+
+def fingerprint(payload):
     raw = json.dumps(payload, sort_keys=True, separators=(",", ":"),
                      default=str).encode()
     return hashlib.sha256(raw).hexdigest()[:20]
+
+
+def model_keys(row, gate=None, gate_known=True):
+    """Independent validity keys for the three facts a model can add.
+
+    A title edit does not stale a conflict reading, and a new review does not
+    stale a one-line explanation. Keeping one fingerprint for all three was
+    the source of both wasted reads and stale facts surviving where they
+    mattered.
+    """
+    analysis_fields = ("author", "draft", "base", "base_head", "head", "merge",
+                       "decision", "req", "reviews", "unresolved", "incomplete",
+                       "assignees", "last")
+    analysis_key = (fingerprint(
+        [[row.get(f) for f in analysis_fields],
+         [(gate or {}).get(f) for f in GATE_FIELDS]])
+        if gate_known else None)
+    explained_issues = [
+        {"issue": item.get("issue"), "title": item.get("title")}
+        for item in row.get("closes") or []]
+    return {
+        "what": fingerprint([row.get("title"), row.get("summary"),
+                             explained_issues]),
+        "analysis": analysis_key,
+        "conflict": fingerprint([row.get("base"), row.get("base_head"),
+                                 row.get("head"), row.get("merge")]),
+    }
 
 
 def row_number(row):
@@ -112,18 +143,21 @@ def triage_records(grid):
             if row_number(row) is not None}
 
 
-def needs_model(rows, notes):
-    """The rows the model half of a triage still owes a reading: no note
-    yet, an undated note, or a note the PR has moved past. Dates compared as
-    dates — the note's `at` is local, the provider's `last.t` is UTC, and a
-    timezone should never expire a reading on its own."""
-    out = []
+def model_tasks(rows, notes, me):
+    """The exact model-owned artifacts that are absent or out of date."""
+    out = {}
     for row in rows:
         note = (notes or {}).get(str(row["n"])) or {}
-        at = note.get("at")
-        last = (row.get("last") or {}).get("t")
-        if not note or not at or (last and at[:10] < last[:10]):
-            out.append(row["n"])
+        keys = row["model_keys"]
+        tasks = []
+        if row.get("author") == me and row.get("merge") == "DIRTY":
+            if note.get("conflict_key") != keys["conflict"]:
+                tasks.append("conflict")
+        elif row.get("autorun") == "asks":
+            if note.get("analysis_key") != keys["analysis"]:
+                tasks.append("analysis")
+        if tasks:
+            out[str(row["n"])] = tasks
     return out
 
 
@@ -159,6 +193,11 @@ class Desk:
 
     def _raw_queue(self, refresh=False):
         return self._timed("queue", lambda: self.provider.queue(self.repo, self.me), refresh)
+
+    def _membership(self, refresh=False):
+        return self._timed(
+            "membership",
+            lambda: self.provider.open_numbers(self.repo, self.me), refresh)
 
     def _mergestates(self, refresh=False):
         return self._timed("mergestates",
@@ -233,6 +272,7 @@ class Desk:
         the only base that matters.
         """
         jobs = [lambda: self._raw_queue(refresh),
+                lambda: self._membership(True),
                 lambda: self._raw_issues(refresh),
                 lambda: self._mergestates(refresh),
                 lambda: self._relations(refresh),
@@ -268,16 +308,24 @@ class Desk:
 
     def _queue_facts(self, refresh=False, complete_gates=False, state=None):
         raw = self._raw_queue(refresh)
+        membership = set(self._membership(refresh))
+        known = {row["n"] for row in raw["rows"]}
+        if membership - known:
+            raw = self._raw_queue(True)
         rows = [dict(row) for row in raw["rows"]]
+        rows = [row for row in rows if row["n"] in membership]
+        raw = dict(raw, total=min(raw.get("total", len(rows)), len(membership)))
         states = self._mergestates(refresh) or {}
         notes = (state if state is not None else deskstate.load(self.repo))
         notes = notes.get("prs") or {}
         for row in rows:
             if row.get("merge") is None:
                 row["merge"] = states.get(str(row["n"]))
-            # the one fact a model contributes to the engine: it takes a diff
-            # read to tell a mechanical conflict from a substantive one
-            row["conflict_kind"] = (notes.get(str(row["n"])) or {}).get("conflict_kind")
+            note = notes.get(str(row["n"])) or {}
+            conflict_key = model_keys(row)["conflict"]
+            row["conflict_kind"] = (
+                note.get("conflict_kind")
+                if note.get("conflict_key") == conflict_key else None)
         bases = sorted({row.get("base") for row in rows if row.get("base")})
         gates = (self._all_gates(bases, refresh) if complete_gates
                  else self._gates(bases, refresh)) or {}
@@ -285,6 +333,8 @@ class Desk:
             gate = gates.get(row.get("base"))
             row["gate"] = gatelib.notes(gate)
             row["triage_key"] = triage_key(row, gate)
+            row["model_keys"] = model_keys(
+                row, gate, complete_gates or row.get("base") in gates)
         return rows, raw, states, gates
 
     def _apply_triage(self, rows, grid, gates):
@@ -325,10 +375,13 @@ class Desk:
         notes = state.get("prs") or {}
         visible = {"generated": grid.get("generated"),
                    "blocks": verdicts.blocks(current)}
+        live = {row["n"]: row for row in current}
         for block in visible["blocks"]:
             for row in block["rows"]:
-                row["what"] = (notes.get(str(row["n"])) or {}).get("what") \
-                    or row.get("what")
+                note = notes.get(str(row["n"])) or {}
+                current_key = live[row["n"]]["model_keys"]["what"]
+                if note.get("what_key") == current_key:
+                    row["what"] = note.get("what") or row.get("what")
         return visible
 
     def queue(self, refresh=False):
@@ -336,6 +389,17 @@ class Desk:
         rows, raw, states, gates = self._queue_facts(refresh, state=state)
         counts = self._apply_triage(rows, state.get("grid"), gates)
         deskstate.annotate_prs(rows, state)
+        for row in rows:
+            note = row.get("skill") or {}
+            keys = row["model_keys"]
+            row["analysis_stale"] = bool(
+                note.get("analysis") and keys["analysis"] and
+                note.get("analysis_key") != keys["analysis"])
+            row["what_stale"] = bool(
+                note.get("what") and note.get("what_key") != keys["what"])
+            row["conflict_stale"] = bool(
+                note.get("conflict_kind") and
+                note.get("conflict_key") != keys["conflict"])
         deskstate.annotate_requests(rows, state)
         orders = state.get("orders") or {}
         for row in rows:
@@ -397,23 +461,22 @@ class Desk:
 
     def live_state(self):
         st = deskstate.load(self.repo)
-        age = deskstate.watcher_age(self.repo)
-        sp = deskstate.state_path(self.repo)
-        busy = sp.exists() and (time.time() - sp.stat().st_mtime) < 180
+        active_jobs = jobs.active(self.repo)
         ledger = st.get("requests") or {}
         flows = {key.split(":", 1)[1]: rec for key, rec in ledger.items()
                  if key.startswith(("triage:", "run:"))}
         grid = st.get("grid") or {}
         return {"feed": (st.get("feed") or [])[-50:], "flows": flows,
                 "working": deskstate.working(self.repo, st),
+                "provider_refresh": st.get("provider_refresh"),
                 # the stamp, not the grid: the page reads the reconciled rows
                 # from /api/queue rather than matching fingerprints a second
                 # time in its own copy of the rule
                 "triage": {"generated": grid.get("generated")},
                 "chase": st.get("chase") or {},
                 "session": st.get("session"), "pong": st.get("pong"),
-                "watcher": {"alive": self.chat and age is not None and age < 10,
-                            "age": age, "chat": self.chat, "busy": bool(busy)}}
+                "agent": {"mode": "on-demand", "selected": self.agent,
+                          "busy": bool(active_jobs), "jobs": active_jobs}}
 
     def snapshot(self, refresh=False):
         """Everything the UI needs, in one response."""
@@ -424,7 +487,7 @@ class Desk:
         issues = self.issues(refresh)
         return {"meta": {"repo": self.repo, "me": self.me,
                          "provider": self.provider.name,
-                         "chat": self.chat, "desk": self.kind,
+                         "chat": False, "detached": True, "desk": self.kind,
                          "write_token": self.write_token},
                 "queue": queue, "issues": issues, "state": self.live_state(),
                 "timings": dict(self.timings),
@@ -445,9 +508,9 @@ class Desk:
         The press pays a FRESH provider read: publishing on a
         stale-while-revalidate snapshot meant the refresh it triggered landed
         seconds later and contradicted the grid it had just published. And it
-        is incremental for the model: `needs_model` names the rows still
-        owing a reading — no note, or a note the PR moved past — so a press
-        after a fetch re-reads only what is new.
+        is incremental for the model: `model_tasks` names the exact stale
+        artifacts, so an unrelated title edit never re-buys an analysis and
+        a same-day push never preserves one.
         """
         state = deskstate.load(self.repo)
         rows, _, _, gates = self._queue_facts(refresh=True,
@@ -467,12 +530,14 @@ class Desk:
                 state["chase"] = chase
             deskstate.update(self.repo, publish)
 
-        issues = self.issues()
+        issues = self.issues(refresh=self.kind == "issue")
+        tasks = model_tasks(rows, state.get("prs"), self.me)
         payload = {"repo": self.repo, "me": self.me,
                    "generated": grid["generated"],
                    "queue": rows, "issues": issues["rows"],
                    "grid": grid, "chase": chase, "gates": gates,
-                   "needs_model": needs_model(rows, state.get("prs")),
+                   "model_tasks": tasks,
+                   "needs_model": [int(n) for n in tasks],
                    # the numbers only: every one of them is already a full row
                    # under "issues", and repeating them doubled the payload
                    "shortlist": [r["n"] for r in (issues["shortlist"] or {}).get("rows", [])]}
@@ -505,14 +570,10 @@ class Handler(BaseHTTPRequestHandler):
         """304 when the caller already has this payload — the UI polls a few
         times a minute and most polls change nothing. Anything that moves on
         every request is stripped from the tag first, or it would never
-        match: the clock, the timings, and the watcher's age in seconds."""
+        match: the clock and timings."""
         payload = json.dumps(body).encode()
         stable = copy.deepcopy({k: v for k, v in body.items()
                                 if k not in self.VOLATILE})
-        for holder in (stable, stable.get("state") or {}):
-            watcher = holder.get("watcher")
-            if isinstance(watcher, dict) and "age" in watcher:
-                holder["watcher"] = dict(watcher, age=None)
         etag = '"%s"' % hashlib.sha1(json.dumps(stable, sort_keys=True, default=str
                                                 ).encode()).hexdigest()[:16]
         if self.headers.get("If-None-Match") == etag:
@@ -552,7 +613,7 @@ class Handler(BaseHTTPRequestHandler):
             elif url.path == "/api/selftest":
                 self._send(200, self._selftest())
             elif url.path.startswith("/api/job/"):
-                job = jobs.get(url.path.rsplit("/", 1)[1])
+                job = jobs.get(self.desk.repo, url.path.rsplit("/", 1)[1])
                 self._send(200 if job else 404, job or {"error": "unknown job"})
             else:
                 self._send(404, {"error": "not found"})
@@ -574,9 +635,13 @@ class Handler(BaseHTTPRequestHandler):
         hit = cache.peek(self.desk.repo, "queue")
         out["cache"] = {"ok": bool(hit), "age": round(hit[0]) if hit else None,
                         "path": str(cache.cache_path(self.desk.repo))}
-        age = deskstate.watcher_age(self.desk.repo)
-        out["watcher"] = {"ok": self.desk.chat and age is not None and age < 10,
-                          "age": age, "chat": self.desk.chat}
+        try:
+            out["agent"] = {"ok": True,
+                            "selected": jobs.resolve_agent(self.desk.agent),
+                            "mode": "on-demand"}
+        except Exception as exc:
+            out["agent"] = {"ok": False, "error": str(exc)[:200],
+                            "mode": "on-demand"}
         return out
 
     def do_POST(self):
@@ -601,31 +666,24 @@ class Handler(BaseHTTPRequestHandler):
                 # FOR, in the user's language. One row, one sentence — instead
                 # of the whole queue's titles rewritten every refresh.
                 n = int(parts[2])
-                self._chat_only({"kind": "explain", "n": n},
-                                "explain needs the desk launched from a chat session",
-                                key=deskstate.request_key("explain", n),
-                                label="una riga su cosa risolve")
+                job_id = jobs.explain_pr(
+                    self.desk.repo, n, self.desk.me, self.desk.cwd,
+                    self.desk.agent, self._model_key(n, "what"))
+                self._send(202, {"job": job_id})
             elif len(parts) == 4 and parts[:2] == ["api", "pr"] and parts[3] == "order":
                 n = int(parts[2])
-                key = deskstate.request_key("order", n)
-                record, created = deskstate.request(self.desk.repo, key, "order", n,
-                                                    body.get("propose", ""))
-                if not created:
-                    self._send(200, {"queued": False, "already": True,
-                                     "request": record})
-                    return
                 order = deskstate.add_order(self.desk.repo, n, body.get("propose", ""),
                                             body.get("draft"), body.get("instruction", ""))
-                if self.desk.chat:
-                    inbox.push(self.desk.repo, {"kind": "order", "n": n})
-                self._send(200, {"order": order, "queued": self.desk.chat,
-                                 "request": record})
+                job_id = jobs.operation(
+                    self.desk.repo, "order", {"n": n}, self.desk.me,
+                    self.desk.cwd, self.desk.agent)
+                self._send(202, {"order": order, "job": job_id})
             elif len(parts) == 4 and parts[:2] == ["api", "issue"] and parts[3] == "analyze":
                 n = int(parts[2])
-                self._chat_only({"kind": "issue-analyze", "n": n},
-                                "issue-analyze needs the desk launched from a chat session",
-                                key=deskstate.request_key("issue-analyze", n),
-                                label="sessione dedicata")
+                job_id = jobs.analyze_issue(
+                    self.desk.repo, n, self.desk.me, self.desk.cwd,
+                    self.desk.agent)
+                self._send(202, {"job": job_id})
             elif parts == ["api", "fetch"]:
                 # explicit re-read of the provider, on the caller's demand
                 self._send(200, dict(self.desk.snapshot(refresh=True), refetched=True))
@@ -633,8 +691,6 @@ class Handler(BaseHTTPRequestHandler):
                 path = self.desk.run_triage()
                 self._send(200, {"path": str(path)})
             elif parts == ["api", "shutdown"]:
-                if self.desk.chat:
-                    inbox.push(self.desk.repo, {"kind": "shutdown"})
                 self._send(200, {"bye": True})
                 threading.Thread(target=self.server.shutdown, daemon=True).start()
             elif parts == ["api", "run"]:
@@ -647,59 +703,56 @@ class Handler(BaseHTTPRequestHandler):
                 ns = [int(n) for n in (body.get("ns") or [])]
                 batch = max(1, min(int(body.get("batch") or 1), MAX_BATCH))
                 label = "%s · %d scelte" % (flow, len(ns)) if ns else flow
-                self._chat_only({"kind": "run", "flow": flow,
-                                 "ns": ns, "batch": batch},
-                                "run needs the desk launched from a chat session",
-                                key=deskstate.request_key("run", flow), label=label)
+                job_id = jobs.operation(
+                    self.desk.repo, flow, {"ns": ns, "batch": batch},
+                    self.desk.me, self.desk.cwd, self.desk.agent)
+                self._send(202, {"job": job_id, "flow": flow,
+                                 "ns": ns, "batch": batch, "label": label})
             elif parts == ["api", "ping"]:
-                self._chat_only({"kind": "ping", "token": body.get("token") or ""},
-                                "il ping ha senso solo in modalità chat")
+                self._send(200, {"pong": body.get("token") or "",
+                                 "mode": "detached"})
             elif parts == ["api", "triage"]:
                 flow = body.get("flow", "pr-triage")
                 if flow not in ("pr-triage", "issue-triage"):
                     self._send(400, {"error": "unknown triage flow"})
                     return
-                # the deterministic half runs and publishes here, on the
-                # rows already downloaded; the chat is asked for the rest
+                # the deterministic half reads fresh and publishes here; the
+                # chat is asked only for the model-owned artifacts still due
                 path = self.desk.run_triage()
-                self._chat_only({"kind": "triage", "flow": flow, "rows": str(path)},
-                                "triage needs the desk launched from a chat session",
-                                key=deskstate.request_key("triage", flow), label=flow)
+                exported = json.loads(path.read_text())
+                model_work = (exported.get("shortlist") if flow == "issue-triage"
+                              else exported.get("model_tasks"))
+                if not model_work:
+                    self._send(200, {"queued": False, "published": True,
+                                     "model_needed": False, "path": str(path)})
+                    return
+                job_id = jobs.triage(
+                    self.desk.repo, flow, path, self.desk.me, self.desk.cwd,
+                    self.desk.agent)
+                self._send(202, {"job": job_id, "published": True,
+                                 "model_needed": True, "path": str(path)})
             else:
                 self._send(404, {"error": "not found"})
         except Exception as exc:
             self._send(502, {"error": str(exc)})
 
-    def _chat_only(self, event, complaint, key=None, label=""):
-        """Hand work to the chat, exactly once.
-
-        The ledger is checked BEFORE the inbox: a second press while the
-        first is still out must not enqueue a second event, or the chat works
-        through a queue of duplicates the user never meant to send.
-        """
-        if not self.desk.chat:
-            self._send(409, {"error": complaint})
-            return
-        if key:
-            record, created = deskstate.request(
-                self.desk.repo, key, event["kind"], event.get("n"), label)
-            if not created:
-                self._send(200, {"queued": False, "already": True,
-                                 "request": record})
-                return
-        inbox.push(self.desk.repo, event)
-        self._send(202, {"queued": True,
-                         "request": record if key else None})
-
     def _analyze_pr(self, n):
-        if self.desk.chat:
-            self._chat_only({"kind": "analyze", "n": n}, "", 
-                            key=deskstate.request_key("analyze", n),
-                            label="pr-analyze")
-        else:
-            job_id = jobs.analyze_pr(self.desk.repo, n, self.desk.me,
-                                     self.desk.cwd, self.desk.agent)
-            self._send(202, {"job": job_id})
+        analysis_key = self._model_key(n, "analysis")
+        job_id = jobs.analyze_pr(self.desk.repo, n, self.desk.me,
+                                 self.desk.cwd, self.desk.agent,
+                                 analysis_key)
+        self._send(202, {"job": job_id})
+
+    def _model_key(self, n, artifact):
+        row = next((row for row in self.desk.queue()["rows"]
+                    if row["n"] == n), None)
+        key = (row or {}).get("model_keys", {}).get(artifact)
+        if key is not None or artifact != "analysis":
+            return key
+        rows, _, _, gates = self.desk._queue_facts(complete_gates=True)
+        decorate(rows, self.desk.me, gates)
+        row = next((row for row in rows if row["n"] == n), None)
+        return (row or {}).get("model_keys", {}).get(artifact)
 
 
 def main():
@@ -712,10 +765,7 @@ def main():
     parser.add_argument("--port", type=int, default=0,
                         help="default: 8399 for the pr desk, 8398 for the issue desk")
     parser.add_argument("--me", help="login to triage for (default: the authenticated user)")
-    parser.add_argument("--chat", action="store_true",
-                        help="attached-chat mode: buttons enqueue events for the "
-                             "agent session that launched the desk, instead of "
-                             "spawning headless runs")
+    parser.add_argument("--chat", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--agent", default="auto", choices=("auto", "claude", "codex"),
                         help="headless agent used outside chat mode")
     parser.add_argument("--keep-state", action="store_true",
@@ -737,7 +787,7 @@ def main():
         deskstate.reset(repo)
     cache_action = "kept" if args.keep_cache else cache.reset(repo)
 
-    desk = Desk(provider, repo, me, str(Path.cwd()), chat=args.chat,
+    desk = Desk(provider, repo, me, str(Path.cwd()), chat=False,
                 kind=args.desk, agent=args.agent)
     Handler.desk = desk
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)

@@ -57,6 +57,10 @@ class ForgejoProvider(Provider):
         rows.sort(key=lambda r: r["created"], reverse=True)
         return {"rows": rows, "total": len(rows), "truncated": len(pulls) >= 50}
 
+    def open_numbers(self, repo, me):
+        pulls = self._get("/repos/%s/pulls" % repo, state="open", limit=50)
+        return [pr["number"] for pr in pulls]
+
     def _involves(self, row, me):
         return (row["author"] == me or me in row["req"]
                 or any(r["who"] == me for r in row["reviews"]))
@@ -90,6 +94,7 @@ class ForgejoProvider(Provider):
             "assignees": [a["login"] for a in pr.get("assignees") or []],
             "draft": bool(pr.get("draft")),
             "base": (pr.get("base") or {}).get("ref"),
+            "base_head": (pr.get("base") or {}).get("sha"),
             "head": (pr.get("head") or {}).get("sha"),
             "incomplete": False,
             "merge": "CLEAN" if mergeable else ("DIRTY" if mergeable is False else "UNKNOWN"),

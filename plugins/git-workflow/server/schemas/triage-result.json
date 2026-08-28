@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "flow": {"enum": ["pr-triage", "issue-triage"]},
+    "report": {"type": "string"},
+    "prs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "n": {"type": "integer"},
+          "author": {"type": ["string", "null"]},
+          "problem": {"type": ["string", "null"]},
+          "history": {"type": ["string", "null"]},
+          "propose": {"type": ["string", "null"]},
+          "draft": {"type": ["string", "null"]},
+          "verified": {"type": "array", "items": {"type": "string"}},
+          "not_verified": {"type": "array", "items": {"type": "string"}},
+          "conflict_kind": {"enum": ["mechanical", "substantive", null]},
+          "finding": {"type": ["string", "null"]}
+        },
+        "required": ["n", "author", "problem", "history", "propose", "draft", "verified", "not_verified", "conflict_kind", "finding"]
+      }
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "n": {"type": "integer"},
+          "type": {"enum": ["DEFECT", "REQUEST", "QUESTION", "DOCS", "UNCLASSIFIED"]},
+          "impact": {"type": "integer", "minimum": 1},
+          "finding": {"type": "string", "minLength": 1}
+        },
+        "required": ["n", "type", "impact", "finding"]
+      }
+    }
+  },
+  "required": ["flow", "report", "prs", "issues"]
+}

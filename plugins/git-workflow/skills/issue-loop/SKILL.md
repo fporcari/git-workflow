@@ -62,11 +62,12 @@ can be wasted.
 **Clamped to 4** so one decision remains readable. More than four numbers with
 `batch=4` is fine — it works them four at a time.
 
-**From a desk button** the event is
-`{"kind": "run", "flow": "issue-loop", "ns": [...], "batch": N}`. `ns` is
-the rows he picked by hand in the dashboard and means exactly what the
-typed list means: those, in that order, then stop. Do not re-ask which ones
-— the picking was the answer.
+**From a detached desk button**, the launch prompt supplies `ns` and `batch`.
+`ns` is the rows he picked by hand and means exactly what the typed list
+means: those, in that order, then stop. This is a one-shot process: execute
+only actions already authorized by the skill and launch prompt, return
+`needs-input` for every further decision, and finish with the structured
+operation JSON requested by the prompt. Never wait for chat input.
 
 ## Step 0 — The candidate list, cheapest source first
 
