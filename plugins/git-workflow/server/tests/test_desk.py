@@ -581,6 +581,60 @@ class HeadlessAgents(unittest.TestCase):
                         else jobs.claude_schema(jobs.EXPLAIN_SCHEMA))
             self.assertIn(expected, command)
 
+    def test_the_claude_reason_is_read_from_its_stream_not_stderr(self):
+        stdout = "\n".join([
+            json.dumps({"type": "system", "subtype": "init"}),
+            json.dumps({"type": "assistant", "is_api_error_message": True,
+                        "message": {"content": [
+                            {"type": "text",
+                             "text": "Failed to authenticate: OAuth session "
+                                     "expired and could not be refreshed"}]}}),
+            json.dumps({"type": "result", "is_error": True,
+                        "terminal_reason": "api_error",
+                        "result": "Failed to authenticate: OAuth session "
+                                  "expired and could not be refreshed"})])
+        self.assertEqual(
+            jobs.stream_failure("claude", stdout),
+            "Failed to authenticate: OAuth session expired and could not "
+            "be refreshed")
+
+    def test_the_codex_reason_is_read_from_its_error_item(self):
+        stdout = "\n".join([
+            json.dumps({"type": "thread.started"}),
+            json.dumps({"type": "item.completed",
+                        "item": {"type": "error", "message": "stream closed"}})])
+        self.assertEqual(jobs.stream_failure("codex", stdout), "stream closed")
+
+    def test_a_silent_stream_leaves_only_the_exit_code(self):
+        self.assertEqual(jobs.stream_failure("claude", "not json\n"), "")
+
+    def test_a_failed_job_records_why_the_agent_died(self):
+        repo = REPO + "-agent-failure"
+        key, job_id = "operation-failure", "failagent"
+        path = jobs.job_path(repo, job_id)
+        safejson.write(path, {
+            "id": job_id, "kind": "operation", "key": key,
+            "status": "running", "progress": {}, "events": []}, indent=1)
+        self.addCleanup(safejson.remove, path)
+        with jobs._lock:
+            jobs._running[(repo, key)] = job_id
+        out = subprocess.CompletedProcess(
+            ["claude"], 1,
+            json.dumps({"type": "result", "is_error": True,
+                        "result": "Failed to authenticate: OAuth session "
+                                  "expired and could not be refreshed"}), "")
+        with mock.patch.object(jobs, "resolve_agent", return_value="claude"), \
+                mock.patch.object(jobs, "command", return_value=["claude"]), \
+                mock.patch.object(jobs, "_execute", return_value=out):
+            jobs._run(job_id, key, "claude", repo, "prompt", "", 11,
+                      str(ROOT), None, None, None, read_only=False)
+        record = jobs.get(repo, job_id)
+        self.assertEqual(record["status"], "error")
+        self.assertIn("claude exited 1", record["error"])
+        self.assertIn("Failed to authenticate", record["error"])
+        self.assertIn("Failed to authenticate",
+                      record["progress"]["detail"])
+
     def test_explanation_is_written_with_its_fingerprint(self):
         repo = REPO + "-explanation"
         deskstate.save(repo, {})

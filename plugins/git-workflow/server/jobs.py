@@ -158,6 +158,31 @@ def _tool_progress(name, inputs):
     return {"stage": stage, "detail": label}
 
 
+def stream_failure(agent, stdout):
+    """Both CLIs keep the fatal reason in their JSON stream, not on stderr."""
+    reason = ""
+    for line in stdout.splitlines():
+        try:
+            event = json.loads(line)
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(event, dict):
+            continue
+        if agent == "codex":
+            item = event.get("item")
+            item = item if isinstance(item, dict) else event
+            if item.get("type") == "error":
+                reason = item.get("message") or reason
+            continue
+        if event.get("type") == "result" and event.get("is_error"):
+            reason = event.get("result") or reason
+        elif event.get("is_api_error_message"):
+            for block in (event.get("message") or {}).get("content") or []:
+                if block.get("type") == "text" and block.get("text"):
+                    reason = block["text"]
+    return " ".join(str(reason).split())
+
+
 def progress_event(agent, line):
     """Normalize public CLI activity; thinking and raw tool output stay out."""
     try:
@@ -494,8 +519,10 @@ def _run(job_id, key, agent, repo, prompt, tools, timeout, cwd, schema,
             lambda event, elapsed: _record_progress(
                 repo, job_id, event, elapsed), process_started)
         if out.returncode:
-            raise RuntimeError(out.stderr.strip()[:600] or
-                               "%s exited %s" % (agent, out.returncode))
+            exited = "%s exited %s" % (agent, out.returncode)
+            reason = out.stderr.strip() or stream_failure(agent, out.stdout)
+            raise RuntimeError(
+                ("%s: %s" % (exited, reason))[:600] if reason else exited)
         result = parser(agent, out.stdout, output_path)
         persister(repo, result)
         status = result.get("status", "done") if isinstance(result, dict) else "done"
