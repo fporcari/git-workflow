@@ -669,6 +669,17 @@ ok("every issue row says whether it is in it",
    snapshot.issues.rows.every(r => "in_shortlist" in r));
 ok("the page no longer hunts the shortlist array per row",
    !html.includes("shortlist.rows.find"));
+page.applyState({ agent: { mode: "on-demand", busy: false }, feed: [],
+                  runs: { "issue-loop": { status: "needs-input", at: "15:02:11",
+                                          report: "issue-loop: 3 lavorate, 1 serve una decisione" } } });
+page.render();
+ok("the issue desk shows a finished issue-loop report too",
+   document.getElementById("jobPanel").classList.contains("on") &&
+   document.getElementById("jobPanel").innerHTML.includes(
+     "issue-loop: 3 lavorate, 1 serve una decisione"));
+ok("the issue desk report card names its flow and time",
+   /issue-loop/.test(document.getElementById("jobPanel").innerHTML) &&
+   /15:02:11/.test(document.getElementById("jobPanel").innerHTML));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

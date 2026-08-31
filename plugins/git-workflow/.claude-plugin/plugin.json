@@ -1,7 +1,7 @@
 {
   "name": "git-workflow",
   "description": "PR and issue workflow toolkit with detached local dashboards. Python serves provider/cache JSON without keeping an agent active; explicit actions start one ephemeral Codex or Claude process whose sanitized progress is visible live. Fresh open-item membership prevents closed or merged rows from resurfacing through stale detail caches.",
-  "version": "0.24.1",
+  "version": "0.24.2",
   "author": {
     "name": "Francesco Porcari",
     "email": "fporcari@softwell.it"
