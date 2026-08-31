@@ -66,7 +66,7 @@ def load(repo):
     return safejson.read(state_path(repo))
 
 
-DURABLE = ("grid", "chase", "prs", "issues")
+DURABLE = ("grid", "chase", "prs", "issues", "runs")
 
 
 def reset(repo):
@@ -77,7 +77,9 @@ def reset(repo):
     The TRIAGE is durable and stays: the grid re-verdicts itself on every
     read (the engine recomputes; a relaunch cannot make it lie) and the
     model's per-PR/per-issue notes are dated, so what has expired shows as
-    expired instead of being thrown away with the session. `--keep-state`
+    expired instead of being thrown away with the session. So is the last
+    report of each run: a relaunched desk is the commonest way to come back
+    to a loop that ended in needs-input. `--keep-state`
     keeps everything, ephemera included."""
     path = state_path(repo)
     kept = {key: value for key, value in safejson.read(path).items()

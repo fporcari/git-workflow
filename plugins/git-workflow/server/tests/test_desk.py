@@ -635,6 +635,19 @@ class HeadlessAgents(unittest.TestCase):
         self.assertIn("Failed to authenticate",
                       record["progress"]["detail"])
 
+    def test_a_relaunched_desk_keeps_the_last_run_report(self):
+        repo = REPO + "-run-reset"
+        deskstate.save(repo, {
+            "runs": {"pr-loop": {"status": "needs-input", "report": "due proposte",
+                                 "at": "14:24:15"}},
+            "feed": [{"at": "14:18:49", "msg": "avvio", "pr": None}],
+            "requests": {"run:pr-loop": {"status": "done"}}})
+        deskstate.reset(repo)
+        state = deskstate.load(repo)
+        self.assertEqual(state["runs"]["pr-loop"]["report"], "due proposte")
+        self.assertNotIn("feed", state)
+        self.assertNotIn("requests", state)
+
     def test_a_loop_report_outlives_its_job_file(self):
         repo = REPO + "-run-report"
         deskstate.save(repo, {})
