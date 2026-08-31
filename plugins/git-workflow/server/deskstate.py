@@ -126,6 +126,62 @@ def update(repo, mutate):
 
 REQUEST_STALE = 1800
 WORKING_STALE = 900          # a run that stopped saying anything
+CHAT_STALE = 45              # heartbeat older than this = no chat attached
+CHAT_BUSY_STALE = 3600       # a claimed request keeps the chat "attached"
+
+
+def chat_heartbeat(repo, session=""):
+    """The attached chat says it is alive and waiting for desk requests."""
+    def mutate(state):
+        mark = state.setdefault("chat", {})
+        mark.update(session=session or mark.get("session", ""),
+                    epoch=time.time(), at=time.strftime("%H:%M:%S"))
+        return dict(mark)
+    return update(repo, mutate)
+
+
+def chat_detach(repo):
+    update(repo, lambda state: state.pop("chat", None))
+
+
+def chat_attached(repo, state=None):
+    """The chat mark, or None. Alive on a fresh heartbeat, and also while a
+    claimed request is still open: the chat stops heartbeating the moment it
+    starts working, and treating that silence as a dead chat would route the
+    next click to a one-shot agent behind the user's back."""
+    state = state if state is not None else load(repo)
+    mark = state.get("chat")
+    if not mark:
+        return None
+    if time.time() - mark.get("epoch", 0) <= CHAT_STALE:
+        return dict(mark)
+    busy = mark.get("busy") or {}
+    record = (state.get("requests") or {}).get(busy.get("key") or "")
+    if (record and record.get("status") == "taken"
+            and time.time() - busy.get("epoch", 0) <= CHAT_BUSY_STALE):
+        return dict(mark)
+    return None
+
+
+def claim_request(repo):
+    """Hand the oldest queued chat request to the waiting chat, exactly once.
+
+    The claim flips the record to `taken` so a second wait loop (or a reload
+    of the first) cannot execute the same click twice, and marks the chat
+    busy so the attachment survives the minutes the work takes."""
+    def mutate(state):
+        ledger = state.get("requests") or {}
+        queued = [(key, record) for key, record in ledger.items()
+                  if record.get("status") == "queued"
+                  and record.get("via") == "chat"]
+        if not queued:
+            return None
+        key, record = min(queued, key=lambda item: item[1].get("epoch", 0))
+        record.update(status="taken", taken_at=time.strftime("%H:%M:%S"))
+        state.setdefault("chat", {})["busy"] = {"key": key,
+                                                "epoch": time.time()}
+        return dict(record, key=key)
+    return update(repo, mutate)
 
 
 def _mark(ns, msg, items=None):
@@ -198,7 +254,7 @@ def working(repo, state=None):
     return mark
 
 
-def request(repo, key, kind, n=None, label=""):
+def request(repo, key, kind, n=None, label="", via="agent", payload=None):
     """Record a button press, and refuse a second one while the first is out.
 
     The ledger lives on the SERVER, not in the page: a click enqueues work
@@ -212,12 +268,13 @@ def request(repo, key, kind, n=None, label=""):
     def mutate(state):
         ledger = state.setdefault("requests", {})
         existing = ledger.get(key)
-        if existing and existing.get("status") == "queued":
+        if existing and existing.get("status") in ("queued", "taken"):
             age = time.time() - existing.get("epoch", 0)
             if age < REQUEST_STALE:
                 return existing, False
             existing["status"] = "stale"
         record = {"kind": kind, "n": n, "label": label, "status": "queued",
+                  "via": via, "payload": payload or {},
                   "at": time.strftime("%H:%M:%S"), "epoch": time.time()}
         ledger[key] = record
         return record, True

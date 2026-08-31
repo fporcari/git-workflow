@@ -1,6 +1,6 @@
 ---
 name: pr-desk
-description: Launch the detached PR desk. The Python server serves provider/cache JSON without keeping Codex or Claude active; only explicit analyze, explain, triage or workflow clicks start an ephemeral agent process. Use when the user asks for the PR desk or a PR dashboard.
+description: Launch the detached PR desk. The Python server serves provider/cache JSON without keeping Codex or Claude active; only explicit analyze, explain, triage or workflow clicks start an ephemeral agent process — or, when the launching chat stays attached, run in that conversation with the output presented there (triage always stays on the independent agent). Use when the user asks for the PR desk or a PR dashboard.
 ---
 
 # PR desk
@@ -22,9 +22,18 @@ Claude browser-preview configuration:
  "port": 8399}
 ```
 
-Open the printed localhost URL, then the launching session may end. Do not wait
-on the server and do not start a watcher. Follow `../review-desk/SKILL.md` for
-the detached job contract shared by both desks.
+Open the printed localhost URL, then pick the mode:
+
+- **Attached (default in an interactive chat)**: stay in this conversation and
+  serve the desk's clicks — follow "Attached chat" in
+  `../review-desk/SKILL.md`. Non-triage buttons are executed here, and their
+  output is presented here.
+- **Detached** (the user dismisses you, or the launch is headless): the
+  session may end; every button starts its own one-shot agent. Do not wait on
+  the server and do not start a watcher in this mode.
+
+Either way the server itself is detached — `../review-desk/SKILL.md` is the
+job contract shared by both desks.
 
 The desk does **not** triage at startup or reload: both are pure provider
 fetches that paint in seconds. `pr-triage` arrives only when the user presses

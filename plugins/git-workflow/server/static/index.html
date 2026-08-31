@@ -54,6 +54,7 @@ body{font:13px/1.4 system-ui,sans-serif}
 .jobHead{display:flex;align-items:center;gap:8px;font-size:11.5px}.jobHead b{font:600 11px var(--mono)}
 .jobHead .spin{width:7px;height:7px;border-radius:50%;background:var(--amber);animation:pulse 1s infinite;flex:none}
 .jobHead .elapsed{margin-left:auto;color:var(--muted);font:10px var(--mono)}
+.chatState{font:600 11px/1 var(--mono);color:var(--green);border:1px solid color-mix(in srgb,var(--green) 40%,var(--line));border-radius:6px;padding:5px 8px}
 .reportCard{border-color:color-mix(in srgb,var(--ink) 22%,var(--line));background:var(--panel)}
 .reportCard .runReport{white-space:pre-wrap;margin:7px 0 0;max-height:320px;overflow:auto;font:11px/1.55 var(--mono);color:var(--ink)}
 .jobRail{height:2px;background:var(--soft);overflow:hidden;margin:7px 0}.jobRail i{display:block;width:28%;height:100%;background:var(--amber);animation:travel 1.8s ease-in-out infinite}
@@ -224,6 +225,7 @@ h2{margin:0 0 7px}
     <div class="brand"><span class="brandMark">GW</span><strong id="deskName">desk</strong><span class="repo" id="repoLabel">…</span></div>
     <div class="topStats">
       <span><b id="cPrs">—</b> PR</span><span><b id="cIssues">—</b> issue</span>
+      <span id="chatState" class="chatState" hidden title="Una chat è collegata al desk: i bottoni non-triage vengono eseguiti nella conversazione, e lì presentano l'esito. Il triage resta su un agente indipendente.">💬 chat collegata</span>
       <button class="btn sync" id="btnFetch" title="Rilegge il provider ignorando la cache"><i></i><span id="syncLabel">avvio…</span></button>
       <button class="btn" id="btnTest" title="Verifica desk, file JSON e agente on-demand">🧪</button>
       <button class="btn" id="btnStop" title="Ferma il server del desk">⏻</button>
@@ -432,6 +434,9 @@ function applyState(st){
   }
   session=st.session||session;
   if(DESK==="issue"&&Object.keys(st.chase||{}).length)chase=st.chase;
+  const chat=st.chat||{};
+  const chip=$("chatState");
+  if(chip)chip.hidden=!chat.attached;
   const agent=st.agent||{};
   banner("agentBox",agent.busy?"<b>Agente one-shot in esecuzione.</b> Il server continua a servire i JSON del desk.":"",!!agent.busy);
   const liveJobs=agent.jobs||[],liveIds=new Set(liveJobs.map(job=>job.id));
@@ -589,7 +594,8 @@ function renderTabs(){
   const onIssue=DESK==="issue";
   const tri=$("btnTriage");
   const triFlow=onIssue?"issue-triage":"pr-triage";
-  const triOut=flows[triFlow]&&flows[triFlow].status==="running";
+  const flowOut=rec=>!!(rec&&OUT_STATUS.includes(rec.status));
+  const triOut=flowOut(flows[triFlow]);
   const untriaged=onIssue?0:prs.filter(r=>r.triage_status!=="current").length;
   tri.textContent=(triOut?"in corso · ":"↻ ")+triFlow+(!onIssue?` · ${untriaged||"✓"}`:"");
   tri.title=(onIssue
@@ -599,9 +605,9 @@ function renderTabs(){
   tri.classList.toggle("locked",!!triOut);
   const run=$("btnRun");
   const runFlow=onIssue?"issue-loop":"pr-loop";
-  const runOut=flows[runFlow]&&flows[runFlow].status==="running";
+  const runOut=flowOut(flows[runFlow]);
   const nPicked=picked.size;
-  run.textContent=(runOut?"in corso · ":"▶ ")+runFlow+(nPicked?` · ${nPicked} scelte`:"");
+  run.textContent=(runOut?(flows[runFlow]&&flows[runFlow].via==="chat"?"in chat · ":"in corso · "):"▶ ")+runFlow+(nPicked?` · ${nPicked} scelte`:"");
   run.title=nPicked
     ?`Lancia ${runFlow} SOLO su ${[...picked].map(n=>"#"+n).join(" ")}, in quest'ordine, e poi si ferma. Il resto della coda non lo tocca.`
     :onIssue
@@ -823,15 +829,16 @@ function renderDetail(){
 const REQ_LABEL={analyze:"pr-analyze",explain:"spiegazione",order:"ordine",
                  "issue-analyze":"sessione dedicata"};
 function requests(r){return r.requests||{};}
-function pending(r,kind){const q=requests(r)[kind];return q&&q.status==="queued"?q:null;}
-function closed(r,kind){const q=requests(r)[kind];return q&&q.status!=="queued"?q:null;}
+const OUT_STATUS=["queued","taken","running"];
+function pending(r,kind){const q=requests(r)[kind];return q&&OUT_STATUS.includes(q.status)?q:null;}
+function closed(r,kind){const q=requests(r)[kind];return q&&!OUT_STATUS.includes(q.status)?q:null;}
 
 /* The button's own state, from the ledger the SERVER keeps: a lock held in
    the page is lost on reload and in a second tab, and the user presses again
    because nothing visibly happened. */
 function actionButton(id,kind,label,tip,row,primary){
   const q=pending(row,kind);
-  if(q)return `<span class="btn locked" title="Richiesta precedente ancora registrata alle ${esc(q.at)}.">richiesta precedente · ${esc(q.at)}</span>`;
+  if(q)return `<span class="btn locked" title="Richiesta precedente ancora registrata alle ${esc(q.at)}.">${q.via==="chat"?"in chat":"richiesta precedente"} · ${esc(q.at)}</span>`;
   const done=closed(row,kind);
   const enabled=agentReady;
   return `<button class="btn ${primary?"primary":""}" id="${id}" ${enabled?"":"disabled"} title="${esc(tip)}">${done?"↻ ":""}${label}</button>`;
@@ -844,7 +851,11 @@ function actBadge(r){
   for(const [kind,q] of Object.entries(requests(r))){
     const name=REQ_LABEL[kind]||kind;
     if(q.status==="queued")
-      out.push(`<div class="actionText">📨 <b>${esc(name)}</b> richiesta alle ${esc(q.at)}.</div>`);
+      out.push(`<div class="actionText">📨 <b>${esc(name)}</b> ${q.via==="chat"?"in coda alla chat collegata":"richiesta"} alle ${esc(q.at)}.</div>`);
+    else if(q.status==="taken")
+      out.push(`<div class="actionText">💬 <b>${esc(name)}</b> in lavorazione nella chat collegata${q.taken_at?" dalle "+esc(q.taken_at):""} — l'esito arriva in conversazione.</div>`);
+    else if(q.status==="needs-input")
+      out.push(`<div class="actionText" style="color:var(--amber)">⚠ <b>${esc(name)}</b> serve una decisione${q.report?`: ${esc(q.report)}`:""}</div>`);
     else if(q.status==="failed")
       out.push(`<div class="actionText" style="color:var(--red)">✗ <b>${esc(name)}</b> non riuscita${q.closed_at?" alle "+esc(q.closed_at):""}${q.report?`: ${esc(q.report)}`:""}</div>`);
     else if(q.status==="stale")
@@ -1032,6 +1043,11 @@ async function handOver(r,btn,path,body,kind,note){
   try{
     const d=await post(path,body);
     if(d.order)r.order=d.order;
+    if(d.via==="chat"){
+      localFeed(`${note} su #${r.n}: in coda alla chat collegata — l'esito arriva in conversazione`);
+      btn.disabled=false;btn.classList.remove("working");
+      await loadDesk(false);return;
+    }
     if(!d.job)throw new Error("il server non ha creato il job");
     localFeed(`${note} su #${r.n}: agente one-shot avviato`);
     await waitJob(d.job,(DESK==="issue"?"i":"p")+r.n,note);
@@ -1053,6 +1069,11 @@ async function doFlow(path,flow,note,extra){
       delete flows[flow];
       localFeed(`${flow}: pubblicato, nessun lavoro del modello dovuto`);
       await loadDesk(false);return;
+    }
+    if(d.via==="chat"){
+      flows[flow]={status:"queued",via:"chat"};
+      localFeed(`${flow}: in coda alla chat collegata — l'esito arriva in conversazione`);
+      render();return;
     }
     if(!d.job)throw new Error("il server non ha creato il job");
     flows[flow]={status:"running",job:d.job};

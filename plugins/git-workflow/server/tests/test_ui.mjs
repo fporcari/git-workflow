@@ -194,7 +194,7 @@ globalThis.fetch = async () => { throw new Error("network is off in this test");
 /* ---- run the page's script ---- */
 const script = html.match(/<script>\n([\s\S]*)\n<\/script>/)[1];
 const page = new Function(`${script}\nreturn {applyDesk,applyState,render,renderDetail,select,moveSelection,setSort,visiblePrs,visibleIssues,
-  rowClick,togglePick,clearPicks,doRun,MAX_BATCH,
+  rowClick,togglePick,clearPicks,doRun,MAX_BATCH,pending,closed,
   get state(){return {prs,issues,selected,tab,view,loaded,DESK,truncated,pendingMerge,sort,
                       picked:[...picked],askBatch};},
   set view(v){view=v;}, set query(v){query=v;}, set agent(v){agentReady=v;}};`)();
@@ -470,6 +470,26 @@ ok("a newer run replaces the dismissed one",
    document.getElementById("jobPanel").innerHTML.includes("order:1189"));
 page.applyState({ agent: { mode: "on-demand", busy: false }, feed: [], runs: {} });
 page.render();
+
+/* ---- attached chat: the chip and the button lock ---- */
+ok("no chat attached: the chip stays hidden",
+   document.getElementById("chatState").hidden === true);
+page.applyState({ agent: { mode: "on-demand", busy: false }, feed: [],
+                  chat: { attached: true, at: "15:02:11" } });
+ok("an attached chat shows the chip",
+   document.getElementById("chatState").hidden === false);
+page.applyState({ agent: { mode: "on-demand", busy: false }, feed: [],
+                  chat: { attached: false } });
+ok("a detached chat hides it again",
+   document.getElementById("chatState").hidden === true);
+ok("a request taken by the chat still locks its button", (() => {
+  const q = page.pending({ requests: { analyze: { status: "taken", at: "15:03:00", via: "chat" } } }, "analyze");
+  return q && q.status === "taken";
+})());
+ok("a closed chat request frees the button", (() => {
+  const row = { requests: { analyze: { status: "needs-input", at: "15:04:00", via: "chat" } } };
+  return !page.pending(row, "analyze") && !!page.closed(row, "analyze");
+})());
 
 page.applyState({ working: { n: runner.n, msg: "riallineo il branch", at: "19:10:00" },
                   agent: { mode: "on-demand", busy: true }, feed: [] });

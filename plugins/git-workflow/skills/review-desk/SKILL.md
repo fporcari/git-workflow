@@ -63,6 +63,63 @@ validates that the result refers to the requested PRs/issues and then persists
 the allowed fields. A provider refresh is requested only when an operation
 reports that it changed provider state.
 
+## Attached chat (hybrid mode)
+
+The server is detached either way. What the non-triage buttons do depends on
+whether a chat is attached at click time:
+
+- **No chat attached** (heartbeat stale): every button behaves as above — one
+  ephemeral one-shot process per click, report card included.
+- **A chat is attached**: analyze, explain, order and run clicks are enqueued
+  as `requests` records with `via: "chat"` instead of starting a process. The
+  attached chat claims them, executes the named skill IN the conversation —
+  where the user reads the output — then publishes the result and closes the
+  request so the desk row shows the outcome too. **Triage is the exception:**
+  it always runs on the independent one-shot agent, whatever the chat state,
+  because its artifacts are desk cells, not conversation output.
+
+The attached chat's loop, after opening the desk URL:
+
+```sh
+python3 <PLUGIN_ROOT>/server/chatdesk.py wait --repo <owner/repo> --timeout 540
+```
+
+Run it with the host command timeout ABOVE the wait timeout (Claude Code:
+Bash timeout 600000 ms). The command heartbeats while it blocks; the server
+routes clicks to the chat only while that heartbeat is fresh.
+
+- `{"idle": true}` → run the same command again. Tell the user once, at
+  attach time, that you are listening; do not narrate every idle cycle.
+- A request record → execute it in this conversation, by `kind`:
+  - `analyze` → the `pr-analyze` skill on PR `n`; present the analysis;
+  - `explain` → one Italian sentence for PR `n` (linked issue and diff file
+    names only, read-only);
+  - `issue-analyze` → the `issue-analyze` skill on `n`;
+  - `order` → the pr-loop order flow for the order recorded under `orders.<n>`
+    (the click was the go-ahead for that displayed proposal);
+  - `run` → `pr-loop`/`issue-loop` with the `ns` and `batch` in `payload`.
+
+  Present the outcome in chat AND publish it back in one move:
+
+  ```sh
+  python3 <PLUGIN_ROOT>/server/chatdesk.py result --repo <owner/repo> \
+      --request <key> result.json
+  ```
+
+  `result.json` is the same structured JSON the one-shot agent would have
+  returned for that kind (pr-analysis, pr-explanation, issue-analysis or
+  operation-result schema). On a failure close the request with
+  `python3 <PLUGIN_ROOT>/server/notify.py --repo <owner/repo> --failed <key> "why"`.
+- When the user says stop, or before the session ends, run
+  `python3 <PLUGIN_ROOT>/server/chatdesk.py detach --repo <owner/repo>`. A
+  missed detach costs only the heartbeat TTL before the buttons fall back to
+  one-shot agents.
+
+Autonomy in attached mode is exactly the desk's: a click carries the same
+authorization it would have given the one-shot agent — analysis is read-only,
+an order or run click authorizes the named operation, and a merge is never
+autonomous beyond what the skill already allows.
+
 ## Triage freshness
 
 Startup and reload fetch facts but do not triage. An explicit triage click

@@ -38,10 +38,13 @@ Use `--agent claude` from Claude Code and `--agent codex` from Codex.
 
 The server is detached from the launching conversation. It reads provider
 cache, rows and job JSON files by itself, and it never starts a model merely
-because the desk is open or polling. Analyze, explain, triage and workflow
-buttons each start one ephemeral CLI process, wait through the corresponding
-job JSON, then let the process exit. The launching conversation may finish as
-soon as it has opened the desk.
+because the desk is open or polling. With no chat attached, analyze, explain,
+triage and workflow buttons each start one ephemeral CLI process, wait through
+the corresponding job JSON, then let the process exit. The launching
+conversation may finish as soon as it has opened the desk — or stay ATTACHED
+via `chatdesk.py wait`, in which case the server routes every non-triage click
+to that conversation instead (see "Attached chat" in the review-desk skill).
+Triage always stays on the independent one-shot agent.
 
 Active jobs expose their elapsed time, phase and sanitized public tool events
 through the same JSON. The browser reads that local progress once a second

@@ -1730,6 +1730,182 @@ class DetachedButtons(unittest.TestCase):
         self.assertEqual(analyze.call_args.args[1], 1166)
 
 
+class AttachedChat(unittest.TestCase):
+    """The hybrid contract: triage always on the independent one-shot agent;
+    every other button routes to the attached chat while its heartbeat is
+    fresh, and falls back to the one-shot job when it is not."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.desk = fresh_desk(chat=False, kind="pr")
+        prdesk.Handler.desk = cls.desk
+        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), prdesk.Handler)
+        cls.port = cls.server.server_address[1]
+        threading.Thread(target=cls.server.serve_forever, daemon=True).start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.server.server_close()
+
+    def setUp(self):
+        state = deskstate.load(REPO)
+        for key in ("requests", "chat"):
+            state.pop(key, None)
+        deskstate.save(REPO, state)
+
+    def post(self, path, body=None):
+        req = Request("http://127.0.0.1:%s%s" % (self.port, path),
+                      data=json.dumps(body or {}).encode(),
+                      headers={"Content-Type": "application/json",
+                               "X-Git-Workflow-Token": self.desk.write_token})
+        with urlopen(req, timeout=30) as resp:
+            return resp.status, json.loads(resp.read())
+
+    def _expire_heartbeat(self):
+        state = deskstate.load(REPO)
+        state["chat"]["epoch"] -= deskstate.CHAT_STALE + 5
+        deskstate.save(REPO, state)
+
+    def test_the_heartbeat_expires(self):
+        deskstate.chat_heartbeat(REPO)
+        self.assertTrue(deskstate.chat_attached(REPO))
+        self._expire_heartbeat()
+        self.assertIsNone(deskstate.chat_attached(REPO))
+
+    def test_a_claimed_request_keeps_the_chat_attached_while_it_works(self):
+        deskstate.chat_heartbeat(REPO)
+        deskstate.request(REPO, "analyze:7", "analyze", 7, via="chat")
+        record = deskstate.claim_request(REPO)
+        self.assertEqual(record["key"], "analyze:7")
+        self.assertEqual(record["status"], "taken")
+        self._expire_heartbeat()
+        self.assertTrue(deskstate.chat_attached(REPO),
+                        "silence while working must not read as a dead chat")
+        deskstate.close_request(REPO, "analyze:7", "done", "fatto")
+        self.assertIsNone(deskstate.chat_attached(REPO))
+
+    def test_non_triage_buttons_route_to_the_attached_chat(self):
+        deskstate.chat_heartbeat(REPO)
+        with mock.patch.object(jobs, "analyze_pr") as analyze:
+            status, payload = self.post("/api/pr/1145/analyze")
+        analyze.assert_not_called()
+        self.assertEqual((status, payload["via"]), (202, "chat"))
+        record = deskstate.load(REPO)["requests"]["analyze:1145"]
+        self.assertEqual((record["via"], record["status"]), ("chat", "queued"))
+        with mock.patch.object(jobs, "operation") as operation:
+            status, payload = self.post(
+                "/api/run", {"flow": "pr-loop", "ns": [1145], "batch": 2})
+        operation.assert_not_called()
+        self.assertEqual(payload["via"], "chat")
+        self.assertEqual(
+            deskstate.load(REPO)["requests"]["run:pr-loop"]["payload"],
+            {"flow": "pr-loop", "ns": [1145], "batch": 2})
+
+    def test_a_second_press_reuses_the_queued_request(self):
+        deskstate.chat_heartbeat(REPO)
+        with mock.patch.object(jobs, "analyze_issue"):
+            self.post("/api/issue/1166/analyze")
+            status, payload = self.post("/api/issue/1166/analyze")
+        self.assertEqual((status, payload["created"]), (202, False))
+
+    def test_triage_never_routes_to_the_chat(self):
+        deskstate.chat_heartbeat(REPO)
+        with mock.patch.object(jobs, "triage", return_value="triage-job") as triage:
+            status, payload = self.post("/api/triage", {"flow": "pr-triage"})
+        self.assertEqual(status, 202)
+        self.assertNotIn("via", payload)
+        self.assertEqual(payload["job"], "triage-job")
+        triage.assert_called_once()
+
+    def test_a_stale_heartbeat_falls_back_to_the_one_shot_job(self):
+        deskstate.chat_heartbeat(REPO)
+        self._expire_heartbeat()
+        with mock.patch.object(jobs, "analyze_pr", return_value="job-1"):
+            status, payload = self.post("/api/pr/1145/analyze")
+        self.assertEqual((status, payload["job"]), (202, "job-1"))
+
+    def _cli(self, *args, **kw):
+        return subprocess.run(
+            (sys.executable, str(ROOT / "chatdesk.py")) + args,
+            capture_output=True, text=True,
+            env=dict(os.environ, HOME=_HOME), **kw)
+
+    def test_wait_claims_the_click_and_result_publishes_it(self):
+        deskstate.request(REPO, "issue-analyze:1166", "issue-analyze", 1166,
+                          via="chat")
+        out = self._cli("wait", "--repo", REPO, "--timeout", "1")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        record = json.loads(out.stdout)
+        self.assertEqual(record["key"], "issue-analyze:1166")
+        self.assertTrue(deskstate.chat_attached(REPO),
+                        "the claim itself must keep the chat attached")
+        result = {"n": 1166, "type": "DEFECT", "finding": "la causa è X",
+                  "size": "EASY", "phase": "SINGLE-PHASE"}
+        with tempfile.NamedTemporaryFile("w", suffix=".json",
+                                         delete=False) as handle:
+            json.dump(result, handle)
+        out = self._cli("result", "--repo", REPO,
+                        "--request", "issue-analyze:1166", handle.name)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        state = deskstate.load(REPO)
+        self.assertEqual(state["issues"]["1166"]["finding"], "la causa è X")
+        got = state["requests"]["issue-analyze:1166"]
+        self.assertEqual((got["status"], got["report"]),
+                         ("done", "la causa è X"))
+
+    def test_wait_reports_idle_when_nothing_is_queued(self):
+        out = self._cli("wait", "--repo", REPO, "--timeout", "0")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(json.loads(out.stdout), {"idle": True})
+
+    def test_an_invalid_result_fails_the_request_instead_of_publishing(self):
+        deskstate.request(REPO, "issue-analyze:1167", "issue-analyze", 1167,
+                          via="chat")
+        deskstate.claim_request(REPO)
+        with tempfile.NamedTemporaryFile("w", suffix=".json",
+                                         delete=False) as handle:
+            json.dump({"n": 1167, "type": "DEFECT"}, handle)
+        out = self._cli("result", "--repo", REPO,
+                        "--request", "issue-analyze:1167", handle.name)
+        self.assertNotEqual(out.returncode, 0)
+        state = deskstate.load(REPO)
+        self.assertEqual(state["requests"]["issue-analyze:1167"]["status"],
+                         "failed")
+        self.assertNotIn("finding", (state.get("issues") or {}).get("1167", {}))
+
+    def test_an_operation_result_lands_in_orders_and_runs(self):
+        deskstate.add_order(REPO, 1145, "merge", "", "vai")
+        deskstate.request(REPO, "order:1145", "order", 1145,
+                          via="chat", payload={"flow": "order", "n": 1145})
+        deskstate.claim_request(REPO)
+        result = {"status": "done", "report": "merged e branch cancellato",
+                  "provider_changed": True}
+        with tempfile.NamedTemporaryFile("w", suffix=".json",
+                                         delete=False) as handle:
+            json.dump(result, handle)
+        out = self._cli("result", "--repo", REPO,
+                        "--request", "order:1145", handle.name)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        state = deskstate.load(REPO)
+        self.assertEqual(state["orders"]["1145"]["status"], "done")
+        self.assertEqual(state["runs"]["order:1145"]["report"],
+                         "merged e branch cancellato")
+        self.assertIn("provider_refresh", state)
+
+    def test_detach_hands_the_buttons_back_to_the_agents(self):
+        deskstate.chat_heartbeat(REPO)
+        out = self._cli("detach", "--repo", REPO)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIsNone(deskstate.chat_attached(REPO))
+
+    def test_live_state_tells_the_page_a_chat_is_attached(self):
+        deskstate.chat_heartbeat(REPO)
+        self.assertTrue(self.desk.live_state()["chat"]["attached"])
+        self._expire_heartbeat()
+        self.assertFalse(self.desk.live_state()["chat"]["attached"])
+
+
 class SummaryFromData(unittest.TestCase):
     """What a PR is FOR: the author already wrote it. Asking a model to
     paraphrase 52 titles was the expensive way to learn it."""

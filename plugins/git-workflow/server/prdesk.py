@@ -56,6 +56,7 @@ import deskstate
 import gate as gatelib
 import issuecheck
 import jobs
+import notify
 import verdicts
 from providers import get_provider
 from verdicts import decorate, handoff, issue_handoff, issue_type
@@ -467,7 +468,10 @@ class Desk:
         flows = {key.split(":", 1)[1]: rec for key, rec in ledger.items()
                  if key.startswith(("triage:", "run:"))}
         grid = st.get("grid") or {}
+        chat = deskstate.chat_attached(self.repo, st)
         return {"feed": (st.get("feed") or [])[-50:], "flows": flows,
+                "chat": {"attached": bool(chat),
+                         "at": (chat or {}).get("at")},
                 "runs": st.get("runs") or {},
                 "working": deskstate.working(self.repo, st),
                 "provider_refresh": st.get("provider_refresh"),
@@ -684,20 +688,30 @@ class Handler(BaseHTTPRequestHandler):
                 # FOR, in the user's language. One row, one sentence — instead
                 # of the whole queue's titles rewritten every refresh.
                 n = int(parts[2])
+                what_key = self._model_key(n, "what")
+                if self._chat_handoff("explain", n, {"what_key": what_key},
+                                      "spiegazione #%s" % n):
+                    return
                 job_id = jobs.explain_pr(
                     self.desk.repo, n, self.desk.me, self.desk.cwd,
-                    self.desk.agent, self._model_key(n, "what"))
+                    self.desk.agent, what_key)
                 self._send(202, {"job": job_id})
             elif len(parts) == 4 and parts[:2] == ["api", "pr"] and parts[3] == "order":
                 n = int(parts[2])
                 order = deskstate.add_order(self.desk.repo, n, body.get("propose", ""),
                                             body.get("draft"), body.get("instruction", ""))
+                if self._chat_handoff("order", n, {"flow": "order", "n": n},
+                                      "ordine #%s" % n):
+                    return
                 job_id = jobs.operation(
                     self.desk.repo, "order", {"n": n}, self.desk.me,
                     self.desk.cwd, self.desk.agent)
                 self._send(202, {"order": order, "job": job_id})
             elif len(parts) == 4 and parts[:2] == ["api", "issue"] and parts[3] == "analyze":
                 n = int(parts[2])
+                if self._chat_handoff("issue-analyze", n, {},
+                                      "issue-analyze #%s" % n):
+                    return
                 job_id = jobs.analyze_issue(
                     self.desk.repo, n, self.desk.me, self.desk.cwd,
                     self.desk.agent)
@@ -722,6 +736,11 @@ class Handler(BaseHTTPRequestHandler):
                 ns = [int(n) for n in (body.get("ns") or [])]
                 batch = max(1, min(int(body.get("batch") or 1), MAX_BATCH))
                 label = "%s · %d scelte" % (flow, len(ns)) if ns else flow
+                if self._chat_handoff(
+                        "run", None,
+                        {"flow": flow, "ns": ns, "batch": batch}, label,
+                        key="run:%s" % flow):
+                    return
                 job_id = jobs.operation(
                     self.desk.repo, flow, {"ns": ns, "batch": batch},
                     self.desk.me, self.desk.cwd, self.desk.agent)
@@ -757,10 +776,33 @@ class Handler(BaseHTTPRequestHandler):
 
     def _analyze_pr(self, n):
         analysis_key = self._model_key(n, "analysis")
+        if self._chat_handoff("analyze", n, {"analysis_key": analysis_key},
+                              "pr-analyze #%s" % n):
+            return
         job_id = jobs.analyze_pr(self.desk.repo, n, self.desk.me,
                                  self.desk.cwd, self.desk.agent,
                                  analysis_key)
         self._send(202, {"job": job_id})
+
+    def _chat_handoff(self, kind, n, payload, label, key=None):
+        """Route the click to the attached chat instead of a one-shot agent.
+
+        Triage never comes through here: its artifacts are the desk's own
+        cells, so it stays on the independent agent whatever the chat state.
+        Returns the response sent, or None when no chat is attached and the
+        caller must start the job as before."""
+        if not deskstate.chat_attached(self.desk.repo):
+            return None
+        key = key or deskstate.request_key(kind, n)
+        record, created = deskstate.request(
+            self.desk.repo, key, kind, n, label, via="chat", payload=payload)
+        if created:
+            notify.notify(self.desk.repo,
+                          "%s → in coda alla chat collegata" % label, n)
+        response = {"queued": True, "via": "chat", "request": key,
+                    "created": created, "at": record["at"]}
+        self._send(202, response)
+        return response
 
     def _model_key(self, n, artifact):
         row = next((row for row in self.desk.queue()["rows"]
