@@ -335,6 +335,9 @@ class HeadlessAgents(unittest.TestCase):
     def test_claude_command_has_no_write_tool(self):
         command = jobs.command("claude", "prompt", jobs.READ_TOOLS, "/tmp/repo")
         self.assertIn("--json-schema", command)
+        document = json.loads(command[command.index("--json-schema") + 1])
+        self.assertNotIn("$schema", document)
+        self.assertIn("properties", document)
         self.assertEqual(command[command.index("--output-format") + 1],
                          "stream-json")
         self.assertIn("--verbose", command)
@@ -575,7 +578,7 @@ class HeadlessAgents(unittest.TestCase):
                 agent, "prompt", jobs.READ_TOOLS, "/tmp/repo",
                 "/tmp/result.json", jobs.EXPLAIN_SCHEMA)
             expected = (str(jobs.EXPLAIN_SCHEMA) if agent == "codex"
-                        else jobs.EXPLAIN_SCHEMA.read_text())
+                        else jobs.claude_schema(jobs.EXPLAIN_SCHEMA))
             self.assertIn(expected, command)
 
     def test_explanation_is_written_with_its_fingerprint(self):

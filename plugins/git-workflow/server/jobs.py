@@ -79,13 +79,21 @@ def resolve_agent(agent):
     raise RuntimeError("neither claude nor codex executable was found")
 
 
+# claude --json-schema validates against a registry without the 2020-12
+# meta-schema, so the $schema annotation the files carry for codex is dropped
+def claude_schema(schema):
+    document = json.loads(schema.read_text())
+    document.pop("$schema", None)
+    return json.dumps(document)
+
+
 def command(agent, prompt, tools, cwd, output_path=None, schema=SCHEMA,
             read_only=True):
     if agent == "claude":
         cmd = ["claude", "-p", prompt, "--output-format", "stream-json",
                "--verbose", "--no-session-persistence"]
         if schema:
-            cmd += ["--json-schema", schema.read_text()]
+            cmd += ["--json-schema", claude_schema(schema)]
         if read_only:
             cmd += ["--allowedTools", tools]
         else:
@@ -249,8 +257,8 @@ def _is_our_agent(record):
 
 def _execute(cmd, cwd, timeout, agent, progress, started=None):
     process = subprocess.Popen(
-        cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        text=True, bufsize=1)
+        cmd, cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, text=True, bufsize=1)
     if started:
         try:
             started(process)
