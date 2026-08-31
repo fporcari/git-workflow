@@ -479,12 +479,20 @@ def parse_operation(agent, stdout, output_path=None):
     return result
 
 
-def persist_operation(repo, result, n=None):
+def persist_operation(repo, result, n=None, flow=None):
     if n is not None:
         def mutate(state):
             order = state.setdefault("orders", {}).setdefault(str(n), {})
             order.update(status=result["status"], report=result["report"])
         deskstate.update(repo, mutate)
+    # the loop's own report outlives its job file: the page has nowhere else
+    # to read what a finished run decided, and terminal records get pruned
+    label = "order:%s" % n if n is not None else (flow or "run")
+    def keep(state):
+        state.setdefault("runs", {})[label] = {
+            "status": result["status"], "report": result["report"],
+            "at": time.strftime("%H:%M:%S")}
+    deskstate.update(repo, keep)
     if result["provider_changed"]:
         deskstate.request_provider_refresh(repo)
 
@@ -762,7 +770,7 @@ def operation(repo, flow, payload, me, cwd, agent="auto"):
         "if you actually changed GitHub or Forgejo."
         % (PLUGIN_ROOT, skill, repo, me, mandate, OPERATION_SCHEMA))
     persister = lambda target, result: persist_operation(  # noqa: E731
-        target, result, n)
+        target, result, n, flow)
     key = "order:%s" % n if n is not None else flow
     return _spawn("operation", key, agent, repo, dict(payload, flow=flow),
                   prompt, "", OPERATION_TIMEOUT, cwd, OPERATION_SCHEMA,

@@ -468,6 +468,7 @@ class Desk:
                  if key.startswith(("triage:", "run:"))}
         grid = st.get("grid") or {}
         return {"feed": (st.get("feed") or [])[-50:], "flows": flows,
+                "runs": st.get("runs") or {},
                 "working": deskstate.working(self.repo, st),
                 "provider_refresh": st.get("provider_refresh"),
                 # the stamp, not the grid: the page reads the reconciled rows

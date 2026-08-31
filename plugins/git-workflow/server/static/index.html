@@ -54,6 +54,8 @@ body{font:13px/1.4 system-ui,sans-serif}
 .jobHead{display:flex;align-items:center;gap:8px;font-size:11.5px}.jobHead b{font:600 11px var(--mono)}
 .jobHead .spin{width:7px;height:7px;border-radius:50%;background:var(--amber);animation:pulse 1s infinite;flex:none}
 .jobHead .elapsed{margin-left:auto;color:var(--muted);font:10px var(--mono)}
+.reportCard{border-color:color-mix(in srgb,var(--ink) 22%,var(--line));background:var(--panel)}
+.reportCard .runReport{white-space:pre-wrap;margin:7px 0 0;max-height:320px;overflow:auto;font:11px/1.55 var(--mono);color:var(--ink)}
 .jobRail{height:2px;background:var(--soft);overflow:hidden;margin:7px 0}.jobRail i{display:block;width:28%;height:100%;background:var(--amber);animation:travel 1.8s ease-in-out infinite}
 @keyframes travel{0%{transform:translateX(-100%)}100%{transform:translateX(460%)}}
 .jobCurrent{font-size:11px;color:var(--ink)}
@@ -278,7 +280,7 @@ let staleRetry=null;
 let triageStamp=null;   // when the published triage changes, repaint the rows
 let providerRefresh=null; // a completed provider mutation forces one fresh read
 let flows={};
-let jobRecords={};
+let jobRecords={},runs={},runOpen=true,runHidden=null;
 let agentPoll=null;
 let workingOn=null;
 let picked=new Set();   // the rows chosen by hand for the next loop
@@ -329,11 +331,28 @@ function jobTitle(job){
   if(req.flow)return req.flow+(req.ns&&req.ns.length?" · "+req.ns.map(n=>"#"+n).join(" "):req.n?" · #"+req.n:"");
   return (job.kind||"job")+(req.n?" · #"+req.n:"");
 }
+function lastRun(){
+  const rows=Object.entries(runs||{}).filter(([,r])=>r&&r.report);
+  if(!rows.length)return null;
+  rows.sort((a,b)=>String(a[1].at||"").localeCompare(String(b[1].at||"")));
+  const [key,run]=rows[rows.length-1],stamp=key+"@"+(run.at||"");
+  return stamp===runHidden?null:{key,run,stamp};
+}
+function runCard(last){
+  const {key,run}=last;
+  return `<div class="jobCard reportCard"><div class="jobHead">
+    <b>${esc(key)}</b><span>${esc(STAGE_LABEL[run.status]||run.status||"")}</span>
+    <span class="elapsed">${esc(run.at||"")}</span>
+    <button class="btn" data-run-toggle>${runOpen?"nascondi":"leggi"}</button>
+    <button class="btn" data-run-close>✕</button></div>
+    ${runOpen?`<pre class="runReport">${esc(run.report||"")}</pre>`:""}</div>`;
+}
 function renderJobs(){
   const box=$("jobPanel"),jobs=Object.values(jobRecords).filter(j=>j.status==="running");
-  box.classList.toggle("on",jobs.length>0);
-  if(!jobs.length){box.innerHTML="";return;}
-  box.innerHTML=jobs.map(job=>{
+  const last=lastRun();
+  box.classList.toggle("on",jobs.length>0||!!last);
+  if(!jobs.length&&!last){box.innerHTML="";return;}
+  box.innerHTML=(last?runCard(last):"")+jobs.map(job=>{
     const p=job.progress||{},events=(job.events||[]).slice(-7);
     return `<div class="jobCard"><div class="jobHead"><span class="spin"></span>
       <b>${esc(jobTitle(job))}</b><span>${esc(STAGE_LABEL[p.stage]||p.stage||"al lavoro")}</span>
@@ -341,6 +360,10 @@ function renderJobs(){
       <div class="jobRail"><i></i></div><div class="jobCurrent">${esc(p.detail||"processo avviato")}</div>
       ${events.length?`<div class="jobEvents">${events.map(e=>`<div><time>${esc(e.at||"")}</time><span>${esc(e.detail||e.stage||"")}</span></div>`).join("")}</div>`:""}</div>`;
   }).join("");
+  const toggle=box.querySelector("[data-run-toggle]");
+  if(toggle)toggle.onclick=()=>{runOpen=!runOpen;renderJobs();};
+  const close=box.querySelector("[data-run-close]");
+  if(close)close.onclick=()=>{runHidden=(last||{}).stamp;runOpen=true;renderJobs();};
 }
 
 /* ---------- data ---------- */
@@ -420,6 +443,7 @@ function applyState(st){
   const wasOn=workingOn&&(workingOn.ns||[workingOn.n]).join(",");
   workingOn=st.working||null;
   if(workingOn&&(workingOn.ns||[workingOn.n]).join(",")!==wasOn)followWorking=true;
+  runs=st.runs||runs;
   const feed=st.feed||[];
   const box=$("feedBox");
   box.classList.toggle("on",feed.length>0);

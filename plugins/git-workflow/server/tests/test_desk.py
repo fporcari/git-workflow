@@ -635,6 +635,27 @@ class HeadlessAgents(unittest.TestCase):
         self.assertIn("Failed to authenticate",
                       record["progress"]["detail"])
 
+    def test_a_loop_report_outlives_its_job_file(self):
+        repo = REPO + "-run-report"
+        deskstate.save(repo, {})
+        jobs.persist_operation(
+            repo, {"status": "needs-input", "report": "due proposte",
+                   "provider_changed": False}, None, "pr-loop")
+        run = deskstate.load(repo)["runs"]["pr-loop"]
+        self.assertEqual(run["status"], "needs-input")
+        self.assertEqual(run["report"], "due proposte")
+        self.assertTrue(run["at"])
+
+    def test_an_order_report_is_kept_under_its_own_label(self):
+        repo = REPO + "-order-report"
+        deskstate.save(repo, {})
+        jobs.persist_operation(
+            repo, {"status": "done", "report": "merged", "provider_changed": False},
+            1189, "order")
+        state = deskstate.load(repo)
+        self.assertEqual(state["orders"]["1189"]["report"], "merged")
+        self.assertEqual(state["runs"]["order:1189"]["report"], "merged")
+
     def test_explanation_is_written_with_its_fingerprint(self):
         repo = REPO + "-explanation"
         deskstate.save(repo, {})

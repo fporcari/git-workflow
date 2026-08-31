@@ -432,6 +432,45 @@ ok("observable agent activity is shown below the current phase",
    /gh pr view/.test(jobPanel.innerHTML) && /pytest tests\/test_api.py/.test(jobPanel.innerHTML));
 ok("the progress card identifies its one-shot backend",
    /codex/.test(jobPanel.innerHTML));
+/* ---- 7f. the report a finished run leaves behind ---- */
+const REPORT = "pr-loop su genropy/genropy, working set [1183, 1099].\n\n"
+  + "AZIONI AUTOMATICHE: nessuna.\n\nPROPOSTE: #1183 review --request-changes.";
+page.applyState({ agent: { mode: "on-demand", busy: false }, feed: [],
+                  runs: { "pr-loop": { status: "needs-input", report: REPORT,
+                                       at: "14:24:15" } } });
+page.render();
+const reportPanel = document.getElementById("jobPanel");
+ok("a finished run leaves its report on the page, whole",
+   reportPanel.classList.contains("on") &&
+   reportPanel.innerHTML.includes("PROPOSTE: #1183 review --request-changes"));
+ok("the report card says which run and when",
+   /pr-loop/.test(reportPanel.innerHTML) && /14:24:15/.test(reportPanel.innerHTML) &&
+   /serve una decisione/.test(reportPanel.innerHTML));
+reportPanel.querySelector("[data-run-toggle]").click();
+ok("the report folds away without losing the card",
+   !document.getElementById("jobPanel").innerHTML.includes("PROPOSTE: #1183") &&
+   document.getElementById("jobPanel").innerHTML.includes("pr-loop"));
+reportPanel.querySelector("[data-run-toggle]").click();
+ok("and unfolds again",
+   document.getElementById("jobPanel").innerHTML.includes("PROPOSTE: #1183"));
+document.getElementById("jobPanel").querySelector("[data-run-close]").click();
+ok("dismissing it empties the panel",
+   !document.getElementById("jobPanel").classList.contains("on"));
+page.applyState({ agent: { mode: "on-demand", busy: false }, feed: [],
+                  runs: { "pr-loop": { status: "needs-input", report: REPORT,
+                                       at: "14:24:15" } } });
+page.render();
+ok("a dismissed report does not come back on the next poll",
+   !document.getElementById("jobPanel").classList.contains("on"));
+page.applyState({ agent: { mode: "on-demand", busy: false }, feed: [],
+                  runs: { "order:1189": { status: "done", report: "merged",
+                                          at: "14:31:02" } } });
+page.render();
+ok("a newer run replaces the dismissed one",
+   document.getElementById("jobPanel").innerHTML.includes("order:1189"));
+page.applyState({ agent: { mode: "on-demand", busy: false }, feed: [], runs: {} });
+page.render();
+
 page.applyState({ working: { n: runner.n, msg: "riallineo il branch", at: "19:10:00" },
                   agent: { mode: "on-demand", busy: true }, feed: [] });
 page.render();
