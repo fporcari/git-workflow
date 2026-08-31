@@ -108,19 +108,26 @@ def model_keys(row, gate=None, gate_known=True):
     the source of both wasted reads and stale facts surviving where they
     mattered.
     """
-    analysis_fields = ("author", "draft", "base", "base_head", "head", "merge",
-                       "decision", "req", "reviews", "unresolved", "incomplete",
-                       "assignees", "last")
-    analysis_key = (fingerprint(
-        [[row.get(f) for f in analysis_fields],
-         [(gate or {}).get(f) for f in GATE_FIELDS]])
-        if gate_known else None)
     explained_issues = [
         {"issue": item.get("issue"), "title": item.get("title")}
         for item in row.get("closes") or []]
+    problem_key = fingerprint([
+        row.get("author"), row.get("head"), row.get("summary"),
+        explained_issues])
+    history_fields = ("draft", "base", "base_head", "head", "merge",
+                      "decision", "req", "reviews", "unresolved", "incomplete",
+                      "assignees", "last")
+    history_key = (fingerprint(
+        [[row.get(f) for f in history_fields],
+         [(gate or {}).get(f) for f in GATE_FIELDS]])
+        if gate_known else None)
+    analysis_key = (fingerprint([problem_key, history_key])
+                    if history_key else None)
     return {
         "what": fingerprint([row.get("title"), row.get("summary"),
                              explained_issues]),
+        "problem": problem_key,
+        "history": history_key,
         "analysis": analysis_key,
         "conflict": fingerprint([row.get("base"), row.get("base_head"),
                                  row.get("head"), row.get("merge")]),
@@ -775,14 +782,55 @@ class Handler(BaseHTTPRequestHandler):
             self._send(502, {"error": str(exc)})
 
     def _analyze_pr(self, n):
-        analysis_key = self._model_key(n, "analysis")
-        if self._chat_handoff("analyze", n, {"analysis_key": analysis_key},
+        keys, context = self._analysis_inputs(n)
+        if self._chat_handoff("analyze", n,
+                              {"analysis_keys": keys, "context": context},
                               "pr-analyze #%s" % n):
             return
         job_id = jobs.analyze_pr(self.desk.repo, n, self.desk.me,
                                  self.desk.cwd, self.desk.agent,
-                                 analysis_key)
+                                 keys, context)
         self._send(202, {"job": job_id})
+
+    def _analysis_inputs(self, n):
+        row = next((row for row in self.desk.queue()["rows"]
+                    if row["n"] == n), None)
+        if not row:
+            return {}, {"probe": None}
+        keys = row.get("model_keys") or {}
+        if keys.get("analysis") is None:
+            rows, _, _, gates = self.desk._queue_facts(complete_gates=True)
+            decorate(rows, self.desk.me, gates)
+            row = next((item for item in rows if item["n"] == n), row)
+            keys = row.get("model_keys") or {}
+        try:
+            probe = self.desk.provider.analysis_probe(self.desk.repo, n)
+        except Exception as exc:
+            probe = {"fresh": False, "error": str(exc)[:160]}
+        if (probe and probe.get("fresh") and probe.get("head")
+                and probe["head"] != row.get("head")):
+            rows, _, _, gates = self.desk._queue_facts(
+                refresh=True, complete_gates=True)
+            decorate(rows, self.desk.me, gates)
+            row = next((item for item in rows if item["n"] == n), row)
+            keys = row.get("model_keys") or {}
+        note = ((deskstate.load(self.desk.repo).get("prs") or {})
+                .get(str(n)) or {})
+        cached_problem = (note.get("problem")
+                          if note.get("problem_key") == keys.get("problem")
+                          else None)
+        keys = dict(keys, problem_head=row.get("head"))
+        context = {
+            "row": {key: row.get(key) for key in (
+                "n", "title", "summary", "author", "created", "base",
+                "base_head", "head", "merge", "decision", "req", "reviews",
+                "unresolved", "threads", "closes", "last")},
+            "probe": probe,
+            "cached_problem": cached_problem,
+            "previous_problem": note.get("problem"),
+            "previous_problem_head": note.get("problem_head"),
+        }
+        return keys, context
 
     def _chat_handoff(self, kind, n, payload, label, key=None):
         """Route the click to the attached chat instead of a one-shot agent.

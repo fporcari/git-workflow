@@ -1,6 +1,6 @@
 {
   "name": "git-workflow",
-  "version": "0.25.0+codex.20260831155125",
+  "version": "0.26.0+codex.20260831185446",
   "description": "A repository workflow toolkit with detached PR and issue desks whose explicit actions run visible, ephemeral agents.",
   "author": {
     "name": "Francesco Porcari",

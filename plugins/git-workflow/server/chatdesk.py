@@ -50,7 +50,8 @@ def _persist(repo, record, result):
     raw = json.dumps(result)
     if kind == "analyze":
         parsed = jobs.parse_result("chat", raw, expected_n=n)
-        jobs.persist(repo, parsed, payload.get("analysis_key"))
+        jobs.persist(repo, parsed,
+                     payload.get("analysis_keys") or payload.get("analysis_key"))
         return parsed["propose"]
     if kind == "explain":
         jobs.persist_explanation(repo, result, n, payload.get("what_key"))

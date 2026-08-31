@@ -50,9 +50,11 @@ how to ask the user a question, how to launch a detached desk, how to title a
 session, how to delegate to a background subagent, how to spawn a dedicated one. The
 two Claude Code wrappers in `commands/` are thin by design: they load a skill
 and declare that host's tool names, nothing else. Explicit desk actions pick
-their ephemeral backend with
-`--agent auto|claude|codex`. `server/tests/test_packaging.py` pins the
-cross-host invariants.
+their ephemeral backend with `--agent auto|claude|codex`. The launching
+conversation detaches by default; attached routing is an explicit opt-in.
+Read-only PR analysis can select a model and effort through the portable
+`GIT_WORKFLOW_ANALYZE_*` variables, or their host-specific `CODEX` / `CLAUDE`
+variants. `server/tests/test_packaging.py` pins the cross-host invariants.
 
 ## Quickstart
 
@@ -136,7 +138,7 @@ succeeded.
 
 | skill | what it does |
 |---|---|
-| **`pr-analyze`** | One PR, read properly: one provider snapshot for the author, linked issue, history, reviews, threads and checks, plus the whole diff; independent reads start together. Returns author / problem / history / one proposal, asks for confirmation, and prepares any draft worth posting. Read-only — never posts, never pushes. Used headless by the desk's Analizza button. |
+| **`pr-analyze`** | One PR, read properly: a compact fresh probe first, reusing the desk's normalized row and any still-valid problem statement. When only the head changed after a review, it compares the reviewed SHA with the new head and stops before the full diff if PR-owned behaviour is unchanged. Otherwise it gathers the complete snapshot and diff once. Exact local Git objects accelerate reads without trusting the working tree. Returns author / problem / history / one proposal, asks for confirmation, and prepares any draft worth posting. Read-only — never posts, never pushes. Used headless by the desk's Analizza button. |
 | **`issue-analyze`** | One issue, in a virgin context: verify the root cause in the actual code (DEFECT), walk the reuse ladder (REQUEST), find the proving line (QUESTION/DOCS). Returns a typed verdict with the minimal change and a verification plan. Read-only — never branches, never comments. |
 | **`issue-work`** | The mandate of a session spawned for a single issue: analyze it fresh, then either fix it in a worktree and open the PR when it is one coherent change, or lay out the phases it really needs. |
 
@@ -146,7 +148,7 @@ succeeded.
 |---|---|
 | **`pr-desk`** | The detached PR queue dashboard (port 8399). Startup, reload and polling use Python/provider JSON only. Explicit triage, analysis, explanation and workflow clicks each start one ephemeral Codex or Claude process. |
 | **`issue-desk`** | The same for the open issues (port 8398): the cross-check and the shortlist computed without a model on every read, the impact ranking and the verified type from `issue-triage`, an analysis marked *da aggiornare* when its issue has moved since. Buttons for dedicated work sessions, `issue-analyze` and `issue-loop`. |
-| **`review-desk`** | Launches both detached servers and defines their JSON/job contract. The launching conversation may finish while the dashboards remain available. |
+| **`review-desk`** | Launches both detached servers and defines their JSON/job contract. The launching conversation finishes by default while the dashboards remain available; attached chat routing is opt-in. |
 
 `plugins/git-workflow/server/` is the code under all three: a zero-dependency
 Python stdlib server that reads the provider, prepares explicit triage work,

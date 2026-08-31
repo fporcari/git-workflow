@@ -21,9 +21,21 @@ import deskstate
 import safejson
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
-# `gh api` alone would allow -X POST: the analysis is read-only, so the
-# allowlist names the two calls the skill actually makes
-READ_TOOLS = ("Bash(gh api graphql:*),Bash(gh pr diff:*),Read,Grep,Glob")
+# Broad `gh api` would permit writes, so every provider call stays explicit.
+READ_TOOLS = (
+    "Bash(gh api graphql:*),Bash(gh pr diff:*),"
+    "Bash(gh api -X GET repos/*/compare/*:*),"
+    "Bash(gh api -X GET repos/*/contents/*:*),"
+    "Bash(git cat-file:*),Bash(git show:*),Bash(git diff:*),Read,Grep,Glob,"
+    "mcp__sourcerer__kb_ask,mcp__sourcerer__kb_find_skills,"
+    "mcp__sourcerer__sem_ask_codebase,"
+    "mcp__sourcerer__code_batch_search_code,"
+    "mcp__sourcerer__code_search_code,"
+    "mcp__sourcerer__code_find_usages,"
+    "mcp__sourcerer__code_get_symbol_source,"
+    "mcp__sourcerer__code_get_module_source,"
+    "mcp__sourcerer__code_get_usage_examples"
+)
 TRIAGE_TOOLS = (READ_TOOLS + ",Bash(gh issue view:*),Bash(git show:*),"
                 "Bash(git log:*)")
 
@@ -87,11 +99,29 @@ def claude_schema(schema):
     return json.dumps(document)
 
 
+EFFORTS = {"low", "medium", "high", "xhigh", "max"}
+
+
+def _profile(agent, scope):
+    if not scope:
+        return None, None
+    prefix = "GIT_WORKFLOW_%s_%s_" % (agent.upper(), scope.upper())
+    shared = "GIT_WORKFLOW_%s_" % scope.upper()
+    model = os.environ.get(prefix + "MODEL") or os.environ.get(shared + "MODEL")
+    effort = os.environ.get(prefix + "EFFORT") or os.environ.get(shared + "EFFORT")
+    return model, effort if effort in EFFORTS else None
+
+
 def command(agent, prompt, tools, cwd, output_path=None, schema=SCHEMA,
-            read_only=True):
+            read_only=True, profile=None):
+    model, effort = _profile(agent, profile)
     if agent == "claude":
         cmd = ["claude", "-p", prompt, "--output-format", "stream-json",
                "--verbose", "--no-session-persistence"]
+        if model:
+            cmd += ["--model", model]
+        if effort:
+            cmd += ["--effort", effort]
         if schema:
             cmd += ["--json-schema", claude_schema(schema)]
         if read_only:
@@ -101,6 +131,10 @@ def command(agent, prompt, tools, cwd, output_path=None, schema=SCHEMA,
         return cmd
     cmd = ["codex", "exec", "--ephemeral", "-C", cwd]
     cmd += ["--json"]
+    if model:
+        cmd += ["--model", model]
+    if effort:
+        cmd += ["-c", 'model_reasoning_effort="%s"' % effort]
     if read_only:
         cmd += ["--sandbox", "read-only"]
     else:
@@ -362,7 +396,7 @@ def parse_result(agent, stdout, output_path=None, expected_n=None):
     return result
 
 
-def persist(repo, result, analysis_key=None):
+def persist(repo, result, analysis_keys=None):
     def mutate(state):
         record = {"author": result["author"],
                   "problem": result["problem"],
@@ -371,8 +405,15 @@ def persist(repo, result, analysis_key=None):
                   "next": result["propose"],
                   "verified": result["verified"],
                   "not_verified": result["not_verified"]}
-        if analysis_key:
-            record["analysis_key"] = analysis_key
+        keys = ({"analysis": analysis_keys} if isinstance(analysis_keys, str)
+                else (analysis_keys or {}))
+        for source, target in (("analysis", "analysis_key"),
+                               ("problem", "problem_key"),
+                               ("history", "history_key")):
+            if keys.get(source):
+                record[target] = keys[source]
+        if keys.get("problem_head"):
+            record["problem_head"] = keys["problem_head"]
         if result.get("draft"):
             record["draft"] = result["draft"]
         target = state.setdefault("prs", {}).setdefault(str(result["n"]), {})
@@ -383,7 +424,8 @@ def persist(repo, result, analysis_key=None):
 
 
 def persist_explanation(repo, result, n, what_key):
-    if result.get("n") != n or not isinstance(result.get("what"), str):
+    if (not isinstance(result, dict) or result.get("n") != n
+            or not isinstance(result.get("what"), str)):
         raise ValueError("agent returned an invalid PR explanation")
     what = result["what"].strip()
     if not what:
@@ -395,7 +437,7 @@ def persist_explanation(repo, result, n, what_key):
 
 
 def persist_issue_analysis(repo, result, n):
-    if result.get("n") != n:
+    if not isinstance(result, dict) or result.get("n") != n:
         raise ValueError("agent returned analysis for the wrong issue")
     required = ("type", "finding", "size", "phase")
     if not all(result.get(key) for key in required):
@@ -470,7 +512,8 @@ def persist_triage(repo, result, flow, exported):
 
 def parse_operation(agent, stdout, output_path=None):
     result = parse_structured(agent, stdout, output_path)
-    if result.get("status") not in ("done", "needs-input", "failed"):
+    if (not isinstance(result, dict)
+            or result.get("status") not in ("done", "needs-input", "failed")):
         raise ValueError("agent returned an invalid operation status")
     if not isinstance(result.get("report"), str) or not result["report"].strip():
         raise ValueError("agent returned an empty operation report")
@@ -491,14 +534,14 @@ def persist_operation(repo, result, n=None, flow=None):
     def keep(state):
         state.setdefault("runs", {})[label] = {
             "status": result["status"], "report": result["report"],
-            "at": time.strftime("%H:%M:%S")}
+            "at": time.strftime("%Y-%m-%dT%H:%M:%S")}
     deskstate.update(repo, keep)
     if result["provider_changed"]:
         deskstate.request_provider_refresh(repo)
 
 
 def _run(job_id, key, agent, repo, prompt, tools, timeout, cwd, schema,
-         parser, persister, read_only):
+         parser, persister, read_only, profile=None):
     output_path = None
     started_at = time.monotonic()
     try:
@@ -511,7 +554,8 @@ def _run(job_id, key, agent, repo, prompt, tools, timeout, cwd, schema,
             descriptor, output_path = tempfile.mkstemp(
                 prefix="git-workflow-result-", suffix=".json")
             os.close(descriptor)
-        cmd = command(agent, prompt, tools, cwd, output_path, schema, read_only)
+        cmd = command(agent, prompt, tools, cwd, output_path, schema, read_only,
+                      profile)
 
         def process_started(process):
             identity = _process_identity(process.pid)
@@ -565,7 +609,7 @@ def _run(job_id, key, agent, repo, prompt, tools, timeout, cwd, schema,
 
 
 def _spawn(kind, key, agent, repo, request, prompt, tools, timeout, cwd,
-           schema, parser, persister, read_only=True):
+           schema, parser, persister, read_only=True, profile=None):
     with _lock:
         if (repo, key) in _running:
             return _running[(repo, key)]
@@ -581,7 +625,7 @@ def _spawn(kind, key, agent, repo, request, prompt, tools, timeout, cwd,
              "at": time.strftime("%Y-%m-%dT%H:%M:%S")}, indent=1)
     threading.Thread(target=_run,
                      args=(job_id, key, agent, repo, prompt, tools, timeout,
-                           cwd, schema, parser, persister, read_only),
+                           cwd, schema, parser, persister, read_only, profile),
                      daemon=True).start()
     return job_id
 
@@ -681,20 +725,26 @@ def shutdown(grace=2):
     return len(targets)
 
 
-def analyze_pr(repo, n, me, cwd, agent="auto", analysis_key=None):
+def analyze_pr(repo, n, me, cwd, agent="auto", analysis_keys=None,
+               context=None):
+    evidence = json.dumps(context or {}, separators=(",", ":"), sort_keys=True)
     prompt = (
         "Read %s/skills/pr-analyze/SKILL.md and follow it exactly for PR #%s of %s "
-        "(the user's login is %s). Work through gh only, read-only: never post, push, "
-        "merge, edit or write any file. Your final message must be exactly the JSON "
+        "(the user's login is %s). Use the provider snapshot and diff plus exact "
+        "local Git objects as the skill directs. Stay read-only: never fetch, post, "
+        "push, merge, edit or write any file. The desk already gathered this compact "
+        "evidence; use it before any provider call and do not repeat its fields: "
+        "<desk_context>%s</desk_context>. Your final message must be exactly the JSON "
         "object the skill specifies, with no fences and no prose around it."
-        % (PLUGIN_ROOT, n, repo, me))
+        % (PLUGIN_ROOT, n, repo, me, evidence))
     parser = lambda selected, stdout, output: parse_result(  # noqa: E731
         selected, stdout, output, n)
     persister = lambda target, result: persist(  # noqa: E731
-        target, result, analysis_key)
+        target, result, analysis_keys)
     return _spawn("analyze", "pr:%s:analyze" % n, agent, repo,
-                  {"n": n, "analysis_key": analysis_key}, prompt,
-                  READ_TOOLS, ANALYZE_TIMEOUT, cwd, SCHEMA, parser, persister)
+                  {"n": n, "analysis_keys": analysis_keys}, prompt,
+                  READ_TOOLS, ANALYZE_TIMEOUT, cwd, SCHEMA, parser, persister,
+                  profile="ANALYZE")
 
 
 def explain_pr(repo, n, me, cwd, agent="auto", what_key=None):

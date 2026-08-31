@@ -46,6 +46,14 @@ class Provider:
         dict means phase one already carried it."""
         return {}
 
+    def analysis_probe(self, repo, n):
+        """Fresh, lightweight facts used before a full PR analysis.
+
+        Providers without a cheap detail endpoint return None; the analysis
+        then follows its complete verification path.
+        """
+        return None
+
     def issues(self, repo):
         """Open issues, newest first.
 

@@ -64,11 +64,12 @@ def _summary(body):
     return (cut[:stop + 1] if stop > SUMMARY_CHARS // 2 else cut.rstrip()) + " …"
 
 
-def _graphql(doc, **variables):
+def _graphql(doc, timeout=90, **variables):
     args = ["api", "graphql", "-F", "query=@%s" % (GQL / doc)]
     for key, value in variables.items():
-        args += ["-f", "%s=%s" % (key, value)]
-    return json.loads(_gh(*args))["data"]
+        args += ["-F" if isinstance(value, int) else "-f",
+                 "%s=%s" % (key, value)]
+    return json.loads(_gh(*args, timeout=timeout))["data"]
 
 
 class GitHubProvider(Provider):
@@ -99,6 +100,52 @@ class GitHubProvider(Provider):
         q = "repo:%s is:open is:pr author:%s" % (repo, me)
         nodes = _graphql("pr_mergestate.graphql", q=q)["search"]["nodes"]
         return {str(n["number"]): n["mergeStateStatus"] for n in nodes if n}
+
+    def analysis_probe(self, repo, n):
+        owner, name = repo.split("/", 1)
+        pr = _graphql("pr_probe.graphql", timeout=10, owner=owner, name=name,
+                      number=n)["repository"]["pullRequest"]
+        if not pr:
+            return None
+        checks = (((pr.get("commits") or {}).get("nodes") or [{}])[0]
+                  .get("commit") or {}).get("statusCheckRollup") or {}
+        contexts = (checks.get("contexts") or {}).get("nodes") or []
+        items = []
+        for item in contexts:
+            items.append({
+                "name": item.get("name") or item.get("context"),
+                "status": item.get("status") or item.get("state"),
+                "conclusion": item.get("conclusion"),
+            })
+        threads = pr.get("reviewThreads") or {}
+        return {
+            "fresh": True,
+            "head": pr.get("headRefOid"),
+            "base_head": pr.get("baseRefOid"),
+            "merge": pr.get("mergeStateStatus"),
+            "decision": pr.get("reviewDecision"),
+            "requests": [
+                ((node.get("requestedReviewer") or {}).get("login") or
+                 (node.get("requestedReviewer") or {}).get("slug"))
+                for node in (pr.get("reviewRequests") or {}).get("nodes") or []
+                if node.get("requestedReviewer")],
+            "reviews": [{
+                "who": (item.get("author") or {}).get("login"),
+                "state": item.get("state"),
+                "submitted": item.get("submittedAt"),
+                "commit": (item.get("commit") or {}).get("oid"),
+            } for item in (pr.get("reviews") or {}).get("nodes") or []],
+            "threads": threads.get("totalCount", 0),
+            "unresolved": sum(not item.get("isResolved")
+                              for item in threads.get("nodes") or []),
+            "incomplete": any((
+                (pr.get("reviewRequests") or {}).get("pageInfo", {}).get("hasNextPage"),
+                (pr.get("reviews") or {}).get("pageInfo", {}).get("hasPreviousPage"),
+                threads.get("pageInfo", {}).get("hasNextPage"),
+                (checks.get("contexts") or {}).get("pageInfo", {}).get("hasNextPage"),
+            )),
+            "checks": {"state": checks.get("state"), "items": items},
+        }
 
     def _row(self, repo, node):
         spoke = []

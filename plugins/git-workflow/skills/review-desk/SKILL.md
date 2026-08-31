@@ -63,10 +63,12 @@ validates that the result refers to the requested PRs/issues and then persists
 the allowed fields. A provider refresh is requested only when an operation
 reports that it changed provider state.
 
-## Attached chat (hybrid mode)
+## Attached chat (explicit hybrid mode)
 
-The server is detached either way. What the non-triage buttons do depends on
-whether a chat is attached at click time:
+Do not attach by default. Only an explicit user request to keep desk results in
+the launching conversation starts this mode. The server is detached either
+way; what non-triage buttons do then depends on whether a chat is attached at
+click time:
 
 - **No chat attached** (heartbeat stale): every button behaves as above — one
   ephemeral one-shot process per click, report card included.
@@ -98,6 +100,10 @@ routes clicks to the chat only while that heartbeat is fresh.
   - `order` → the pr-loop order flow for the order recorded under `orders.<n>`
     (the click was the go-ahead for that displayed proposal);
   - `run` → `pr-loop`/`issue-loop` with the `ns` and `batch` in `payload`.
+
+  An analyze request may carry `payload.context`, the same compact desk probe
+  a one-shot job receives. Treat it as `<desk_context>` from `pr-analyze`:
+  consume it first and do not request its fields again.
 
   Present the outcome in chat AND publish it back in one move:
 

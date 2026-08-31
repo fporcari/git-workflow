@@ -88,6 +88,18 @@ class Packaging(unittest.TestCase):
         import jobs
         self.assertNotIn("Bash(gh api:*)", jobs.READ_TOOLS)
         self.assertIn("Bash(gh api graphql:*)", jobs.READ_TOOLS)
+        self.assertIn("Bash(gh api -X GET repos/*/compare/*:*)",
+                      jobs.READ_TOOLS)
+        self.assertIn("Bash(gh api -X GET repos/*/contents/*:*)",
+                      jobs.READ_TOOLS)
+
+    def test_pr_analysis_has_a_verified_procedural_fast_path(self):
+        text = (PLUGIN / "skills" / "pr-analyze" / "SKILL.md").read_text()
+        for rule in ("procedural refresh", "reviewed commit oid",
+                     "never trust a merge commit message", "Do not fetch",
+                     "tree is never evidence"):
+            self.assertIn(rule, text, rule)
+        self.assertIn("git diff <reviewed-oid>..<head-oid> --", text)
 
     def test_the_decision_block_is_not_a_copy_paste_fence(self):
         """The three labels are what he scans; a fence flattens them and
@@ -145,6 +157,17 @@ class Packaging(unittest.TestCase):
         for field in ("author", "bodyText", "reviewThreads",
                       "closingIssuesReferences", "statusCheckRollup"):
             self.assertIn(field, query)
+        probe = (PLUGIN / "server" / "gql" / "pr_probe.graphql").read_text()
+        for field in ("headRefOid", "reviews", "reviewThreads",
+                      "statusCheckRollup"):
+            self.assertIn(field, probe)
+        self.assertNotIn("bodyText", probe)
+
+    def test_desks_detach_unless_the_user_opts_in(self):
+        for name in ("pr-desk", "issue-desk"):
+            text = (PLUGIN / "skills" / name / "SKILL.md").read_text()
+            self.assertIn("Detached (default)", text, name)
+            self.assertIn("Attached (explicit opt-in)", text, name)
 
 
 if __name__ == "__main__":

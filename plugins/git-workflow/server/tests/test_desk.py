@@ -144,6 +144,35 @@ class QueueMembership(unittest.TestCase):
         self.assertTrue(any(row["n"] == n for row in detailed["rows"]))
         self.assertFalse(any(row["n"] == n for row in queue["rows"]))
 
+    def test_github_analysis_probe_omits_comment_bodies_and_normalizes_checks(self):
+        payload = {"repository": {"pullRequest": {
+            "headRefOid": "head", "baseRefOid": "base",
+            "mergeStateStatus": "BLOCKED", "reviewDecision": "REVIEW_REQUIRED",
+            "reviewRequests": {"pageInfo": {"hasNextPage": False},
+                               "nodes": [{"requestedReviewer": {"login": "bob"}}]},
+            "reviews": {"pageInfo": {"hasPreviousPage": False}, "nodes": [{
+                "author": {"login": "bob"}, "state": "DISMISSED",
+                "submittedAt": "2026-08-31T10:00:00Z",
+                "commit": {"oid": "reviewed"}}]},
+            "reviewThreads": {"totalCount": 2,
+                              "pageInfo": {"hasNextPage": False},
+                              "nodes": [{"isResolved": True},
+                                        {"isResolved": False}]},
+            "commits": {"nodes": [{"commit": {"statusCheckRollup": {
+                "state": "SUCCESS", "contexts": {
+                    "pageInfo": {"hasNextPage": False}, "nodes": [{
+                        "name": "tests", "status": "COMPLETED",
+                        "conclusion": "SUCCESS"}]}}}}]},
+        }}}
+        provider = github_provider.GitHubProvider()
+        with mock.patch.object(github_provider, "_graphql", return_value=payload):
+            probe = provider.analysis_probe(REPO, 17)
+        self.assertEqual(probe["head"], "head")
+        self.assertEqual(probe["reviews"][0]["commit"], "reviewed")
+        self.assertEqual(probe["checks"]["state"], "SUCCESS")
+        self.assertEqual(probe["unresolved"], 1)
+        self.assertNotIn("body", json.dumps(probe))
+
     def test_a_new_membership_forces_the_detailed_queue_forward(self):
         desk = fresh_desk()
         first = desk.queue()
@@ -344,6 +373,29 @@ class HeadlessAgents(unittest.TestCase):
         self.assertNotIn("Write", command[command.index("--allowedTools") + 1])
         self.assertNotIn("gh pr view", jobs.READ_TOOLS)
         self.assertNotIn("gh pr checks", jobs.READ_TOOLS)
+        for tool in ("Bash(git cat-file:*)", "Bash(git show:*)",
+                     "Bash(git diff:*)"):
+            self.assertIn(tool, jobs.READ_TOOLS)
+        for tool in ("mcp__sourcerer__kb_ask",
+                     "mcp__sourcerer__code_search_code"):
+            self.assertIn(tool, jobs.READ_TOOLS)
+        for tool in ("kb_add_skill", "kb_update_skill", "kb_add_topic"):
+            self.assertNotIn(tool, jobs.READ_TOOLS)
+        self.assertNotIn("git fetch", jobs.READ_TOOLS)
+        self.assertNotIn("Bash(gh api:*)", jobs.READ_TOOLS)
+
+    def test_analysis_profiles_map_to_each_host(self):
+        env = {"GIT_WORKFLOW_ANALYZE_MODEL": "fast-model",
+               "GIT_WORKFLOW_ANALYZE_EFFORT": "medium"}
+        with mock.patch.dict(os.environ, env, clear=False):
+            claude = jobs.command("claude", "p", jobs.READ_TOOLS, "/tmp",
+                                  profile="ANALYZE")
+            codex = jobs.command("codex", "p", jobs.READ_TOOLS, "/tmp",
+                                 profile="ANALYZE")
+        self.assertEqual(claude[claude.index("--model") + 1], "fast-model")
+        self.assertEqual(claude[claude.index("--effort") + 1], "medium")
+        self.assertEqual(codex[codex.index("--model") + 1], "fast-model")
+        self.assertIn('model_reasoning_effort="medium"', codex)
 
     def test_claude_stream_result_uses_the_structured_final_event(self):
         stream = "\n".join((
@@ -412,6 +464,45 @@ class HeadlessAgents(unittest.TestCase):
         self.assertEqual(record["analysis_key"], "analysis-v1")
         self.assertEqual(record["what"], "già presente")
         self.assertNotIn("draft", record)
+
+    def test_analysis_keeps_independent_validity_keys(self):
+        repo = REPO + "-split-analysis"
+        deskstate.reset(repo)
+        keys = {"analysis": "all", "problem": "semantic",
+                "history": "procedural", "problem_head": "abc123"}
+        jobs.persist(repo, self.RESULT, keys)
+        record = deskstate.load(repo)["prs"]["17"]
+        self.assertEqual(record["analysis_key"], "all")
+        self.assertEqual(record["problem_key"], "semantic")
+        self.assertEqual(record["history_key"], "procedural")
+        self.assertEqual(record["problem_head"], "abc123")
+
+    def test_desk_hands_reusable_evidence_to_the_agent(self):
+        desk = fresh_desk()
+        row = next(row for row in desk.queue()["rows"] if row["n"] == 1145)
+        deskstate.save(REPO, {"prs": {"1145": {
+            "problem": "verified problem",
+            "problem_key": row["model_keys"]["problem"],
+            "problem_head": row["head"]}}})
+        handler = object.__new__(prdesk.Handler)
+        handler.desk = desk
+        keys, context = handler._analysis_inputs(1145)
+        self.assertEqual(context["cached_problem"], "verified problem")
+        self.assertEqual(context["previous_problem_head"], row["head"])
+        self.assertTrue(context["probe"]["fresh"])
+        self.assertEqual(keys["problem_head"], row["head"])
+
+    def test_a_new_probe_head_refreshes_the_persisted_keys(self):
+        desk = fresh_desk()
+        desk.queue()
+        source = next(row for row in desk.provider.data["rows"]
+                      if row["n"] == 1145)
+        source["head"] = "head-seen-by-probe"
+        handler = object.__new__(prdesk.Handler)
+        handler.desk = desk
+        keys, context = handler._analysis_inputs(1145)
+        self.assertEqual(context["probe"]["head"], "head-seen-by-probe")
+        self.assertEqual(keys["problem_head"], "head-seen-by-probe")
 
     def test_job_status_is_a_runtime_json_file(self):
         repo = REPO + "-job-file"
@@ -657,7 +748,7 @@ class HeadlessAgents(unittest.TestCase):
         run = deskstate.load(repo)["runs"]["pr-loop"]
         self.assertEqual(run["status"], "needs-input")
         self.assertEqual(run["report"], "due proposte")
-        self.assertTrue(run["at"])
+        self.assertRegex(run["at"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$")
 
     def test_an_order_report_is_kept_under_its_own_label(self):
         repo = REPO + "-order-report"
@@ -1343,6 +1434,20 @@ class IncrementalModelTriage(unittest.TestCase):
         again = json.loads(Path(desk.run_triage()).read_text())
         self.assertEqual(again["model_tasks"]["1083"], ["conflict"])
 
+    def test_a_review_change_keeps_the_problem_key(self):
+        row = {"author": "me", "draft": False, "base": "develop",
+               "base_head": "base", "head": "head", "merge": "BLOCKED",
+               "decision": None, "req": [], "reviews": [], "unresolved": 0,
+               "incomplete": False, "assignees": ["me"], "last": None,
+               "title": "one", "summary": "body", "closes": []}
+        changed = dict(row, reviews=[{"who": "x", "state": "APPROVED"}],
+                       decision="APPROVED")
+        before = prdesk.model_keys(row)
+        after = prdesk.model_keys(changed)
+        self.assertEqual(before["problem"], after["problem"])
+        self.assertNotEqual(before["history"], after["history"])
+        self.assertNotEqual(before["analysis"], after["analysis"])
+
     def test_a_title_edit_does_not_invalidate_an_analysis(self):
         desk = fresh_desk()
         rows = json.loads(Path(desk.run_triage()).read_text())
@@ -1785,6 +1890,18 @@ class AttachedChat(unittest.TestCase):
         deskstate.close_request(REPO, "analyze:7", "done", "fatto")
         self.assertIsNone(deskstate.chat_attached(REPO))
 
+    def test_a_taken_request_uses_the_busy_ttl_from_its_claim(self):
+        deskstate.chat_heartbeat(REPO)
+        deskstate.request(REPO, "analyze:8", "analyze", 8, via="chat")
+        deskstate.claim_request(REPO)
+        state = deskstate.load(REPO)
+        state["requests"]["analyze:8"]["epoch"] -= deskstate.REQUEST_STALE + 5
+        deskstate.save(REPO, state)
+        record, created = deskstate.request(
+            REPO, "analyze:8", "analyze", 8, via="chat")
+        self.assertFalse(created)
+        self.assertEqual(record["status"], "taken")
+
     def test_non_triage_buttons_route_to_the_attached_chat(self):
         deskstate.chat_heartbeat(REPO)
         with mock.patch.object(jobs, "analyze_pr") as analyze:
@@ -1873,6 +1990,20 @@ class AttachedChat(unittest.TestCase):
         self.assertEqual(state["requests"]["issue-analyze:1167"]["status"],
                          "failed")
         self.assertNotIn("finding", (state.get("issues") or {}).get("1167", {}))
+
+    def test_a_non_object_result_fails_the_request(self):
+        deskstate.request(REPO, "issue-analyze:1168", "issue-analyze", 1168,
+                          via="chat")
+        deskstate.claim_request(REPO)
+        with tempfile.NamedTemporaryFile("w", suffix=".json",
+                                         delete=False) as handle:
+            json.dump([], handle)
+        out = self._cli("result", "--repo", REPO,
+                        "--request", "issue-analyze:1168", handle.name)
+        self.assertNotEqual(out.returncode, 0)
+        state = deskstate.load(REPO)
+        self.assertEqual(state["requests"]["issue-analyze:1168"]["status"],
+                         "failed")
 
     def test_an_operation_result_lands_in_orders_and_runs(self):
         deskstate.add_order(REPO, 1145, "merge", "", "vai")

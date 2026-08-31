@@ -58,6 +58,21 @@ class FixtureProvider(Provider):
         return {str(row["n"]): row.get("merge") or "UNKNOWN"
                 for row in self.data["rows"] if row.get("author") == self.whoami()}
 
+    def analysis_probe(self, repo, n):
+        row = next((row for row in self.data["rows"] if row["n"] == n), None)
+        if not row:
+            return None
+        return {
+            "fresh": True, "head": row.get("head"),
+            "base_head": row.get("base_head"), "merge": row.get("merge"),
+            "decision": row.get("decision"), "requests": row.get("req") or [],
+            "reviews": row.get("reviews") or [],
+            "threads": row.get("threads", 0),
+            "unresolved": row.get("unresolved", 0),
+            "incomplete": row.get("incomplete", False),
+            "checks": {"state": row.get("checks_state"), "items": []},
+        }
+
     def issues(self, repo):
         self._sleep()
         rows = [dict(row) for row in self.data["issues"]]

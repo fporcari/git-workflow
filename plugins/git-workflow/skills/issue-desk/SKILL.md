@@ -22,15 +22,13 @@ Claude browser-preview configuration:
  "port": 8398}
 ```
 
-Open the printed localhost URL, then pick the mode:
+Open the printed localhost URL. The default is detached:
 
-- **Attached (default in an interactive chat)**: stay in this conversation and
-  serve the desk's clicks — follow "Attached chat" in
-  `../review-desk/SKILL.md`. Non-triage buttons are executed here, and their
-  output is presented here.
-- **Detached** (the user dismisses you, or the launch is headless): the
-  session may end; every button starts its own one-shot agent. Do not wait on
-  the server and do not start a watcher in this mode.
+- **Detached (default)**: the session may end; every button starts its own
+  one-shot agent. Do not wait on the server and do not start a watcher.
+- **Attached (explicit opt-in)**: only when the user asks to keep results in
+  this conversation, follow "Attached chat" in `../review-desk/SKILL.md`.
+  Non-triage buttons are then executed here and presented here.
 
 Either way the server itself is detached — `../review-desk/SKILL.md` is the
 job contract shared by both desks.

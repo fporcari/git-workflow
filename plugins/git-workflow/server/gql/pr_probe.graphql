@@ -1,0 +1,41 @@
+query($owner:String!,$name:String!,$number:Int!){
+  repository(owner:$owner,name:$name){
+    pullRequest(number:$number){
+      headRefOid baseRefOid mergeStateStatus reviewDecision
+      reviewRequests(first:100){
+        pageInfo{hasNextPage}
+        nodes{
+          requestedReviewer{
+            ...on User{login}
+            ...on Team{slug}
+          }
+        }
+      }
+      reviews(last:100){
+        pageInfo{hasPreviousPage}
+        nodes{author{login} state submittedAt commit{oid}}
+      }
+      reviewThreads(first:100){
+        totalCount pageInfo{hasNextPage}
+        nodes{isResolved}
+      }
+      commits(last:1){
+        nodes{
+          commit{
+            statusCheckRollup{
+              state
+              contexts(first:100){
+                pageInfo{hasNextPage}
+                nodes{
+                  __typename
+                  ...on CheckRun{name status conclusion}
+                  ...on StatusContext{context state}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

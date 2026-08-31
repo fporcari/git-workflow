@@ -340,11 +340,12 @@ function lastRun(){
   const [key,run]=rows[rows.length-1],stamp=key+"@"+(run.at||"");
   return stamp===runHidden?null:{key,run,stamp};
 }
+const runTime=run=>String(run.at||"").slice(-8);
 function runCard(last){
   const {key,run}=last;
   return `<div class="jobCard reportCard"><div class="jobHead">
     <b>${esc(key)}</b><span>${esc(STAGE_LABEL[run.status]||run.status||"")}</span>
-    <span class="elapsed">${esc(run.at||"")}</span>
+    <span class="elapsed">${esc(runTime(run))}</span>
     <button class="btn" data-run-toggle>${runOpen?"nascondi":"leggi"}</button>
     <button class="btn" data-run-close>✕</button></div>
     ${runOpen?`<pre class="runReport">${esc(run.report||"")}</pre>`:""}</div>`;

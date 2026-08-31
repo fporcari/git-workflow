@@ -177,9 +177,11 @@ def claim_request(repo):
         if not queued:
             return None
         key, record = min(queued, key=lambda item: item[1].get("epoch", 0))
-        record.update(status="taken", taken_at=time.strftime("%H:%M:%S"))
+        taken_epoch = time.time()
+        record.update(status="taken", taken_at=time.strftime("%H:%M:%S"),
+                      taken_epoch=taken_epoch)
         state.setdefault("chat", {})["busy"] = {"key": key,
-                                                "epoch": time.time()}
+                                                "epoch": taken_epoch}
         return dict(record, key=key)
     return update(repo, mutate)
 
@@ -269,8 +271,11 @@ def request(repo, key, kind, n=None, label="", via="agent", payload=None):
         ledger = state.setdefault("requests", {})
         existing = ledger.get(key)
         if existing and existing.get("status") in ("queued", "taken"):
-            age = time.time() - existing.get("epoch", 0)
-            if age < REQUEST_STALE:
+            taken = existing.get("status") == "taken"
+            epoch = (existing.get("taken_epoch", existing.get("epoch", 0))
+                     if taken else existing.get("epoch", 0))
+            stale_after = CHAT_BUSY_STALE if taken else REQUEST_STALE
+            if time.time() - epoch < stale_after:
                 return existing, False
             existing["status"] = "stale"
         record = {"kind": kind, "n": n, "label": label, "status": "queued",

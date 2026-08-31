@@ -468,6 +468,20 @@ page.applyState({ agent: { mode: "on-demand", busy: false }, feed: [],
 page.render();
 ok("a newer run replaces the dismissed one",
    document.getElementById("jobPanel").innerHTML.includes("order:1189"));
+page.applyState({ agent: { mode: "on-demand", busy: false }, feed: [],
+                  runs: {
+                    "pr-loop": { status: "done", report: "report di ieri",
+                                 at: "2026-08-31T23:59:59" },
+                    "issue-loop": { status: "done", report: "report di oggi",
+                                    at: "2026-09-01T00:00:01" }
+                  } });
+page.render();
+ok("the newest report is selected across midnight",
+   document.getElementById("jobPanel").innerHTML.includes("report di oggi") &&
+   !document.getElementById("jobPanel").innerHTML.includes("report di ieri"));
+ok("a full report timestamp is still displayed as time only",
+   document.getElementById("jobPanel").innerHTML.includes("00:00:01") &&
+   !document.getElementById("jobPanel").innerHTML.includes("2026-09-01"));
 page.applyState({ agent: { mode: "on-demand", busy: false }, feed: [], runs: {} });
 page.render();
 
