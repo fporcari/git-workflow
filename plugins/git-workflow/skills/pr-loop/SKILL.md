@@ -51,6 +51,10 @@ multi-select when it supports one; otherwise accept a compact typed selection.
 and no other: an approved PR of his elsewhere in the queue is not touched,
 and the closing report says so rather than pretending the queue was drained.
 
+**From an attached desk click**, the request record supplies `ns` and `batch`
+with the same meaning as the typed list; execute here, in the conversation,
+and publish the operation JSON with `chatdesk.py result` (review-desk skill).
+
 **From a detached desk button**, the launch prompt supplies `ns` and `batch`.
 `ns` is the rows he picked by hand and means what the typed list means. Do not
 re-ask which ones. This is a one-shot process: execute only actions already

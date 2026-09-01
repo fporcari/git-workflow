@@ -62,6 +62,10 @@ can be wasted.
 **Clamped to 4** so one decision remains readable. More than four numbers with
 `batch=4` is fine — it works them four at a time.
 
+**From an attached desk click**, the request record supplies `ns` and `batch`
+with the same meaning as the typed list; execute here, in the conversation,
+and publish the operation JSON with `chatdesk.py result` (review-desk skill).
+
 **From a detached desk button**, the launch prompt supplies `ns` and `batch`.
 `ns` is the rows he picked by hand and means exactly what the typed list
 means: those, in that order, then stop. This is a one-shot process: execute

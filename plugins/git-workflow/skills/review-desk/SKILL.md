@@ -1,6 +1,6 @@
 ---
 name: review-desk
-description: Launch both detached review desks. Their Python servers serve local JSON and fresh provider facts without keeping Codex or Claude active; explicit buttons alone start ephemeral one-shot agent processes.
+description: Launch both review desks. Their Python servers serve local JSON and fresh provider facts without keeping Codex or Claude active; the launching chat stays attached by default and executes every click except triage, or leaves them to ephemeral one-shot agents when launched detached.
 ---
 
 # Review desk
@@ -17,10 +17,11 @@ python3 <PLUGIN_ROOT>/server/prdesk.py --desk pr --agent <claude|codex>
 python3 <PLUGIN_ROOT>/server/prdesk.py --desk issue --agent <claude|codex>
 ```
 
-The default ports are 8399 for PRs and 8398 for issues. Both desks may share
-the same repository state. Open the printed URLs, then the launching
-conversation may finish. Never start an inbox watcher and never keep a model
-session attached to a desk.
+The default ports are 8399 for PRs and 8398 for issues. Both desks share the
+same repository state. Open the printed URLs, then stay attached as the
+pr-desk and issue-desk skills describe: ONE `chatdesk.py listen` monitor
+covers both desks of a repository. Only a launch the user asked to be
+detached lets the conversation finish here.
 
 ## Runtime contract
 
@@ -63,12 +64,11 @@ validates that the result refers to the requested PRs/issues and then persists
 the allowed fields. A provider refresh is requested only when an operation
 reports that it changed provider state.
 
-## Attached chat (explicit hybrid mode)
+## Attached chat (the default)
 
-Do not attach by default. Only an explicit user request to keep desk results in
-the launching conversation starts this mode. The server is detached either
-way; what non-triage buttons do then depends on whether a chat is attached at
-click time:
+The launching chat is the workplace: it stays attached unless the user asked
+for a detached launch. The server is detached either way; what non-triage
+buttons do depends on whether a chat is attached at click time:
 
 - **No chat attached** (heartbeat stale): every button behaves as above — one
   ephemeral one-shot process per click, report card included.
@@ -80,13 +80,14 @@ click time:
   it always runs on the independent one-shot agent, whatever the chat state,
   because its artifacts are desk cells, not conversation output.
 
-Only a chat that is heartbeating takes a NEW click. `chatdesk.py wait`
-heartbeats; the minutes spent executing a claimed request do not, so a click
-that lands meanwhile starts a one-shot agent instead of queueing behind the
-conversation. A click the chat never claims is handed back the same way. This
-is what makes a session that ends mid-request cost nothing: without it the
-claimed record keeps the desk addressing a conversation nobody is reading, and
-every button falls silent with no job to show.
+Only a chat that is heartbeating takes a NEW click. `chatdesk.py listen`
+heartbeats for as long as its monitor lives, work included, so clicks made
+while the chat is busy queue behind the conversation and are executed in
+order; the monitor dies with the session, the heartbeat stops with it, and
+within a minute every button is back on one-shot agents. `chatdesk.py wait`
+(hosts without a monitor) heartbeats only while it blocks: a click that lands
+while that chat is working starts a one-shot agent instead. A click the chat
+never claims is handed back the same way.
 
 A claimed request keeps its button locked for the same budget the click would
 have had as a one-shot job (`GIT_WORKFLOW_ANALYZE_TIMEOUT` for analyze,
@@ -99,19 +100,24 @@ sits in `preparing` while a server thread gathers the probe and the keys, and
 becomes claimable only when its payload is in. A context the desk cannot read
 closes the request as failed without involving the chat.
 
-The attached chat's loop, after opening the desk URL:
+The attached chat's ear, after opening the desk URL:
 
-```sh
-python3 <PLUGIN_ROOT>/server/chatdesk.py wait --repo <owner/repo> --timeout 540
-```
+- **Claude Code**: one persistent `Monitor` on
+  `python3 <PLUGIN_ROOT>/server/chatdesk.py listen --repo <owner/repo>`
+  (see the pr-desk skill for the call). It does not occupy the turn: the user
+  keeps talking here, and each click arrives as a notification of two lines —
+  the command it stands for and the request record as JSON. Never re-arm a
+  monitor that is already running; stop it with TaskStop when the user says
+  stop, which detaches on the way out.
+- **Codex**: the blocking form,
+  `python3 <PLUGIN_ROOT>/server/chatdesk.py wait --repo <owner/repo> --timeout 540`,
+  with the host command timeout above the wait timeout. `{"idle": true}` →
+  run it again; tell the user once that you are listening, do not narrate
+  every idle cycle.
 
-Run it with the host command timeout ABOVE the wait timeout (Claude Code:
-Bash timeout 600000 ms). The command heartbeats while it blocks; the server
-routes clicks to the chat only while that heartbeat is fresh.
-
-- `{"idle": true}` → run the same command again. Tell the user once, at
-  attach time, that you are listening; do not narrate every idle cycle.
-- A request record → execute it in this conversation, by `kind`:
+On a request, first echo its command line as the desk composed it — the
+reader sees `▶ /pr-loop 1099 1055 batch=4`, not a request key — then execute
+it in this conversation, by `kind`:
   - `analyze` → the `pr-analyze` skill on PR `n`; present the analysis;
   - `explain` → one Italian sentence for PR `n` (linked issue and diff file
     names only, read-only);
@@ -141,10 +147,10 @@ routes clicks to the chat only while that heartbeat is fresh.
   conversation, and publishes the same request key again once the user has
   answered and the operation is finished: `chatdesk.py result` closes a key
   as many times as it takes, and the row shows the latest outcome.
-- When the user says stop, or before the session ends, run
-  `python3 <PLUGIN_ROOT>/server/chatdesk.py detach --repo <owner/repo>`. A
-  missed detach costs only the heartbeat TTL before the buttons fall back to
-  one-shot agents.
+- When the user says stop: TaskStop the monitor (Claude Code) or run
+  `python3 <PLUGIN_ROOT>/server/chatdesk.py detach --repo <owner/repo>`
+  (Codex). A missed detach costs only the heartbeat TTL before the buttons
+  fall back to one-shot agents.
 
 Autonomy in attached mode is exactly the desk's: a click carries the same
 authorization it would have given the one-shot agent — analysis is read-only,

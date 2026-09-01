@@ -48,15 +48,16 @@ Effort accepts the common portable values `low`, `medium`, `high`, `xhigh` and
 
 The server is detached from the launching conversation. It reads provider
 cache, rows and job JSON files by itself, and it never starts a model merely
-because the desk is open or polling. With no chat attached, analyze, explain,
-triage and workflow buttons each start one ephemeral CLI process, wait through
-the corresponding job JSON, then let the process exit. The launching
-conversation may finish as soon as it has opened the desk — or stay ATTACHED
-via `chatdesk.py wait`, in which case the server routes every non-triage click
-to that conversation instead, for as long as it keeps heartbeating (see
-"Attached chat" in the review-desk skill). Triage always stays on the
-independent one-shot agent, and so does any click a listening chat is not
-there to take. A request the chat claimed stays its own for the budget the
+because the desk is open or polling. The launching conversation stays
+ATTACHED by default: on Claude Code through one persistent `Monitor` running
+`chatdesk.py listen`, on Codex through the blocking `chatdesk.py wait` loop.
+While that heartbeat is fresh the server routes every non-triage click to the
+conversation, which executes it there (see "Attached chat" in the review-desk
+skill). With no chat attached — a detached launch, or a session that ended —
+analyze, explain and workflow buttons each start one ephemeral CLI process,
+wait through the corresponding job JSON, then let the process exit. Triage
+always stays on the independent one-shot agent, and so does any click a
+listening chat is not there to take. A request the chat claimed stays its own for the budget the
 same click would have had as a one-shot job; past that it reads as stale.
 
 Active jobs expose their elapsed time, phase and sanitized public tool events

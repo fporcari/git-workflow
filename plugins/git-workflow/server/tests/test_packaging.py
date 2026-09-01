@@ -163,11 +163,16 @@ class Packaging(unittest.TestCase):
             self.assertIn(field, probe)
         self.assertNotIn("bodyText", probe)
 
-    def test_desks_detach_unless_the_user_opts_in(self):
+    def test_desks_stay_attached_unless_the_user_opts_out(self):
+        """The desk is the remote, the launching chat is the workplace: every
+        click except triage is executed where the user reads it."""
         for name in ("pr-desk", "issue-desk"):
             text = (PLUGIN / "skills" / name / "SKILL.md").read_text()
-            self.assertIn("Detached (default)", text, name)
-            self.assertIn("Attached (explicit opt-in)", text, name)
+            self.assertIn("attached by\ndefault", text, name)
+            self.assertIn("Detached (opt-in)", text, name)
+            self.assertIn("chatdesk.py listen", text, name)
+            self.assertIn("Monitor(", text, name)
+            self.assertNotIn("CLAUDE_PLUGIN_ROOT", text, name)
 
 
 if __name__ == "__main__":

@@ -51,7 +51,8 @@ session, how to delegate to a background subagent, how to spawn a dedicated one.
 two Claude Code wrappers in `commands/` are thin by design: they load a skill
 and declare that host's tool names, nothing else. Explicit desk actions pick
 their ephemeral backend with `--agent auto|claude|codex`. The launching
-conversation detaches by default; attached routing is an explicit opt-in.
+conversation stays attached by default — every click except triage is
+executed there, as the command it stands for — and detaches only on request.
 Read-only PR analysis can select a model and effort through the portable
 `GIT_WORKFLOW_ANALYZE_*` variables, or their host-specific `CODEX` / `CLAUDE`
 variants. `server/tests/test_packaging.py` pins the cross-host invariants.

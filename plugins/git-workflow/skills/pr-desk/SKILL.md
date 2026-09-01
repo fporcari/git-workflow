@@ -1,6 +1,6 @@
 ---
 name: pr-desk
-description: Launch the detached PR desk. The Python server serves provider/cache JSON without keeping Codex or Claude active; only explicit analyze, explain, triage or workflow clicks start an ephemeral agent process — or, when the launching chat stays attached, run in that conversation with the output presented there (triage always stays on the independent agent). Use when the user asks for the PR desk or a PR dashboard.
+description: Launch the PR desk. The Python server serves provider/cache JSON without keeping Codex or Claude active; the launching chat stays attached by default, so every click except triage is executed in that conversation, command and output visible there; a detached launch (opt-in) hands each click to an ephemeral one-shot agent instead. Use when the user asks for the PR desk or a PR dashboard.
 ---
 
 # PR desk
@@ -22,13 +22,30 @@ Claude browser-preview configuration:
  "port": 8399}
 ```
 
-Open the printed localhost URL. The default is detached:
+Open the printed localhost URL. The launching chat stays **attached by
+default**: the desk is the remote, this conversation is where the work
+happens. Every click except triage arrives here as the command it stands for
+(`/pr-loop 1099 1055 batch=4`, `/pr-analyze 1099`, `/issue-analyze 7`) and is
+executed here, reasoning and output included, while the desk window sits in
+any browser — or gets ignored.
 
-- **Detached (default)**: the session may end; every button starts its own
-  one-shot agent. Do not wait on the server and do not start a watcher.
-- **Attached (explicit opt-in)**: only when the user asks to keep results in
-  this conversation, follow "Attached chat" in `../review-desk/SKILL.md`.
-  Non-triage buttons are then executed here and presented here.
+- **Claude Code**: right after opening the URL, arm ONE persistent monitor
+  and end the turn:
+
+  ```
+  Monitor(command="python3 <PLUGIN_ROOT>/server/chatdesk.py listen --repo <owner/repo>",
+          description="desk clicks · <owner/repo>", persistent=true, timeout_ms=3600000)
+  ```
+
+  Tell the user once that the desk is open and its clicks land here. Each
+  click then comes back as a notification; follow "Attached chat" in
+  `../review-desk/SKILL.md` to execute and publish it. One monitor per
+  repository: both desks share the state file, so a second desk on the same
+  repo from the same chat reuses the running monitor.
+- **Codex** (no monitor): follow the `wait` loop in the same section.
+- **Detached (opt-in)**: only when the user says to open the desk and leave
+  ("apri e basta", "detached"). Arm nothing; every button starts its own
+  one-shot agent and the session may end.
 
 Either way the server itself is detached — `../review-desk/SKILL.md` is the
 job contract shared by both desks.

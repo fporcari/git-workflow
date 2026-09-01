@@ -4,11 +4,20 @@ The desk server stays detached and never talks to a conversation. When a chat
 session chooses to stay attached after launching the desk, IT does the work
 the buttons enqueue, and the pair of commands here is its whole contract:
 
+    python3 chatdesk.py listen --repo owner/repo
+        The attached chat's ear, for hosts with a background monitor (Claude
+        Code's Monitor tool): heartbeat forever, claim each click as it comes
+        and print it as TWO lines — the command it stands for, then the
+        record as JSON. Never exits on its own; killed with the monitor, it
+        detaches on the way out. Because it keeps heartbeating while the
+        chat works, later clicks queue behind the conversation instead of
+        slipping to a one-shot agent.
+
     python3 chatdesk.py wait --repo owner/repo [--timeout 540]
-        Heartbeat until a click arrives, claim it, print it as JSON and exit.
-        Prints {"idle": true} on timeout. While a chat waits here, the server
-        routes every non-triage button to the chat instead of starting a
-        one-shot agent.
+        The same ear for hosts without a monitor: heartbeat until a click
+        arrives, claim it, print it as JSON and exit. Prints {"idle": true}
+        on timeout. While a chat waits here, the server routes every
+        non-triage button to the chat instead of starting a one-shot agent.
 
     python3 chatdesk.py result --repo owner/repo --request analyze:1145 out.json
         Validate the structured result exactly as a job's would be, persist
@@ -28,6 +37,7 @@ again, and the seconds in between must not hand a click to a one-shot agent.
 
 import argparse
 import json
+import signal
 import sys
 import time
 
@@ -35,6 +45,59 @@ import deskstate
 import jobs
 
 HEARTBEAT_EVERY = 5
+LISTEN_POLL = 1
+
+
+def command_for(record):
+    """The click as the command the user would have typed: what the chat
+    shows before doing it, so a reader sees `/pr-loop 1099 1055 batch=4`
+    and not a request key."""
+    kind = record.get("kind")
+    n = record.get("n")
+    payload = record.get("payload") or {}
+    if kind == "run":
+        flow = payload.get("flow") or "pr-loop"
+        parts = ["/" + flow]
+        parts += [str(x) for x in payload.get("ns") or []]
+        if (payload.get("batch") or 1) > 1:
+            parts.append("batch=%s" % payload["batch"])
+        return " ".join(parts)
+    if kind == "order":
+        return "/pr-loop order #%s" % n
+    if kind == "analyze":
+        return "/pr-analyze %s" % n
+    if kind == "explain":
+        return "/pr-explain %s" % n
+    if kind == "issue-analyze":
+        return "/issue-analyze %s" % n
+    return "/%s %s" % (kind, n if n is not None else "")
+
+
+def listen(repo, session, timeout=None, out=sys.stdout):
+    deadline = time.time() + timeout if timeout else None
+    last_beat = 0
+
+    def bye(*_):
+        raise SystemExit(0)
+    signal.signal(signal.SIGTERM, bye)
+    try:
+        while True:
+            now = time.time()
+            if now - last_beat >= HEARTBEAT_EVERY:
+                deskstate.chat_heartbeat(repo, session)
+                last_beat = now
+            record = deskstate.claim_request(repo)
+            if record:
+                out.write("\u25b6 %s  \u00b7 richiesta %s\n"
+                          % (command_for(record), record["key"]))
+                out.write(json.dumps(record, ensure_ascii=False) + "\n")
+                out.flush()
+                continue
+            if deadline and now >= deadline:
+                return
+            time.sleep(LISTEN_POLL)
+    finally:
+        deskstate.chat_detach(repo)
 
 
 def wait(repo, timeout, session):
@@ -117,17 +180,24 @@ def fail(repo, key, why):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("wait", "result", "fail", "detach"))
+    parser.add_argument("action",
+                        choices=("listen", "wait", "result", "fail", "detach"))
     parser.add_argument("--repo", required=True)
-    parser.add_argument("--timeout", type=int, default=540)
+    parser.add_argument("--timeout", type=int, default=None,
+                        help="wait: seconds before {\"idle\": true} "
+                             "(default 540); listen: stop after this many "
+                             "seconds (default: never)")
     parser.add_argument("--session", default="")
     parser.add_argument("--request", help="result: the request key to close")
     parser.add_argument("path", nargs="?",
                         help="result: the JSON file, or - for stdin; "
                              "fail: the reason")
     args = parser.parse_args()
-    if args.action == "wait":
-        record = wait(args.repo, args.timeout, args.session)
+    if args.action == "listen":
+        listen(args.repo, args.session, args.timeout)
+    elif args.action == "wait":
+        timeout = 540 if args.timeout is None else args.timeout
+        record = wait(args.repo, timeout, args.session)
         print(json.dumps(record if record else {"idle": True}, indent=1))
     elif args.action == "result":
         if not (args.request and args.path):

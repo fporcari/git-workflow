@@ -38,6 +38,21 @@ READ_TOOLS = (
 )
 TRIAGE_TOOLS = (READ_TOOLS + ",Bash(gh issue view:*),Bash(git show:*),"
                 "Bash(git log:*)")
+# `--allowedTools` only ADDS auto-approvals: a host whose own settings allow
+# `gh` or `git` broadly would let a read-only job merge. These are denied
+# outright, whatever the host allows.
+WRITE_TOOLS = (
+    "Edit,Write,NotebookEdit,"
+    "Bash(git push:*),Bash(git commit:*),Bash(git merge:*),Bash(git rebase:*),"
+    "Bash(gh pr merge:*),Bash(gh pr review:*),Bash(gh pr comment:*),"
+    "Bash(gh pr edit:*),Bash(gh pr close:*),Bash(gh pr ready:*),"
+    "Bash(gh pr create:*),Bash(gh issue comment:*),Bash(gh issue edit:*),"
+    "Bash(gh issue close:*),Bash(gh issue create:*),"
+    "Bash(gh api -X POST:*),Bash(gh api -X PATCH:*),Bash(gh api -X PUT:*),"
+    "Bash(gh api -X DELETE:*),Bash(gh api --method:*),Bash(gh api -f:*),"
+    "Bash(gh api -F:*),Bash(gh api --field:*),Bash(gh api --raw-field:*),"
+    "Bash(gh api --input:*)"
+)
 
 
 ANALYZE_TIMEOUT = deskstate.ANALYZE_TIMEOUT
@@ -117,7 +132,7 @@ def command(agent, prompt, tools, cwd, output_path=None, schema=SCHEMA,
         if schema:
             cmd += ["--json-schema", claude_schema(schema)]
         if read_only:
-            cmd += ["--allowedTools", tools]
+            cmd += ["--allowedTools", tools, "--disallowedTools", WRITE_TOOLS]
         else:
             cmd += ["--tools", "default", "--permission-mode", "auto"]
         return cmd
@@ -528,6 +543,10 @@ def persist_operation(repo, result, n=None, flow=None):
             "status": result["status"], "report": result["report"],
             "at": time.strftime("%Y-%m-%dT%H:%M:%S")}
     deskstate.update(repo, keep)
+    # the server's word on the flow is the last one: a skill that closed the
+    # ledger itself on the way out cannot leave "done" over a needs-input
+    key = "order:%s" % n if n is not None else "run:%s" % (flow or "run")
+    deskstate.close_request(repo, key, result["status"], result["report"])
     if result["provider_changed"]:
         deskstate.request_provider_refresh(repo)
 
@@ -855,6 +874,9 @@ def operation(repo, flow, payload, me, cwd, agent="auto"):
     prompt = (
         "Read %s/skills/%s/SKILL.md and follow it for %s (login %s) in detached "
         "desk mode. %s Do not wait for chat input. Never add AI attribution. "
+        "Never import the server modules, never write the desk state file and "
+        "never call notify.py --done or --failed: the server persists your JSON "
+        "and closes the job (notify.py --working progress lines are welcome). "
         "Return exactly the JSON required by %s. provider_changed is true only "
         "if you actually changed GitHub or Forgejo."
         % (PLUGIN_ROOT, skill, repo, me, mandate, OPERATION_SCHEMA))

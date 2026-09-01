@@ -30,6 +30,7 @@ _HOME = tempfile.mkdtemp(prefix="deskstate-")
 os.environ["HOME"] = _HOME
 
 import cache            # noqa: E402
+import chatdesk         # noqa: E402
 import deskstate        # noqa: E402
 import gate as gatelib  # noqa: E402
 import issuecheck       # noqa: E402
@@ -360,6 +361,26 @@ class HeadlessAgents(unittest.TestCase):
         self.assertIn("--json", command)
         self.assertEqual(command[command.index("--sandbox") + 1], "read-only")
         self.assertIn("--output-schema", command)
+
+    def test_a_read_only_claude_job_denies_the_write_verbs_outright(self):
+        """`--allowedTools` only adds auto-approvals: a host whose settings
+        allow `gh` broadly would let a read-only job merge."""
+        command = jobs.command("claude", "p", jobs.READ_TOOLS, ".",
+                               schema=None, read_only=True)
+        denied = command[command.index("--disallowedTools") + 1]
+        for verb in ("Bash(gh pr merge:*)", "Bash(git push:*)", "Write",
+                     "Bash(gh api -X POST:*)"):
+            self.assertIn(verb, denied)
+        operation = jobs.command("claude", "p", "", ".", schema=None,
+                                 read_only=False)
+        self.assertNotIn("--disallowedTools", operation)
+
+    def test_the_operation_mandate_keeps_the_agent_off_the_desk_state(self):
+        with mock.patch.object(jobs, "_spawn", return_value="j") as spawn:
+            jobs.operation(REPO, "pr-loop", {"ns": [1], "batch": 1}, "me", ".")
+        prompt = spawn.call_args[0][5]
+        self.assertIn("never write the desk state file", prompt)
+        self.assertIn("never call notify.py --done", prompt)
 
     def test_claude_command_has_no_write_tool(self):
         command = jobs.command("claude", "prompt", jobs.READ_TOOLS, "/tmp/repo")
@@ -1786,6 +1807,23 @@ class HandOverExactlyOnce(unittest.TestCase):
         got = deskstate.load(REPO)["requests"]["analyze:13"]
         self.assertEqual((got["status"], got["report"]), ("done", "fatto"))
 
+    def test_the_server_s_status_overrides_a_notify_the_skill_sent(self):
+        """A one-shot pr-loop closed `run:pr-loop` as done on its way out,
+        then returned needs-input: the button read green over a card that
+        asked for a decision."""
+        deskstate.close_request(REPO, "run:pr-loop", "done", "1 merge")
+        jobs.persist_operation(REPO, {"status": "needs-input",
+                                      "report": "3 PR aspettano te",
+                                      "provider_changed": False},
+                               None, "pr-loop")
+        got = deskstate.load(REPO)["requests"]["run:pr-loop"]
+        self.assertEqual((got["status"], got["report"]),
+                         ("needs-input", "3 PR aspettano te"))
+        jobs.persist_operation(REPO, {"status": "failed", "report": "gate",
+                                      "provider_changed": False}, 12, "order")
+        self.assertEqual(deskstate.load(REPO)["requests"]["order:12"]["status"],
+                         "failed")
+
     def test_a_completed_run_requests_one_fresh_provider_read(self):
         state = deskstate.load(REPO)
         state.pop("provider_refresh", None)
@@ -2265,6 +2303,79 @@ class AttachedChat(unittest.TestCase):
                 time.sleep(0.05)
         self.assertEqual(record["status"], "failed")
         self.assertIn("provider down", record["report"])
+
+
+class ListeningChat(unittest.TestCase):
+    """The attached chat's ear on a host with a background monitor: one
+    process that heartbeats for as long as it lives and prints each click as
+    the command it stands for."""
+
+    def setUp(self):
+        state = deskstate.load(REPO)
+        for key in ("requests", "chat"):
+            state.pop(key, None)
+        deskstate.save(REPO, state)
+
+    def _cli(self, *args, **kw):
+        return subprocess.run(
+            (sys.executable, str(ROOT / "chatdesk.py")) + args,
+            capture_output=True, text=True,
+            env=dict(os.environ, HOME=_HOME), **kw)
+
+    def test_the_click_is_printed_as_the_command_the_user_would_have_typed(self):
+        cases = (
+            ({"kind": "run", "payload": {"flow": "pr-loop", "ns": [1099, 1055],
+                                         "batch": 4}},
+             "/pr-loop 1099 1055 batch=4"),
+            ({"kind": "run", "payload": {"flow": "issue-loop", "ns": [7],
+                                         "batch": 1}}, "/issue-loop 7"),
+            ({"kind": "order", "n": 1145}, "/pr-loop order #1145"),
+            ({"kind": "analyze", "n": 1099}, "/pr-analyze 1099"),
+            ({"kind": "explain", "n": 1099}, "/pr-explain 1099"),
+            ({"kind": "issue-analyze", "n": 7}, "/issue-analyze 7"),
+        )
+        for record, expected in cases:
+            self.assertEqual(chatdesk.command_for(record), expected)
+
+    def test_listen_claims_each_click_as_two_lines_and_detaches_on_exit(self):
+        deskstate.request(REPO, "run:issue-loop", "run", None, via="chat",
+                          payload={"flow": "issue-loop", "ns": [7, 9],
+                                   "batch": 2})
+        deskstate.request(REPO, "issue-analyze:7", "issue-analyze", 7,
+                          via="chat")
+        out = self._cli("listen", "--repo", REPO, "--timeout", "2")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        lines = out.stdout.splitlines()
+        self.assertEqual(len(lines), 4, out.stdout)
+        self.assertIn("/issue-loop 7 9 batch=2", lines[0])
+        self.assertEqual(json.loads(lines[1])["key"], "run:issue-loop")
+        self.assertIn("/issue-analyze 7", lines[2])
+        state = deskstate.load(REPO)
+        self.assertEqual(state["requests"]["run:issue-loop"]["status"], "taken")
+        self.assertEqual(state["requests"]["issue-analyze:7"]["status"], "taken")
+        self.assertIsNone(deskstate.chat_attached(REPO),
+                          "a listener that stopped is a detached chat")
+
+    def test_listen_heartbeats_while_it_runs(self):
+        proc = subprocess.Popen(
+            (sys.executable, str(ROOT / "chatdesk.py"), "listen",
+             "--repo", REPO),
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            env=dict(os.environ, HOME=_HOME))
+        try:
+            for _ in range(50):
+                if deskstate.chat_listening(REPO):
+                    break
+                time.sleep(0.1)
+            self.assertTrue(deskstate.chat_listening(REPO))
+            proc.terminate()
+            proc.communicate(timeout=5)
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.communicate()
+        self.assertIsNone(deskstate.load(REPO).get("chat"),
+                          "the monitor's death must detach the chat")
 
 
 class SummaryFromData(unittest.TestCase):
