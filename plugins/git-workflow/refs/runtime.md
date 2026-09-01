@@ -56,7 +56,8 @@ via `chatdesk.py wait`, in which case the server routes every non-triage click
 to that conversation instead, for as long as it keeps heartbeating (see
 "Attached chat" in the review-desk skill). Triage always stays on the
 independent one-shot agent, and so does any click a listening chat is not
-there to take.
+there to take. A request the chat claimed stays its own for the budget the
+same click would have had as a one-shot job; past that it reads as stale.
 
 Active jobs expose their elapsed time, phase and sanitized public tool events
 through the same JSON. The browser reads that local progress once a second

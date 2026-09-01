@@ -16,8 +16,14 @@ the buttons enqueue, and the pair of commands here is its whole contract:
         outcome. The result file uses the same schema the one-shot agent
         would have returned.
 
+    python3 chatdesk.py fail --repo owner/repo --request analyze:1145 "why"
+        Close the request as failed, with the reason the desk shows.
+
     python3 chatdesk.py detach --repo owner/repo
         Drop the mark: the very next click goes back to a one-shot agent.
+
+Both result and fail heartbeat on the way out: the chat is about to run wait
+again, and the seconds in between must not hand a click to a one-shot agent.
 """
 
 import argparse
@@ -68,32 +74,57 @@ def _persist(repo, record, result):
     raise ValueError("unknown request kind %r" % kind)
 
 
-def result(repo, key, path):
+def _record(repo, key):
     record = (deskstate.load(repo).get("requests") or {}).get(key)
     if not record:
         raise SystemExit("unknown request %r" % key)
+    return record
+
+
+def _release(repo, record):
+    """Drop the working marker only when it is this request's: a one-shot
+    job may be on another row at the same time."""
+    mark = deskstate.working(repo)
+    n = record.get("n")
+    if mark and (n is None or int(n) in mark.get("ns", [])):
+        deskstate.clear_working(repo)
+    deskstate.chat_heartbeat(repo)
+
+
+def result(repo, key, path):
+    record = _record(repo, key)
     data = json.loads(sys.stdin.read() if path == "-"
                       else open(path).read())
     try:
         report = _persist(repo, record, data)
     except ValueError as exc:
         deskstate.close_request(repo, key, "failed", str(exc))
+        _release(repo, record)
         raise SystemExit("invalid result: %s" % exc)
-    status = data.get("status") if data.get("status") == "needs-input" else "done"
+    status = data.get("status")
+    if status not in ("needs-input", "failed"):
+        status = "done"
     deskstate.close_request(repo, key, status, report)
-    deskstate.clear_working(repo)
+    _release(repo, record)
     return report
+
+
+def fail(repo, key, why):
+    record = _record(repo, key)
+    deskstate.close_request(repo, key, "failed", why)
+    _release(repo, record)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("wait", "result", "detach"))
+    parser.add_argument("action", choices=("wait", "result", "fail", "detach"))
     parser.add_argument("--repo", required=True)
     parser.add_argument("--timeout", type=int, default=540)
     parser.add_argument("--session", default="")
     parser.add_argument("--request", help="result: the request key to close")
     parser.add_argument("path", nargs="?",
-                        help="result: the JSON file, or - for stdin")
+                        help="result: the JSON file, or - for stdin; "
+                             "fail: the reason")
     args = parser.parse_args()
     if args.action == "wait":
         record = wait(args.repo, args.timeout, args.session)
@@ -102,6 +133,10 @@ def main():
         if not (args.request and args.path):
             parser.error("result needs --request and a JSON file")
         print(result(args.repo, args.request, args.path))
+    elif args.action == "fail":
+        if not (args.request and args.path):
+            parser.error("fail needs --request and a reason")
+        fail(args.repo, args.request, args.path)
     else:
         deskstate.chat_detach(args.repo)
 

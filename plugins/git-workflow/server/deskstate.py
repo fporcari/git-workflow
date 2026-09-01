@@ -43,6 +43,21 @@ from pathlib import Path
 
 import safejson
 
+
+def _env_timeout(name, default):
+    try:
+        value = int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
+
+
+# the budget a click gets as a one-shot job, and therefore how long the same
+# click may stay silent in an attached chat before that chat is presumed dead
+ANALYZE_TIMEOUT = _env_timeout("GIT_WORKFLOW_ANALYZE_TIMEOUT", 900)
+OPERATION_TIMEOUT = _env_timeout("GIT_WORKFLOW_OPERATION_TIMEOUT", 3600)
+READ_ONLY_KINDS = ("analyze", "explain", "issue-analyze")
+
 STATE_DIR = Path.home() / ".local" / "state" / "git-workflow"
 # per-user, so two accounts on one machine never share a queue
 RUNTIME_DIR = Path(tempfile.gettempdir()) / ("git-workflow-%s" % os.getuid())
@@ -127,8 +142,36 @@ def update(repo, mutate):
 REQUEST_STALE = 1800
 WORKING_STALE = 900          # a run that stopped saying anything
 CHAT_STALE = 45              # heartbeat older than this = no chat attached
-CHAT_BUSY_STALE = 3600       # a claimed request keeps the chat "attached"
 CHAT_CLAIM_GRACE = 20        # a live wait loop claims within one heartbeat
+
+
+def busy_ttl(kind):
+    """How long a claimed request keeps the chat "attached" and its button
+    locked: the same budget the click would have had as a one-shot job. A
+    chat silent for longer than the job it replaces is presumed dead, and
+    the record goes stale so the user can press again."""
+    return ANALYZE_TIMEOUT if kind in READ_ONLY_KINDS else OPERATION_TIMEOUT
+
+
+def expired(record, now=None):
+    """True when an open record has outlived its budget: a queued click
+    after REQUEST_STALE, a taken one after the busy TTL of its kind."""
+    status = record.get("status")
+    now = now or time.time()
+    if status == "taken":
+        return now - record.get("taken_epoch", record.get("epoch", 0)) > busy_ttl(
+            record.get("kind"))
+    if status in ("queued", "preparing"):
+        return now - record.get("epoch", 0) > REQUEST_STALE
+    return False
+
+
+def effective(record):
+    """The record as the desk should show it: an expired lock reads as
+    `stale`, which the page already renders as "no outcome, press again"."""
+    if expired(record):
+        return dict(record, status="stale")
+    return record
 
 
 def chat_heartbeat(repo, session=""):
@@ -158,8 +201,7 @@ def chat_attached(repo, state=None):
         return dict(mark)
     busy = mark.get("busy") or {}
     record = (state.get("requests") or {}).get(busy.get("key") or "")
-    if (record and record.get("status") == "taken"
-            and time.time() - busy.get("epoch", 0) <= CHAT_BUSY_STALE):
+    if record and record.get("status") == "taken" and not expired(record):
         return dict(mark)
     return None
 
@@ -285,7 +327,8 @@ def working(repo, state=None):
     return mark
 
 
-def request(repo, key, kind, n=None, label="", via="agent", payload=None):
+def request(repo, key, kind, n=None, label="", via="agent", payload=None,
+            status="queued"):
     """Record a button press, and refuse a second one while the first is out.
 
     The ledger lives on the SERVER, not in the page: a click enqueues work
@@ -294,24 +337,37 @@ def request(repo, key, kind, n=None, label="", via="agent", payload=None):
     because nothing visibly happened — and every extra press is another
     event the chat has to work through.
 
+    `preparing` is a click the server still owes a payload to: the chat may
+    not claim it yet, and `ready_request` flips it to `queued`.
+
     Returns (record, created). created is False when one was already out.
     """
     def mutate(state):
         ledger = state.setdefault("requests", {})
         existing = ledger.get(key)
-        if existing and existing.get("status") in ("queued", "taken"):
-            taken = existing.get("status") == "taken"
-            epoch = (existing.get("taken_epoch", existing.get("epoch", 0))
-                     if taken else existing.get("epoch", 0))
-            stale_after = CHAT_BUSY_STALE if taken else REQUEST_STALE
-            if time.time() - epoch < stale_after:
+        if existing and existing.get("status") in ("queued", "taken",
+                                                    "preparing"):
+            if not expired(existing):
                 return existing, False
             existing["status"] = "stale"
-        record = {"kind": kind, "n": n, "label": label, "status": "queued",
+        record = {"kind": kind, "n": n, "label": label, "status": status,
                   "via": via, "payload": payload or {},
                   "at": time.strftime("%H:%M:%S"), "epoch": time.time()}
         ledger[key] = record
         return record, True
+    return update(repo, mutate)
+
+
+def ready_request(repo, key, payload):
+    """The payload a click was waiting for is in: the chat may claim it now.
+    The clock restarts here, so the claim grace counts from readiness."""
+    def mutate(state):
+        record = (state.get("requests") or {}).get(key)
+        if not record or record.get("status") != "preparing":
+            return None
+        record.update(status="queued", payload=payload or {},
+                      epoch=time.time())
+        return dict(record)
     return update(repo, mutate)
 
 
@@ -349,7 +405,7 @@ def annotate_requests(rows, state):
     for key, record in ledger.items():
         kind, _, number = key.rpartition(":")
         if number.isdigit():
-            per_row.setdefault(int(number), {})[kind] = record
+            per_row.setdefault(int(number), {})[kind] = effective(record)
     for row in rows:
         row["requests"] = per_row.get(row["n"], {})
     return rows

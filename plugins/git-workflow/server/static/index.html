@@ -856,9 +856,9 @@ function renderDetail(){
 }
 
 const REQ_LABEL={analyze:"pr-analyze",explain:"spiegazione",order:"ordine",
-                 "issue-analyze":"sessione dedicata"};
+                 "issue-analyze":"issue-analyze"};
 function requests(r){return r.requests||{};}
-const OUT_STATUS=["queued","taken","running"];
+const OUT_STATUS=["preparing","queued","taken","running"];
 function pending(r,kind){const q=requests(r)[kind];return q&&OUT_STATUS.includes(q.status)?q:null;}
 function closed(r,kind){const q=requests(r)[kind];return q&&!OUT_STATUS.includes(q.status)?q:null;}
 
@@ -879,7 +879,9 @@ function actBadge(r){
       <span class="nowChip"><i></i>ora</span> il job one-shot sta lavorando questa: ${esc(nowMsg(r.n))} (dalle ${esc(workingOn.at||"")})</div>`);
   for(const [kind,q] of Object.entries(requests(r))){
     const name=REQ_LABEL[kind]||kind;
-    if(q.status==="queued")
+    if(q.status==="preparing")
+      out.push(`<div class="actionText">📨 <b>${esc(name)}</b> il desk legge il provider per la chat collegata (dalle ${esc(q.at)}).</div>`);
+    else if(q.status==="queued")
       out.push(`<div class="actionText">📨 <b>${esc(name)}</b> ${q.via==="chat"?"in coda alla chat collegata":"richiesta"} alle ${esc(q.at)}.</div>`);
     else if(q.status==="taken")
       out.push(`<div class="actionText">💬 <b>${esc(name)}</b> in lavorazione nella chat collegata${q.taken_at?" dalle "+esc(q.taken_at):""} — l'esito arriva in conversazione.</div>`);
@@ -914,7 +916,7 @@ function renderPrActions(r){
 }
 function renderIssueActions(r){
   $("detailActions").innerHTML=`
-    ${actionButton("aWork","issue-analyze","▶ Lavora",
+    ${actionButton("aWork","issue-analyze","▶ Analizza",
       "Avvia issue-analyze come processo one-shot read-only, scrive il risultato JSON e termina.",
       r,true)}
     <a class="btn" href="${r.url}" target="_blank" rel="noreferrer">GitHub ↗</a>`;
@@ -1034,11 +1036,11 @@ function renderIssueTab(r){
     g.innerHTML=`
       <article class="wideArticle"><h2>Analisi</h2>
         ${sk.finding?`<p>${esc(sk.finding)}</p><p class="mono">${esc([r.type,sk.phase,sk.size,r.analysis_at?"del "+r.analysis_at.slice(0,10):null].filter(Boolean).join(" · "))}</p>${r.analysis_stale?`<small class="triageChip" title="L'issue si è mossa dopo questa analisi">↻ analisi da aggiornare</small>`:""}`
-          :`<div class="tabEmpty">Nessuna analisi ancora. <b>▶ Lavora</b> apre una sessione dedicata che verifica la causa nel codice e propone la mossa minima.</div>`}
+          :`<div class="tabEmpty">Nessuna analisi ancora. <b>▶ Analizza</b> avvia issue-analyze una volta, read-only: verifica la causa nel codice e propone la mossa minima.</div>`}
         ${actBadge(r)}</article>
-      <aside><h2>Cosa fa la sessione dedicata</h2><ul>
-        <li>analizza a contesto pulito</li><li>verifica la causa nel codice vero</li>
-        <li>se è un cambio coerente: worktree, fix, PR</li><li>se è tosta: disegna le fasi</li></ul></aside>`;
+      <aside><h2>Cosa fa issue-analyze</h2><ul>
+        <li>analizza a contesto pulito, senza branch né commenti</li><li>verifica la causa nel codice vero</li>
+        <li>propone il cambio minimo e come verificarlo</li><li>dice se è un cambio solo o servono fasi</li></ul></aside>`;
   }
 }
 
@@ -1093,7 +1095,7 @@ async function doAnalyze(r,btn){
 }
 const doExplain=(r,btn)=>handOver(r,btn,`/api/pr/${r.n}/explain`,{},"explain","spiegazione");
 const doIssueWork=(r,btn)=>handOver(r,btn,`/api/issue/${r.n}/analyze`,{},
-  "issue-analyze","sessione dedicata");
+  "issue-analyze","issue-analyze");
 async function doFlow(path,flow,note,extra){
   const key="flow:"+flow;
   flows[flow]={status:"queued"};       // the button says so before the 202

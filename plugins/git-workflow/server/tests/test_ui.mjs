@@ -531,6 +531,14 @@ ok("a closed chat request frees the button", (() => {
   const row = { requests: { analyze: { status: "needs-input", at: "15:04:00", via: "chat" } } };
   return !page.pending(row, "analyze") && !!page.closed(row, "analyze");
 })());
+ok("a request the desk is still preparing for the chat locks its button", (() => {
+  const q = page.pending({ requests: { analyze: { status: "preparing", at: "15:05:00", via: "chat" } } }, "analyze");
+  return q && q.status === "preparing";
+})());
+ok("a stale chat request frees the button", (() => {
+  const row = { requests: { analyze: { status: "stale", at: "15:06:00", via: "chat" } } };
+  return !page.pending(row, "analyze") && !!page.closed(row, "analyze");
+})());
 
 page.applyState({ working: { n: runner.n, msg: "riallineo il branch", at: "19:10:00" },
                   agent: { mode: "on-demand", busy: true }, feed: [] });

@@ -472,7 +472,8 @@ class Desk:
         st = deskstate.load(self.repo)
         active_jobs = jobs.active(self.repo)
         ledger = st.get("requests") or {}
-        flows = {key.split(":", 1)[1]: rec for key, rec in ledger.items()
+        flows = {key.split(":", 1)[1]: deskstate.effective(rec)
+                 for key, rec in ledger.items()
                  if key.startswith(("triage:", "run:"))}
         grid = st.get("grid") or {}
         chat = deskstate.chat_attached(self.repo, st)
@@ -842,22 +843,40 @@ class Handler(BaseHTTPRequestHandler):
         routing to it enqueues clicks nobody will ever read — no job, no
         progress, a mute panel. A click it never claimed goes back too.
 
+        A callable payload reads the provider, seconds on a cold desk: the
+        record is enqueued as `preparing` at once and a thread fills it in,
+        so the click is answered in milliseconds here as it is for a job.
+
         Returns the response sent, or None when no chat is listening and the
         caller must start the job as before."""
         key = key or deskstate.request_key(kind, n)
         deskstate.reclaim_request(self.desk.repo, key)
         if not deskstate.chat_listening(self.desk.repo):
             return None
+        lazy = callable(payload)
         record, created = deskstate.request(
             self.desk.repo, key, kind, n, label, via="chat",
-            payload=payload() if callable(payload) else payload)
+            payload=None if lazy else payload,
+            status="preparing" if lazy else "queued")
         if created:
             notify.notify(self.desk.repo,
                           "%s → in coda alla chat collegata" % label, n)
+            if lazy:
+                threading.Thread(target=self._prepare_request,
+                                 args=(key, payload), daemon=True).start()
         response = {"queued": True, "via": "chat", "request": key,
                     "created": created, "at": record["at"]}
         self._send(202, response)
         return response
+
+    def _prepare_request(self, key, build):
+        try:
+            payload = build()
+        except Exception as exc:
+            deskstate.close_request(self.desk.repo, key, "failed",
+                                    "contesto non letto: %s" % str(exc)[:160])
+            return
+        deskstate.ready_request(self.desk.repo, key, payload)
 
     def _model_key(self, n, artifact):
         row = next((row for row in self.desk.queue()["rows"]

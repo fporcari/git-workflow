@@ -1915,6 +1915,15 @@ class AttachedChat(unittest.TestCase):
         state["chat"]["epoch"] -= deskstate.CHAT_STALE + 5
         deskstate.save(REPO, state)
 
+    def _settled(self, key):
+        """The record once the server thread has filled its payload in."""
+        for _ in range(100):
+            record = deskstate.load(REPO)["requests"][key]
+            if record["status"] != "preparing":
+                return record
+            time.sleep(0.05)
+        return record
+
     def test_the_heartbeat_expires(self):
         deskstate.chat_heartbeat(REPO)
         self.assertTrue(deskstate.chat_attached(REPO))
@@ -1951,7 +1960,7 @@ class AttachedChat(unittest.TestCase):
             status, payload = self.post("/api/pr/1145/analyze")
         analyze.assert_not_called()
         self.assertEqual((status, payload["via"]), (202, "chat"))
-        record = deskstate.load(REPO)["requests"]["analyze:1145"]
+        record = self._settled("analyze:1145")
         self.assertEqual((record["via"], record["status"]), ("chat", "queued"))
         with mock.patch.object(jobs, "operation") as operation:
             status, payload = self.post(
@@ -2003,6 +2012,7 @@ class AttachedChat(unittest.TestCase):
         with mock.patch.object(jobs, "analyze_pr") as analyze:
             self.assertEqual(self.post("/api/pr/1145/analyze")[1]["via"], "chat")
         analyze.assert_not_called()
+        self.assertEqual(self._settled("analyze:1145")["status"], "queued")
         state = deskstate.load(REPO)
         state["requests"]["analyze:1145"]["epoch"] -= (
             deskstate.CHAT_CLAIM_GRACE + 5)
@@ -2114,6 +2124,147 @@ class AttachedChat(unittest.TestCase):
         self.assertTrue(self.desk.live_state()["chat"]["attached"])
         self._expire_heartbeat()
         self.assertFalse(self.desk.live_state()["chat"]["attached"])
+
+    def _age_taken(self, key, seconds):
+        state = deskstate.load(REPO)
+        state["requests"][key]["taken_epoch"] -= seconds
+        state["chat"]["busy"]["epoch"] -= seconds
+        deskstate.save(REPO, state)
+
+    def test_a_taken_analysis_outlives_its_job_budget_and_goes_stale(self):
+        """The dead chat's own row stayed locked for an hour: no job, no
+        progress, a span nobody could press. A chat silent for longer than
+        the one-shot job it replaces is presumed dead."""
+        deskstate.chat_heartbeat(REPO)
+        deskstate.request(REPO, "analyze:7", "analyze", 7, via="chat")
+        deskstate.claim_request(REPO)
+        self._expire_heartbeat()
+        self._age_taken("analyze:7", deskstate.ANALYZE_TIMEOUT + 5)
+        rows = [{"n": 7}]
+        deskstate.annotate_requests(rows, deskstate.load(REPO))
+        self.assertEqual(rows[0]["requests"]["analyze"]["status"], "stale")
+        self.assertIsNone(deskstate.chat_attached(REPO), "chip off too")
+        _, created = deskstate.request(REPO, "analyze:7", "analyze", 7)
+        self.assertTrue(created, "the button must accept a new press")
+
+    def test_a_taken_operation_keeps_the_longer_budget(self):
+        deskstate.chat_heartbeat(REPO)
+        deskstate.request(REPO, "run:pr-loop", "run", None, via="chat")
+        deskstate.claim_request(REPO)
+        self._expire_heartbeat()
+        self._age_taken("run:pr-loop", deskstate.ANALYZE_TIMEOUT + 5)
+        self.assertTrue(deskstate.chat_attached(REPO))
+        self.assertEqual(self.desk.live_state()["flows"]["pr-loop"]["status"],
+                         "taken")
+        self._age_taken("run:pr-loop", deskstate.OPERATION_TIMEOUT)
+        self.assertEqual(self.desk.live_state()["flows"]["pr-loop"]["status"],
+                         "stale")
+
+    def test_a_failed_operation_is_closed_as_failed(self):
+        deskstate.chat_heartbeat(REPO)
+        deskstate.request(REPO, "run:pr-loop", "run", None, via="chat",
+                          payload={"flow": "pr-loop"})
+        deskstate.claim_request(REPO)
+        with tempfile.NamedTemporaryFile("w", suffix=".json",
+                                         delete=False) as handle:
+            json.dump({"status": "failed", "report": "gate A1 non passato",
+                       "provider_changed": False}, handle)
+        out = self._cli("result", "--repo", REPO,
+                        "--request", "run:pr-loop", handle.name)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(deskstate.load(REPO)["requests"]["run:pr-loop"]
+                         ["status"], "failed")
+
+    def test_publishing_a_result_keeps_the_chat_listening(self):
+        """Between `result` and the next `wait` the model takes seconds; a
+        click in that gap must not slip to a one-shot agent."""
+        deskstate.chat_heartbeat(REPO)
+        deskstate.request(REPO, "order:1145", "order", 1145, via="chat",
+                          payload={"flow": "order", "n": 1145})
+        deskstate.claim_request(REPO)
+        self._expire_heartbeat()
+        self.assertIsNone(deskstate.chat_listening(REPO))
+        with tempfile.NamedTemporaryFile("w", suffix=".json",
+                                         delete=False) as handle:
+            json.dump({"status": "done", "report": "fatto",
+                       "provider_changed": False}, handle)
+        out = self._cli("result", "--repo", REPO,
+                        "--request", "order:1145", handle.name)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertTrue(deskstate.chat_listening(REPO))
+
+    def test_fail_closes_the_request_and_keeps_the_chat_listening(self):
+        deskstate.chat_heartbeat(REPO)
+        deskstate.request(REPO, "analyze:7", "analyze", 7, via="chat")
+        deskstate.claim_request(REPO)
+        self._expire_heartbeat()
+        out = self._cli("fail", "--repo", REPO, "--request", "analyze:7",
+                        "diff non leggibile")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        got = deskstate.load(REPO)["requests"]["analyze:7"]
+        self.assertEqual((got["status"], got["report"]),
+                         ("failed", "diff non leggibile"))
+        self.assertTrue(deskstate.chat_listening(REPO))
+
+    def test_a_result_releases_only_its_own_working_marker(self):
+        deskstate.chat_heartbeat(REPO)
+        deskstate.set_working(REPO, 9, "one-shot su un'altra riga")
+        deskstate.request(REPO, "analyze:7", "analyze", 7, via="chat")
+        deskstate.claim_request(REPO)
+        out = self._cli("fail", "--repo", REPO, "--request", "analyze:7", "x")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(deskstate.working(REPO)["n"], 9)
+        deskstate.set_working(REPO, 7, "in chat")
+        deskstate.request(REPO, "explain:7", "explain", 7, via="chat")
+        deskstate.claim_request(REPO)
+        self._cli("fail", "--repo", REPO, "--request", "explain:7", "x")
+        self.assertIsNone(deskstate.working(REPO))
+
+    def test_an_analyze_click_is_answered_before_the_provider_is_read(self):
+        """The one-shot path answers in milliseconds and reads the provider in
+        the job; the chat path read it in the handler. Same promise now."""
+        deskstate.chat_heartbeat(REPO)
+        started = threading.Event()
+        release = threading.Event()
+
+        def slow_inputs(self_, n):
+            started.set()
+            release.wait(5)
+            return {"analysis": "k1"}, {"probe": None, "row": {"n": n}}
+
+        with mock.patch.object(prdesk.Handler, "_analysis_inputs", slow_inputs):
+            status, payload = self.post("/api/pr/1145/analyze")
+            self.assertEqual((status, payload["via"]), (202, "chat"))
+            self.assertTrue(started.wait(2))
+            record = deskstate.load(REPO)["requests"]["analyze:1145"]
+            self.assertEqual(record["status"], "preparing")
+            self.assertIsNone(deskstate.claim_request(REPO),
+                              "not claimable before its payload is in")
+            release.set()
+            for _ in range(50):
+                record = deskstate.load(REPO)["requests"]["analyze:1145"]
+                if record["status"] == "queued":
+                    break
+                time.sleep(0.05)
+        self.assertEqual(record["status"], "queued")
+        self.assertEqual(record["payload"]["analysis_keys"], {"analysis": "k1"})
+        self.assertEqual(deskstate.claim_request(REPO)["key"], "analyze:1145")
+
+    def test_a_context_the_desk_cannot_read_fails_the_request(self):
+        deskstate.chat_heartbeat(REPO)
+
+        def broken(self_, n):
+            raise RuntimeError("provider down")
+
+        with mock.patch.object(prdesk.Handler, "_analysis_inputs", broken):
+            self.post("/api/pr/1145/analyze")
+            for _ in range(50):
+                record = deskstate.load(REPO)["requests"]["analyze:1145"]
+                if record["status"] != "preparing":
+                    break
+                time.sleep(0.05)
+        self.assertEqual(record["status"], "failed")
+        self.assertIn("provider down", record["report"])
 
 
 class SummaryFromData(unittest.TestCase):

@@ -88,6 +88,17 @@ is what makes a session that ends mid-request cost nothing: without it the
 claimed record keeps the desk addressing a conversation nobody is reading, and
 every button falls silent with no job to show.
 
+A claimed request keeps its button locked for the same budget the click would
+have had as a one-shot job (`GIT_WORKFLOW_ANALYZE_TIMEOUT` for analyze,
+explain and issue-analyze; `GIT_WORKFLOW_OPERATION_TIMEOUT` for order and
+run). Past that, the record reads as stale and the button accepts a new
+press: a chat silent for longer than the job it replaces is presumed dead.
+
+An analyze click is answered before the desk reads the provider: the record
+sits in `preparing` while a server thread gathers the probe and the keys, and
+becomes claimable only when its payload is in. A context the desk cannot read
+closes the request as failed without involving the chat.
+
 The attached chat's loop, after opening the desk URL:
 
 ```sh
@@ -122,8 +133,14 @@ routes clicks to the chat only while that heartbeat is fresh.
 
   `result.json` is the same structured JSON the one-shot agent would have
   returned for that kind (pr-analysis, pr-explanation, issue-analysis or
-  operation-result schema). On a failure close the request with
-  `python3 <PLUGIN_ROOT>/server/notify.py --repo <owner/repo> --failed <key> "why"`.
+  operation-result schema); an operation's `status` (`done`, `needs-input`,
+  `failed`) is what the row shows. On a failure close the request with
+  `python3 <PLUGIN_ROOT>/server/chatdesk.py fail --repo <owner/repo> --request <key> "why"`.
+  Both commands heartbeat on the way out, so go straight back to `wait`.
+- An order or run that stops on `needs-input` asks its question HERE, in the
+  conversation, and publishes the same request key again once the user has
+  answered and the operation is finished: `chatdesk.py result` closes a key
+  as many times as it takes, and the row shows the latest outcome.
 - When the user says stop, or before the session ends, run
   `python3 <PLUGIN_ROOT>/server/chatdesk.py detach --repo <owner/repo>`. A
   missed detach costs only the heartbeat TTL before the buttons fall back to

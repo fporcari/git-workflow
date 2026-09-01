@@ -40,16 +40,8 @@ TRIAGE_TOOLS = (READ_TOOLS + ",Bash(gh issue view:*),Bash(git show:*),"
                 "Bash(git log:*)")
 
 
-def _env_timeout(name, default):
-    try:
-        value = int(os.environ.get(name, default))
-    except (TypeError, ValueError):
-        return default
-    return value if value > 0 else default
-
-
-ANALYZE_TIMEOUT = _env_timeout("GIT_WORKFLOW_ANALYZE_TIMEOUT", 900)
-OPERATION_TIMEOUT = _env_timeout("GIT_WORKFLOW_OPERATION_TIMEOUT", 3600)
+ANALYZE_TIMEOUT = deskstate.ANALYZE_TIMEOUT
+OPERATION_TIMEOUT = deskstate.OPERATION_TIMEOUT
 JOB_RETENTION = 7 * 24 * 60 * 60
 SCHEMA = PLUGIN_ROOT / "server" / "schemas" / "pr-analysis.json"
 EXPLAIN_SCHEMA = PLUGIN_ROOT / "server" / "schemas" / "pr-explanation.json"
