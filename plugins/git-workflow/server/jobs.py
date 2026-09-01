@@ -541,15 +541,31 @@ def persist_operation(repo, result, n=None, flow=None):
 
 
 def _run(job_id, key, agent, repo, prompt, tools, timeout, cwd, schema,
-         parser, persister, read_only, profile=None):
+         parser, persister, read_only, profile=None, prepare=None):
     output_path = None
     started_at = time.monotonic()
     try:
         agent = resolve_agent(agent)
         _update(repo, job_id, agent=agent)
+        if prepare:
+            # the provider read this click needs is the job's FIRST PHASE, with
+            # its own progress line — held inside the HTTP handler instead it
+            # was ten seconds in which the desk showed nothing at all
+            _record_progress(
+                repo, job_id,
+                {"stage": "inspecting", "detail": "reading the provider"}, 0)
+            prompt, finished = prepare()
+            if prompt is None:
+                _record_progress(repo, job_id,
+                                 {"stage": "done", "detail": finished["report"]},
+                                 time.monotonic() - started_at)
+                _update(repo, job_id, status="done", result=finished,
+                        agent=agent)
+                return
         _record_progress(
             repo, job_id,
-            {"stage": "starting", "detail": "%s process starting" % agent}, 0)
+            {"stage": "starting", "detail": "%s process starting" % agent},
+            time.monotonic() - started_at)
         if agent == "codex":
             descriptor, output_path = tempfile.mkstemp(
                 prefix="git-workflow-result-", suffix=".json")
@@ -609,7 +625,8 @@ def _run(job_id, key, agent, repo, prompt, tools, timeout, cwd, schema,
 
 
 def _spawn(kind, key, agent, repo, request, prompt, tools, timeout, cwd,
-           schema, parser, persister, read_only=True, profile=None):
+           schema, parser, persister, read_only=True, profile=None,
+           prepare=None):
     with _lock:
         if (repo, key) in _running:
             return _running[(repo, key)]
@@ -625,7 +642,8 @@ def _spawn(kind, key, agent, repo, request, prompt, tools, timeout, cwd,
              "at": time.strftime("%Y-%m-%dT%H:%M:%S")}, indent=1)
     threading.Thread(target=_run,
                      args=(job_id, key, agent, repo, prompt, tools, timeout,
-                           cwd, schema, parser, persister, read_only, profile),
+                           cwd, schema, parser, persister, read_only, profile,
+                           prepare),
                      daemon=True).start()
     return job_id
 
@@ -725,26 +743,37 @@ def shutdown(grace=2):
     return len(targets)
 
 
-def analyze_pr(repo, n, me, cwd, agent="auto", analysis_keys=None,
-               context=None):
-    evidence = json.dumps(context or {}, separators=(",", ":"), sort_keys=True)
-    prompt = (
-        "Read %s/skills/pr-analyze/SKILL.md and follow it exactly for PR #%s of %s "
-        "(the user's login is %s). Use the provider snapshot and diff plus exact "
-        "local Git objects as the skill directs. Stay read-only: never fetch, post, "
-        "push, merge, edit or write any file. The desk already gathered this compact "
-        "evidence; use it before any provider call and do not repeat its fields: "
-        "<desk_context>%s</desk_context>. Your final message must be exactly the JSON "
-        "object the skill specifies, with no fences and no prose around it."
-        % (PLUGIN_ROOT, n, repo, me, evidence))
+ANALYZE_PROMPT = (
+    "Read %s/skills/pr-analyze/SKILL.md and follow it exactly for PR #%s of %s "
+    "(the user's login is %s). Use the provider snapshot and diff plus exact "
+    "local Git objects as the skill directs. Stay read-only: never fetch, post, "
+    "push, merge, edit or write any file. The desk already gathered this compact "
+    "evidence; use it before any provider call and do not repeat its fields: "
+    "<desk_context>%s</desk_context>. Your final message must be exactly the JSON "
+    "object the skill specifies, with no fences and no prose around it.")
+
+
+def analyze_pr(repo, n, me, cwd, agent="auto", inputs=None):
+    """`inputs` returns (keys, context) and READS THE PROVIDER — a probe plus,
+    on a desk whose gates are not filled yet, the whole queue. It runs inside
+    the job so the click is answered at once."""
+    keys = {}
+
+    def prepare():
+        analysis_keys, context = inputs() if inputs else ({}, {})
+        keys.update(analysis_keys or {})
+        evidence = json.dumps(context or {}, separators=(",", ":"),
+                              sort_keys=True)
+        return ANALYZE_PROMPT % (PLUGIN_ROOT, n, repo, me, evidence), None
+
     parser = lambda selected, stdout, output: parse_result(  # noqa: E731
         selected, stdout, output, n)
     persister = lambda target, result: persist(  # noqa: E731
-        target, result, analysis_keys)
+        target, result, dict(keys))
     return _spawn("analyze", "pr:%s:analyze" % n, agent, repo,
-                  {"n": n, "analysis_keys": analysis_keys}, prompt,
+                  {"n": n}, None,
                   READ_TOOLS, ANALYZE_TIMEOUT, cwd, SCHEMA, parser, persister,
-                  profile="ANALYZE")
+                  profile="ANALYZE", prepare=prepare)
 
 
 def explain_pr(repo, n, me, cwd, agent="auto", what_key=None):
@@ -779,24 +808,42 @@ def analyze_issue(repo, n, me, cwd, agent="auto"):
                   ISSUE_SCHEMA, parser, persister)
 
 
-def triage(repo, flow, rows_path, me, cwd, agent="auto"):
-    exported = json.loads(Path(rows_path).read_text())
+TRIAGE_PROMPT = (
+    "Read %s/skills/%s/SKILL.md and use the already fetched JSON at %s for "
+    "%s (login %s). This is detached desk mode: do not write files, state, "
+    "comments or provider data. Work only the model-owned items named by "
+    "model_tasks or shortlist. Return exactly the JSON required by %s; use "
+    "null and empty arrays for PR fields irrelevant to an item's task.")
+
+
+def triage(repo, flow, export, me, cwd, agent="auto"):
+    """`export` performs the fresh provider read, publishes the grid and
+    returns the rows file. It is the expensive half of a triage and it runs
+    inside the job; the model is asked only for what the export still owes,
+    and when it owes nothing the job ends without starting an agent."""
     skill = "pr-triage" if flow == "pr-triage" else "issue-triage"
-    prompt = (
-        "Read %s/skills/%s/SKILL.md and use the already fetched JSON at %s for "
-        "%s (login %s). This is detached desk mode: do not write files, state, "
-        "comments or provider data. Work only the model-owned items named by "
-        "model_tasks or shortlist. Return exactly the JSON required by %s; use "
-        "null and empty arrays for PR fields irrelevant to an item's task."
-        % (PLUGIN_ROOT, skill, rows_path, repo, me, TRIAGE_SCHEMA))
+    published = {}
+
+    def prepare():
+        rows_path = export()
+        exported = json.loads(Path(rows_path).read_text())
+        published["rows"] = exported
+        due = (exported.get("shortlist") if flow == "issue-triage"
+               else exported.get("model_tasks"))
+        if not due:
+            return None, {"status": "done", "provider_changed": False,
+                          "report": "%s: griglia pubblicata, nessun lavoro "
+                                    "del modello dovuto" % flow}
+        return TRIAGE_PROMPT % (PLUGIN_ROOT, skill, rows_path, repo, me,
+                                TRIAGE_SCHEMA), None
+
     parser = lambda selected, stdout, output: parse_structured(  # noqa: E731
         selected, stdout, output)
     persister = lambda target, result: persist_triage(  # noqa: E731
-        target, result, flow, exported)
-    return _spawn("triage", flow, agent, repo,
-                  {"flow": flow, "rows": str(rows_path)}, prompt,
+        target, result, flow, published["rows"])
+    return _spawn("triage", flow, agent, repo, {"flow": flow}, None,
                   TRIAGE_TOOLS, ANALYZE_TIMEOUT, cwd, TRIAGE_SCHEMA,
-                  parser, persister)
+                  parser, persister, prepare=prepare)
 
 
 def operation(repo, flow, payload, me, cwd, agent="auto"):

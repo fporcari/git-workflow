@@ -128,6 +128,7 @@ REQUEST_STALE = 1800
 WORKING_STALE = 900          # a run that stopped saying anything
 CHAT_STALE = 45              # heartbeat older than this = no chat attached
 CHAT_BUSY_STALE = 3600       # a claimed request keeps the chat "attached"
+CHAT_CLAIM_GRACE = 20        # a live wait loop claims within one heartbeat
 
 
 def chat_heartbeat(repo, session=""):
@@ -161,6 +162,34 @@ def chat_attached(repo, state=None):
             and time.time() - busy.get("epoch", 0) <= CHAT_BUSY_STALE):
         return dict(mark)
     return None
+
+
+def chat_listening(repo, state=None):
+    """The chat that is heartbeating RIGHT NOW, or None.
+
+    `chat_attached` deliberately also covers the minutes a claimed request
+    takes: right for the chip, wrong for routing. A chat that died mid-request
+    keeps a `taken` record nobody expires, and every later click would be
+    enqueued for a conversation that will never read it — the desk goes silent
+    with no job to show. Only a fresh heartbeat may take a NEW click.
+    """
+    state = state if state is not None else load(repo)
+    mark = state.get("chat") or {}
+    if time.time() - mark.get("epoch", 0) <= CHAT_STALE:
+        return dict(mark)
+    return None
+
+
+def reclaim_request(repo, key):
+    """Give back a click the chat never took, so a one-shot agent can run it."""
+    def mutate(state):
+        record = (state.get("requests") or {}).get(key)
+        if (record and record.get("status") == "queued"
+                and time.time() - record.get("epoch", 0) > CHAT_CLAIM_GRACE):
+            record["status"] = "stale"
+            return True
+        return False
+    return update(repo, mutate)
 
 
 def claim_request(repo):

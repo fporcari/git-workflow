@@ -53,8 +53,10 @@ triage and workflow buttons each start one ephemeral CLI process, wait through
 the corresponding job JSON, then let the process exit. The launching
 conversation may finish as soon as it has opened the desk — or stay ATTACHED
 via `chatdesk.py wait`, in which case the server routes every non-triage click
-to that conversation instead (see "Attached chat" in the review-desk skill).
-Triage always stays on the independent one-shot agent.
+to that conversation instead, for as long as it keeps heartbeating (see
+"Attached chat" in the review-desk skill). Triage always stays on the
+independent one-shot agent, and so does any click a listening chat is not
+there to take.
 
 Active jobs expose their elapsed time, phase and sanitized public tool events
 through the same JSON. The browser reads that local progress once a second

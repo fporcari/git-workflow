@@ -504,6 +504,48 @@ class HeadlessAgents(unittest.TestCase):
         self.assertEqual(context["probe"]["head"], "head-seen-by-probe")
         self.assertEqual(keys["problem_head"], "head-seen-by-probe")
 
+    def test_the_provider_read_happens_inside_the_analyze_job(self):
+        """The click is answered at once; the probe and the gate fill are the
+        job's first phase, not seconds held open in the HTTP handler."""
+        calls = []
+
+        def inputs():
+            calls.append(True)
+            return {"analysis": "k"}, {"probe": {"fresh": True}}
+
+        with mock.patch.object(jobs, "_spawn", return_value="job") as spawn:
+            jobs.analyze_pr(REPO, 17, "me", str(ROOT), inputs=inputs)
+        self.assertEqual(calls, [], "the handler must not read the provider")
+        prompt, finished = spawn.call_args.kwargs["prepare"]()
+        self.assertEqual(len(calls), 1)
+        self.assertIsNone(finished)
+        self.assertIn('"probe"', prompt)
+
+    def test_a_triage_with_nothing_due_ends_without_starting_an_agent(self):
+        repo = REPO + "-triage-nowork"
+        path = deskstate.runtime_path(repo, "empty-rows.json")
+        path.write_text(json.dumps({"model_tasks": {}, "shortlist": []}))
+        self.addCleanup(safejson.remove, path)
+        with mock.patch.object(jobs, "resolve_agent", return_value="codex"), \
+                mock.patch.object(jobs, "command") as command:
+            job_id = jobs.triage(repo, "pr-triage", lambda: path, "me",
+                                 str(ROOT))
+            record = self._settled(repo, job_id)
+        self.addCleanup(safejson.remove, jobs.job_path(repo, job_id))
+        command.assert_not_called()
+        self.assertEqual(record["status"], "done")
+        self.assertIn("nessun lavoro del modello", record["result"]["report"])
+        self.assertEqual(record["events"][0]["detail"], "reading the provider")
+
+    def _settled(self, repo, job_id, timeout=10):
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            record = jobs.get(repo, job_id) or {}
+            if record.get("status") != "running":
+                return record
+            time.sleep(0.05)
+        raise AssertionError("job %s never settled" % job_id)
+
     def test_job_status_is_a_runtime_json_file(self):
         repo = REPO + "-job-file"
         job_id = "abc123"
@@ -1810,13 +1852,14 @@ class DetachedButtons(unittest.TestCase):
         self.assertEqual((status, payload["job"]), (202, "explain-job"))
         self.assertTrue(explain.call_args.args[-1])
 
-    def test_triage_publishes_before_starting_its_optional_job(self):
+    def test_triage_answers_with_a_job_before_reading_the_provider(self):
+        """The fresh read and the grid belong to the job, not to the click."""
         with mock.patch.object(jobs, "triage", return_value="triage-job") as triage:
             status, payload = self.post("/api/triage", {"flow": "pr-triage"})
-        self.assertEqual(status, 202)
-        self.assertTrue(payload["published"])
-        self.assertEqual(payload["job"], "triage-job")
-        self.assertTrue(Path(triage.call_args.args[2]).exists())
+        self.assertEqual((status, payload["job"]), (202, "triage-job"))
+        export = triage.call_args.args[2]
+        self.assertTrue(callable(export), "the handler must not run the export")
+        self.assertTrue(Path(export()).exists())
 
     def test_run_records_the_exact_scope_and_clamps_batch(self):
         with mock.patch.object(jobs, "operation", return_value="run-job") as operation:
@@ -1941,6 +1984,42 @@ class AttachedChat(unittest.TestCase):
         with mock.patch.object(jobs, "analyze_pr", return_value="job-1"):
             status, payload = self.post("/api/pr/1145/analyze")
         self.assertEqual((status, payload["job"]), (202, "job-1"))
+
+    def test_a_chat_that_died_mid_request_does_not_swallow_the_next_click(self):
+        """A `taken` record nothing expires kept the chat "attached" for an
+        hour: every later click was enqueued for a conversation that had
+        ended, so no job ever started and the desk showed nothing."""
+        deskstate.chat_heartbeat(REPO)
+        deskstate.request(REPO, "analyze:7", "analyze", 7, via="chat")
+        deskstate.claim_request(REPO)
+        self._expire_heartbeat()
+        self.assertTrue(deskstate.chat_attached(REPO), "the chip still says so")
+        with mock.patch.object(jobs, "analyze_pr", return_value="job-9"):
+            status, payload = self.post("/api/pr/1145/analyze")
+        self.assertEqual((status, payload["job"]), (202, "job-9"))
+
+    def test_a_click_the_chat_never_took_goes_back_to_a_one_shot_job(self):
+        deskstate.chat_heartbeat(REPO)
+        with mock.patch.object(jobs, "analyze_pr") as analyze:
+            self.assertEqual(self.post("/api/pr/1145/analyze")[1]["via"], "chat")
+        analyze.assert_not_called()
+        state = deskstate.load(REPO)
+        state["requests"]["analyze:1145"]["epoch"] -= (
+            deskstate.CHAT_CLAIM_GRACE + 5)
+        deskstate.save(REPO, state)
+        self._expire_heartbeat()
+        with mock.patch.object(jobs, "analyze_pr", return_value="job-10"):
+            status, payload = self.post("/api/pr/1145/analyze")
+        self.assertEqual((status, payload["job"]), (202, "job-10"))
+        self.assertEqual(
+            deskstate.load(REPO)["requests"]["analyze:1145"]["status"], "stale")
+
+    def test_a_listening_chat_still_takes_the_click(self):
+        deskstate.chat_heartbeat(REPO)
+        with mock.patch.object(jobs, "analyze_pr") as analyze:
+            status, payload = self.post("/api/pr/1145/analyze")
+        analyze.assert_not_called()
+        self.assertEqual((status, payload["via"]), (202, "chat"))
 
     def _cli(self, *args, **kw):
         return subprocess.run(

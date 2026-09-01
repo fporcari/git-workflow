@@ -283,6 +283,7 @@ let triageStamp=null;   // when the published triage changes, repaint the rows
 let providerRefresh=null; // a completed provider mutation forces one fresh read
 let flows={};
 let jobRecords={},runs={},runOpen=true,runHidden=null;
+let pendingClicks={},pendingTick=null;
 let agentPoll=null;
 let workingOn=null;
 let picked=new Set();   // the rows chosen by hand for the next loop
@@ -328,6 +329,29 @@ function forgetJob(job,key){
   if(key&&key.startsWith("flow:"))delete flows[key.slice(5)];
   else if(key)delete acting[key];
 }
+/* Between the press and the server's 202 there are seconds of provider work
+   (a triage rereads the whole queue). With nothing drawn here the desk looks
+   like it ignored the click, and the user presses again. */
+function startPending(key,title){
+  pendingClicks[key]={title,at:Date.now()};
+  if(!pendingTick)pendingTick=setInterval(renderJobs,1000);
+  render();
+}
+function endPending(key){
+  delete pendingClicks[key];
+  if(!Object.keys(pendingClicks).length&&pendingTick){
+    clearInterval(pendingTick);pendingTick=null;
+  }
+  renderJobs();
+}
+const clock=s=>`${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
+function pendingCard(entry){
+  return `<div class="jobCard"><div class="jobHead"><span class="spin"></span>
+    <b>${esc(entry.title)}</b><span>${esc(STAGE_LABEL.queued)}</span>
+    <span class="elapsed">${esc(clock(Math.floor((Date.now()-entry.at)/1000)))}</span></div>
+    <div class="jobRail"><i></i></div>
+    <div class="jobCurrent">richiesta inviata al desk — legge il provider e avvia il processo</div></div>`;
+}
 function jobTitle(job){
   const req=job.request||{};
   if(req.flow)return req.flow+(req.ns&&req.ns.length?" · "+req.ns.map(n=>"#"+n).join(" "):req.n?" · #"+req.n:"");
@@ -352,17 +376,21 @@ function runCard(last){
 }
 function renderJobs(){
   const box=$("jobPanel"),jobs=Object.values(jobRecords).filter(j=>j.status==="running");
+  const waiting=Object.values(pendingClicks);
   const last=lastRun();
-  box.classList.toggle("on",jobs.length>0||!!last);
-  if(!jobs.length&&!last){box.innerHTML="";return;}
-  box.innerHTML=(last?runCard(last):"")+jobs.map(job=>{
+  const busy=jobs.length>0||waiting.length>0;
+  box.classList.toggle("on",busy||!!last);
+  if(!busy&&!last){box.innerHTML="";return;}
+  // what is happening NOW first: a persistent report card on top pushed the
+  // live progress under the fold, and a buried card reads as no card at all
+  box.innerHTML=waiting.map(pendingCard).join("")+jobs.map(job=>{
     const p=job.progress||{},events=(job.events||[]).slice(-7);
     return `<div class="jobCard"><div class="jobHead"><span class="spin"></span>
       <b>${esc(jobTitle(job))}</b><span>${esc(STAGE_LABEL[p.stage]||p.stage||"al lavoro")}</span>
-      <span class="elapsed">${Math.floor((p.elapsed||0)/60)}:${String((p.elapsed||0)%60).padStart(2,"0")} · ${esc(job.agent||"")}</span></div>
+      <span class="elapsed">${esc(clock(p.elapsed||0))} · ${esc(job.agent||"")}</span></div>
       <div class="jobRail"><i></i></div><div class="jobCurrent">${esc(p.detail||"processo avviato")}</div>
       ${events.length?`<div class="jobEvents">${events.map(e=>`<div><time>${esc(e.at||"")}</time><span>${esc(e.detail||e.stage||"")}</span></div>`).join("")}</div>`:""}</div>`;
-  }).join("");
+  }).join("")+(last?runCard(last):"");
   const toggle=box.querySelector("[data-run-toggle]");
   if(toggle)toggle.onclick=()=>{runOpen=!runOpen;renderJobs();};
   const close=box.querySelector("[data-run-close]");
@@ -841,7 +869,7 @@ function actionButton(id,kind,label,tip,row,primary){
   const q=pending(row,kind);
   if(q)return `<span class="btn locked" title="Richiesta precedente ancora registrata alle ${esc(q.at)}.">${q.via==="chat"?"in chat":"richiesta precedente"} · ${esc(q.at)}</span>`;
   const done=closed(row,kind);
-  const enabled=agentReady;
+  const enabled=agentReady&&!pendingClicks[(DESK==="issue"?"i":"p")+row.n];
   return `<button class="btn ${primary?"primary":""}" id="${id}" ${enabled?"":"disabled"} title="${esc(tip)}">${done?"↻ ":""}${label}</button>`;
 }
 function actBadge(r){
@@ -1040,9 +1068,12 @@ async function waitJob(jobId,key,label){
   }
 }
 async function handOver(r,btn,path,body,kind,note){
+  const key=(DESK==="issue"?"i":"p")+r.n;
   btn.disabled=true;btn.classList.add("working");
+  startPending(key,`${note} · #${r.n}`);
   try{
     const d=await post(path,body);
+    endPending(key);
     if(d.order)r.order=d.order;
     if(d.via==="chat"){
       localFeed(`${note} su #${r.n}: in coda alla chat collegata — l'esito arriva in conversazione`);
@@ -1051,8 +1082,8 @@ async function handOver(r,btn,path,body,kind,note){
     }
     if(!d.job)throw new Error("il server non ha creato il job");
     localFeed(`${note} su #${r.n}: agente one-shot avviato`);
-    await waitJob(d.job,(DESK==="issue"?"i":"p")+r.n,note);
-  }catch(e){acting[(DESK==="issue"?"i":"p")+r.n]={status:"error",error:e.message};}
+    await waitJob(d.job,key,note);
+  }catch(e){endPending(key);acting[key]={status:"error",error:e.message};}
   render();
 }
 const doOrder=(r,btn,draft)=>handOver(r,btn,`/api/pr/${r.n}/order`,
@@ -1064,13 +1095,12 @@ const doExplain=(r,btn)=>handOver(r,btn,`/api/pr/${r.n}/explain`,{},"explain","s
 const doIssueWork=(r,btn)=>handOver(r,btn,`/api/issue/${r.n}/analyze`,{},
   "issue-analyze","sessione dedicata");
 async function doFlow(path,flow,note,extra){
+  const key="flow:"+flow;
+  flows[flow]={status:"queued"};       // the button says so before the 202
+  startPending(key,flow);
   try{
     const d=await post(path,Object.assign({flow},extra||{}));
-    if(d.model_needed===false){
-      delete flows[flow];
-      localFeed(`${flow}: pubblicato, nessun lavoro del modello dovuto`);
-      await loadDesk(false);return;
-    }
+    endPending(key);
     if(d.via==="chat"){
       flows[flow]={status:"queued",via:"chat"};
       localFeed(`${flow}: in coda alla chat collegata — l'esito arriva in conversazione`);
@@ -1080,9 +1110,9 @@ async function doFlow(path,flow,note,extra){
     flows[flow]={status:"running",job:d.job};
     localFeed(note);
     render();
-    await waitJob(d.job,"flow:"+flow,flow);
+    await waitJob(d.job,key,flow);
     delete flows[flow];
-  }catch(e){banner("errBox",esc(e.message),true);}
+  }catch(e){endPending(key);delete flows[flow];banner("errBox",esc(e.message),true);}
   render();
 }
 /* Chosen rows mean: exactly these, in this order, and then stop. */

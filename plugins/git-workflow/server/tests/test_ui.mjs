@@ -194,7 +194,7 @@ globalThis.fetch = async () => { throw new Error("network is off in this test");
 /* ---- run the page's script ---- */
 const script = html.match(/<script>\n([\s\S]*)\n<\/script>/)[1];
 const page = new Function(`${script}\nreturn {applyDesk,applyState,render,renderDetail,select,moveSelection,setSort,visiblePrs,visibleIssues,
-  rowClick,togglePick,clearPicks,doRun,MAX_BATCH,pending,closed,
+  rowClick,togglePick,clearPicks,doRun,MAX_BATCH,pending,closed,startPending,endPending,
   get state(){return {prs,issues,selected,tab,view,loaded,DESK,truncated,pendingMerge,sort,
                       picked:[...picked],askBatch};},
   set view(v){view=v;}, set query(v){query=v;}, set agent(v){agentReady=v;}};`)();
@@ -432,6 +432,19 @@ ok("observable agent activity is shown below the current phase",
    /gh pr view/.test(jobPanel.innerHTML) && /pytest tests\/test_api.py/.test(jobPanel.innerHTML));
 ok("the progress card identifies its one-shot backend",
    /codex/.test(jobPanel.innerHTML));
+/* ---- 7e-bis. the seconds between the press and the server's answer ----
+   A triage rereads the whole provider before it answers: with nothing drawn
+   the desk reads as if it had ignored the click. */
+page.startPending("flow:pr-triage", "pr-triage");
+const waitPanel = document.getElementById("jobPanel");
+ok("a pressed button paints a card before the server has answered",
+   waitPanel.classList.contains("on") &&
+   /pr-triage/.test(waitPanel.innerHTML) && /in coda/.test(waitPanel.innerHTML));
+ok("the live job keeps its own card while another click waits",
+   /pytest tests\/test_api.py/.test(waitPanel.innerHTML));
+page.endPending("flow:pr-triage");
+ok("the waiting card goes when the server answers",
+   !/in coda/.test(document.getElementById("jobPanel").innerHTML));
 /* ---- 7f. the report a finished run leaves behind ---- */
 const REPORT = "pr-loop su genropy/genropy, working set [1183, 1099].\n\n"
   + "AZIONI AUTOMATICHE: nessuna.\n\nPROPOSTE: #1183 review --request-changes.";
@@ -446,6 +459,20 @@ ok("a finished run leaves its report on the page, whole",
 ok("the report card says which run and when",
    /pr-loop/.test(reportPanel.innerHTML) && /14:24:15/.test(reportPanel.innerHTML) &&
    /serve una decisione/.test(reportPanel.innerHTML));
+/* the persistent report used to be drawn ABOVE the live cards, which pushed
+   the progress of a running job under the fold */
+page.applyState({ agent: { mode: "on-demand", busy: true, jobs: [liveJob] }, feed: [],
+                  runs: { "pr-loop": { status: "needs-input", report: REPORT,
+                                       at: "14:24:15" } } });
+page.render();
+const bothPanel = document.getElementById("jobPanel");
+ok("live progress is drawn above the report a past run left behind",
+   bothPanel.innerHTML.indexOf("pytest tests/test_api.py") <
+   bothPanel.innerHTML.indexOf("PROPOSTE: #1183"));
+page.applyState({ agent: { mode: "on-demand", busy: false }, feed: [],
+                  runs: { "pr-loop": { status: "needs-input", report: REPORT,
+                                       at: "14:24:15" } } });
+page.render();
 reportPanel.querySelector("[data-run-toggle]").click();
 ok("the report folds away without losing the card",
    !document.getElementById("jobPanel").innerHTML.includes("PROPOSTE: #1183") &&

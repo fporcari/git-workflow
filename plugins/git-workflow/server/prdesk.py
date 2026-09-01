@@ -761,36 +761,35 @@ class Handler(BaseHTTPRequestHandler):
                 if flow not in ("pr-triage", "issue-triage"):
                     self._send(400, {"error": "unknown triage flow"})
                     return
-                # the deterministic half reads fresh and publishes here; the
-                # chat is asked only for the model-owned artifacts still due
-                path = self.desk.run_triage()
-                exported = json.loads(path.read_text())
-                model_work = (exported.get("shortlist") if flow == "issue-triage"
-                              else exported.get("model_tasks"))
-                if not model_work:
-                    self._send(200, {"queued": False, "published": True,
-                                     "model_needed": False, "path": str(path)})
-                    return
+                # the fresh read and the grid are the job's first phase: they
+                # cost seconds on a real queue, and a click must not hold them
+                # open. The model is asked only for what the export still owes
                 job_id = jobs.triage(
-                    self.desk.repo, flow, path, self.desk.me, self.desk.cwd,
-                    self.desk.agent)
-                self._send(202, {"job": job_id, "published": True,
-                                 "model_needed": True, "path": str(path)})
+                    self.desk.repo, flow, self.desk.run_triage, self.desk.me,
+                    self.desk.cwd, self.desk.agent)
+                self._send(202, {"job": job_id})
             else:
                 self._send(404, {"error": "not found"})
         except Exception as exc:
             self._send(502, {"error": str(exc)})
 
     def _analyze_pr(self, n):
-        keys, context = self._analysis_inputs(n)
-        if self._chat_handoff("analyze", n,
-                              {"analysis_keys": keys, "context": context},
+        # the payload is a callable: an attached chat needs the context in its
+        # record, a one-shot job reads it in its own thread, and a click that
+        # goes nowhere pays for neither
+        if self._chat_handoff("analyze", n, self._analysis_payload(n),
                               "pr-analyze #%s" % n):
             return
         job_id = jobs.analyze_pr(self.desk.repo, n, self.desk.me,
                                  self.desk.cwd, self.desk.agent,
-                                 keys, context)
+                                 lambda: self._analysis_inputs(n))
         self._send(202, {"job": job_id})
+
+    def _analysis_payload(self, n):
+        def build():
+            keys, context = self._analysis_inputs(n)
+            return {"analysis_keys": keys, "context": context}
+        return build
 
     def _analysis_inputs(self, n):
         row = next((row for row in self.desk.queue()["rows"]
@@ -837,13 +836,21 @@ class Handler(BaseHTTPRequestHandler):
 
         Triage never comes through here: its artifacts are the desk's own
         cells, so it stays on the independent agent whatever the chat state.
-        Returns the response sent, or None when no chat is attached and the
+
+        Only a chat that is heartbeating may take a NEW click: a conversation
+        that ended mid-request leaves a `taken` record nothing expires, and
+        routing to it enqueues clicks nobody will ever read — no job, no
+        progress, a mute panel. A click it never claimed goes back too.
+
+        Returns the response sent, or None when no chat is listening and the
         caller must start the job as before."""
-        if not deskstate.chat_attached(self.desk.repo):
-            return None
         key = key or deskstate.request_key(kind, n)
+        deskstate.reclaim_request(self.desk.repo, key)
+        if not deskstate.chat_listening(self.desk.repo):
+            return None
         record, created = deskstate.request(
-            self.desk.repo, key, kind, n, label, via="chat", payload=payload)
+            self.desk.repo, key, kind, n, label, via="chat",
+            payload=payload() if callable(payload) else payload)
         if created:
             notify.notify(self.desk.repo,
                           "%s → in coda alla chat collegata" % label, n)

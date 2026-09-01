@@ -80,6 +80,14 @@ click time:
   it always runs on the independent one-shot agent, whatever the chat state,
   because its artifacts are desk cells, not conversation output.
 
+Only a chat that is heartbeating takes a NEW click. `chatdesk.py wait`
+heartbeats; the minutes spent executing a claimed request do not, so a click
+that lands meanwhile starts a one-shot agent instead of queueing behind the
+conversation. A click the chat never claims is handed back the same way. This
+is what makes a session that ends mid-request cost nothing: without it the
+claimed record keeps the desk addressing a conversation nobody is reading, and
+every button falls silent with no job to show.
+
 The attached chat's loop, after opening the desk URL:
 
 ```sh
