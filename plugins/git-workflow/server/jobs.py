@@ -108,14 +108,25 @@ def claude_schema(schema):
 
 EFFORTS = {"low", "medium", "high", "xhigh", "max"}
 
+# Claude aliases only: Codex keeps its configured defaults unless the env says
+DEFAULT_PROFILES = {
+    "claude": {"ANALYZE": ("opus", "high"),
+               "TRIAGE": ("opus", "medium"),
+               "OPERATION": ("opus", "high")},
+}
+
 
 def _profile(agent, scope):
     if not scope:
         return None, None
     prefix = "GIT_WORKFLOW_%s_%s_" % (agent.upper(), scope.upper())
     shared = "GIT_WORKFLOW_%s_" % scope.upper()
-    model = os.environ.get(prefix + "MODEL") or os.environ.get(shared + "MODEL")
-    effort = os.environ.get(prefix + "EFFORT") or os.environ.get(shared + "EFFORT")
+    default_model, default_effort = DEFAULT_PROFILES.get(agent, {}).get(
+        scope.upper(), (None, None))
+    model = (os.environ.get(prefix + "MODEL") or os.environ.get(shared + "MODEL")
+             or default_model)
+    effort = (os.environ.get(prefix + "EFFORT") or os.environ.get(shared + "EFFORT")
+              or default_effort)
     return model, effort if effort in EFFORTS else None
 
 

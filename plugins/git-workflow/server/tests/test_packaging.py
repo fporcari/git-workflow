@@ -1,6 +1,9 @@
 """Cross-host packaging invariants, without either host installed."""
 
 import json
+import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -173,6 +176,33 @@ class Packaging(unittest.TestCase):
             self.assertIn("chatdesk.py listen", text, name)
             self.assertIn("Monitor(", text, name)
             self.assertNotIn("CLAUDE_PLUGIN_ROOT", text, name)
+
+    def test_the_pr_loop_hook_ships_for_claude_and_stays_out_of_codex(self):
+        """Claude Code loads hooks/hooks.json; Codex ignores the directory, so
+        the guard costs it nothing and the skills stay host-agnostic."""
+        hooks = json.loads((PLUGIN / "hooks" / "hooks.json").read_text())
+        [entry] = hooks["hooks"]["PreToolUse"]
+        self.assertEqual(entry["matcher"], "Skill")
+        self.assertIn("${CLAUDE_PLUGIN_ROOT}/hooks/require-opus-skill.py",
+                      entry["hooks"][0]["command"])
+        self.assertNotIn("hooks", self.manifest("codex"))
+        script = PLUGIN / "hooks" / "require-opus-skill.py"
+        self.assertTrue(script.is_file())
+        with tempfile.TemporaryDirectory() as tmp:
+            def run(skill, model):
+                transcript = Path(tmp) / "t.jsonl"
+                transcript.write_text(json.dumps(
+                    {"message": {"model": model}}) + "\n" if model else "")
+                payload = json.dumps({"tool_input": {"skill": skill},
+                                      "transcript_path": str(transcript)})
+                return subprocess.run([sys.executable, str(script)],
+                                      input=payload, capture_output=True,
+                                      text=True).returncode
+            self.assertEqual(run("git-workflow:pr-loop", "claude-fable-5-1"), 0)
+            self.assertEqual(run("git-workflow:pr-loop", "claude-opus-5"), 0)
+            self.assertEqual(run("git-workflow:pr-loop", "claude-sonnet-5"), 2)
+            self.assertEqual(run("git-workflow:pr-loop", None), 2)
+            self.assertEqual(run("git-workflow:pr-analyze", "claude-sonnet-5"), 0)
 
 
 if __name__ == "__main__":

@@ -409,7 +409,7 @@ class HeadlessAgents(unittest.TestCase):
     def test_analysis_profiles_map_to_each_host(self):
         env = {"GIT_WORKFLOW_ANALYZE_MODEL": "fast-model",
                "GIT_WORKFLOW_ANALYZE_EFFORT": "medium"}
-        with mock.patch.dict(os.environ, env, clear=False):
+        with mock.patch.dict(os.environ, env, clear=True):
             claude = jobs.command("claude", "p", jobs.READ_TOOLS, "/tmp",
                                   profile="ANALYZE")
             codex = jobs.command("codex", "p", jobs.READ_TOOLS, "/tmp",
@@ -425,7 +425,7 @@ class HeadlessAgents(unittest.TestCase):
                "GIT_WORKFLOW_OPERATION_MODEL": "o-model",
                "GIT_WORKFLOW_OPERATION_EFFORT": "high",
                "GIT_WORKFLOW_CLAUDE_OPERATION_MODEL": "o-claude"}
-        with mock.patch.dict(os.environ, env, clear=False):
+        with mock.patch.dict(os.environ, env, clear=True):
             triage = jobs.command("claude", "p", jobs.TRIAGE_TOOLS, "/tmp",
                                   profile="TRIAGE")
             op = jobs.command("claude", "p", "", "/tmp", read_only=False,
@@ -444,6 +444,19 @@ class HeadlessAgents(unittest.TestCase):
                                (jobs.operation, "OPERATION")):
             self.assertIn('profile="%s"' % scope,
                           inspect.getsource(builder), builder.__name__)
+
+    def test_profiles_default_to_opus_on_claude_and_to_nothing_on_codex(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            for scope, effort in (("ANALYZE", "high"), ("TRIAGE", "medium"),
+                                  ("OPERATION", "high")):
+                claude = jobs.command("claude", "p", "", "/tmp", profile=scope)
+                codex = jobs.command("codex", "p", "", "/tmp", profile=scope)
+                self.assertEqual(claude[claude.index("--model") + 1], "opus", scope)
+                self.assertEqual(claude[claude.index("--effort") + 1], effort, scope)
+                self.assertNotIn("--model", codex, scope)
+                self.assertFalse(any("model_reasoning_effort" in c for c in codex), scope)
+            bare = jobs.command("claude", "p", "", "/tmp")
+            self.assertNotIn("--model", bare)
 
     def test_claude_stream_result_uses_the_structured_final_event(self):
         stream = "\n".join((

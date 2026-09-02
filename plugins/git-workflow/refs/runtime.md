@@ -46,21 +46,26 @@ pr-loop, issue-loop and orders):
 - `GIT_WORKFLOW_CLAUDE_<SCOPE>_MODEL` / `_EFFORT` override them for Claude.
 
 Effort accepts the common portable values `low`, `medium`, `high`, `xhigh` and
-`max`. With no variables set, each host keeps its configured defaults.
+`max`. With no variables set, Claude jobs default to `opus` — `ANALYZE` and
+`OPERATION` at `high`, `TRIAGE` at `medium` — and Codex jobs keep the host's
+configured defaults, since those aliases are Claude's.
 
 ## Model policy
 
 The model follows the reader of the output. Output a human reads — replies to
 reviews, PR bodies, proposals, and the merges and realigns Lane A performs
 without asking again — wants the strongest model: open the launching chat on
-`fable` at effort `high`, and give `OPERATION` the same, since a detached loop
-does that chat's work. Output a schema reads wants `opus`: `ANALYZE` at `high`
+`fable` at effort `high`, and give `OPERATION` the same where the account has
+fable (`GIT_WORKFLOW_CLAUDE_OPERATION_MODEL=fable`; the shipped default stays
+`opus` because a model the account lacks kills the job at launch). Output a schema reads wants `opus`: `ANALYZE` at `high`
 (claims verified against the code), `TRIAGE` at `medium` (a classification over
 a grid the server already computed). A background subagent spawned for an
 analysis is `opus` too, named explicitly in the delegation call rather than
 inherited. `sonnet` is not in the palette: a wrong answer on somebody else's PR
-is public and has no repair. Nothing enforces the chat's model; the profiles
-enforce the jobs'.
+is public and has no repair. The profiles enforce the jobs' model; the chat's
+is enforced only where the host can: on Claude Code the plugin ships a
+PreToolUse hook (`hooks/hooks.json`) that blocks `pr-loop` below Opus or
+Fable, fail-closed; Codex has no hooks, so there the hint above is all.
 
 The server is detached from the launching conversation. It reads provider
 cache, rows and job JSON files by itself, and it never starts a model merely
