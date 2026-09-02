@@ -801,7 +801,7 @@ def explain_pr(repo, n, me, cwd, agent="auto", what_key=None):
     return _spawn("explain", "pr:%s:explain" % n, agent, repo,
                   {"n": n, "what_key": what_key}, prompt,
                   READ_TOOLS, ANALYZE_TIMEOUT, cwd, EXPLAIN_SCHEMA,
-                  parser, persister)
+                  parser, persister, profile="ANALYZE")
 
 
 def analyze_issue(repo, n, me, cwd, agent="auto"):
@@ -816,7 +816,7 @@ def analyze_issue(repo, n, me, cwd, agent="auto"):
         target, result, n)
     return _spawn("issue-analyze", "issue:%s:analyze" % n, agent, repo,
                   {"n": n}, prompt, TRIAGE_TOOLS, ANALYZE_TIMEOUT, cwd,
-                  ISSUE_SCHEMA, parser, persister)
+                  ISSUE_SCHEMA, parser, persister, profile="ANALYZE")
 
 
 TRIAGE_PROMPT = (
@@ -854,7 +854,7 @@ def triage(repo, flow, export, me, cwd, agent="auto"):
         target, result, flow, published["rows"])
     return _spawn("triage", flow, agent, repo, {"flow": flow}, None,
                   TRIAGE_TOOLS, ANALYZE_TIMEOUT, cwd, TRIAGE_SCHEMA,
-                  parser, persister, prepare=prepare)
+                  parser, persister, profile="TRIAGE", prepare=prepare)
 
 
 def operation(repo, flow, payload, me, cwd, agent="auto"):
@@ -885,4 +885,5 @@ def operation(repo, flow, payload, me, cwd, agent="auto"):
     key = "order:%s" % n if n is not None else flow
     return _spawn("operation", key, agent, repo, dict(payload, flow=flow),
                   prompt, "", OPERATION_TIMEOUT, cwd, OPERATION_SCHEMA,
-                  parse_operation, persister, read_only=False)
+                  parse_operation, persister, read_only=False,
+                  profile="OPERATION")

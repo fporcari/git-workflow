@@ -29,6 +29,10 @@ happens. Every click except triage arrives here as the command it stands for
 executed here, reasoning and output included, while the desk window sits in
 any browser — or gets ignored.
 
+Open that chat on `fable` at effort `high`: what it produces is read by humans
+and acts without a second ask (`runtime.md` → *Model policy*). The one-shot jobs
+keep their own profiles.
+
 - **Claude Code**: right after opening the URL, arm ONE persistent monitor
   and end the turn:
 

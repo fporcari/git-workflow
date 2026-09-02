@@ -98,7 +98,7 @@ for — the filtering is not.
 ## Step 1 — Analyze the ones you are about to propose
 
 Spawn one **issue-analyze** per issue in the batch, in virgin contexts
-(read-only agents, or a new chat when run manually), **all at once**: the
+(read-only agents on `opus`, named in the delegation call — or a new chat when run manually), **all at once**: the
 batch's whole latency win is here, not in the execution. Hand each the issue
 number, the repo and the type; it follows
 `<PLUGIN_ROOT>/skills/issue-analyze/SKILL.md` and returns the typed

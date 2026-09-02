@@ -7,6 +7,7 @@ stale-while-revalidate and single-flight behaviour, and every HTTP endpoint
 including the 304 path.
 """
 
+import inspect
 import json
 import multiprocessing
 import os
@@ -417,6 +418,32 @@ class HeadlessAgents(unittest.TestCase):
         self.assertEqual(claude[claude.index("--effort") + 1], "medium")
         self.assertEqual(codex[codex.index("--model") + 1], "fast-model")
         self.assertIn('model_reasoning_effort="medium"', codex)
+
+    def test_every_job_kind_carries_its_own_profile_scope(self):
+        env = {"GIT_WORKFLOW_TRIAGE_MODEL": "t-model",
+               "GIT_WORKFLOW_TRIAGE_EFFORT": "medium",
+               "GIT_WORKFLOW_OPERATION_MODEL": "o-model",
+               "GIT_WORKFLOW_OPERATION_EFFORT": "high",
+               "GIT_WORKFLOW_CLAUDE_OPERATION_MODEL": "o-claude"}
+        with mock.patch.dict(os.environ, env, clear=False):
+            triage = jobs.command("claude", "p", jobs.TRIAGE_TOOLS, "/tmp",
+                                  profile="TRIAGE")
+            op = jobs.command("claude", "p", "", "/tmp", read_only=False,
+                              profile="OPERATION")
+            codex_op = jobs.command("codex", "p", "", "/tmp", read_only=False,
+                                    profile="OPERATION")
+        self.assertEqual(triage[triage.index("--model") + 1], "t-model")
+        self.assertEqual(triage[triage.index("--effort") + 1], "medium")
+        self.assertEqual(op[op.index("--model") + 1], "o-claude")
+        self.assertEqual(op[op.index("--effort") + 1], "high")
+        self.assertEqual(codex_op[codex_op.index("--model") + 1], "o-model")
+        for builder, scope in ((jobs.analyze_pr, "ANALYZE"),
+                               (jobs.explain_pr, "ANALYZE"),
+                               (jobs.analyze_issue, "ANALYZE"),
+                               (jobs.triage, "TRIAGE"),
+                               (jobs.operation, "OPERATION")):
+            self.assertIn('profile="%s"' % scope,
+                          inspect.getsource(builder), builder.__name__)
 
     def test_claude_stream_result_uses_the_structured_final_event(self):
         stream = "\n".join((

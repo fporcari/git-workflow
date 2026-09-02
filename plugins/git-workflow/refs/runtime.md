@@ -36,15 +36,31 @@ python3 <PLUGIN_ROOT>/server/prdesk.py --desk issue --agent claude
 Use `--agent claude` from Claude Code and `--agent codex` from Codex.
 `--agent auto` is the compatibility fallback for a manual launch.
 
-Read-only PR analysis may use an explicit model profile without changing the
-user's global host configuration:
+Every one-shot job kind may carry an explicit model profile without changing
+the user's global host configuration. The scopes are `ANALYZE` (pr-analyze,
+issue-analyze, explain), `TRIAGE` (both triages) and `OPERATION` (detached
+pr-loop, issue-loop and orders):
 
-- `GIT_WORKFLOW_ANALYZE_MODEL` and `GIT_WORKFLOW_ANALYZE_EFFORT` apply to both;
-- `GIT_WORKFLOW_CODEX_ANALYZE_MODEL` / `_EFFORT` override them for Codex;
-- `GIT_WORKFLOW_CLAUDE_ANALYZE_MODEL` / `_EFFORT` override them for Claude.
+- `GIT_WORKFLOW_<SCOPE>_MODEL` and `GIT_WORKFLOW_<SCOPE>_EFFORT` apply to both;
+- `GIT_WORKFLOW_CODEX_<SCOPE>_MODEL` / `_EFFORT` override them for Codex;
+- `GIT_WORKFLOW_CLAUDE_<SCOPE>_MODEL` / `_EFFORT` override them for Claude.
 
 Effort accepts the common portable values `low`, `medium`, `high`, `xhigh` and
 `max`. With no variables set, each host keeps its configured defaults.
+
+## Model policy
+
+The model follows the reader of the output. Output a human reads — replies to
+reviews, PR bodies, proposals, and the merges and realigns Lane A performs
+without asking again — wants the strongest model: open the launching chat on
+`fable` at effort `high`, and give `OPERATION` the same, since a detached loop
+does that chat's work. Output a schema reads wants `opus`: `ANALYZE` at `high`
+(claims verified against the code), `TRIAGE` at `medium` (a classification over
+a grid the server already computed). A background subagent spawned for an
+analysis is `opus` too, named explicitly in the delegation call rather than
+inherited. `sonnet` is not in the palette: a wrong answer on somebody else's PR
+is public and has no repair. Nothing enforces the chat's model; the profiles
+enforce the jobs'.
 
 The server is detached from the launching conversation. It reads provider
 cache, rows and job JSON files by itself, and it never starts a model merely
