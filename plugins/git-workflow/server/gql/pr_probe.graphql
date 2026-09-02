@@ -13,7 +13,7 @@ query($owner:String!,$name:String!,$number:Int!){
       }
       reviews(last:100){
         pageInfo{hasPreviousPage}
-        nodes{author{login} state submittedAt commit{oid}}
+        nodes{author{login} state bodyText submittedAt commit{oid}}
       }
       reviewThreads(first:100){
         totalCount pageInfo{hasNextPage}

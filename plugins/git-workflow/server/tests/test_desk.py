@@ -244,6 +244,23 @@ class Verdicts(unittest.TestCase):
                "req": ["me"], "reviews": [], "unresolved": 0, "last": None}
         self.assertEqual(verdicts.verdict(row, "me")[1], "attention")
 
+    def test_an_approval_with_a_body_is_read_before_any_merge(self):
+        row = {"author": "me", "draft": False, "merge": "CLEAN", "decision": "APPROVED",
+               "assignees": ["me"], "req": [],
+               "reviews": [{"who": "x", "state": "APPROVED", "has_text": True}],
+               "unresolved": 0, "last": None}
+        todo, state, autorun = verdicts.verdict(row, "me")
+        self.assertEqual(autorun, "asks")
+        self.assertIn("leggilo", todo)
+
+    def test_a_bare_approval_stays_a1(self):
+        row = {"author": "me", "draft": False, "merge": "CLEAN", "decision": "APPROVED",
+               "assignees": ["me"], "req": [],
+               "reviews": [{"who": "x", "state": "APPROVED", "has_text": False},
+                           {"who": "y", "state": "COMMENTED", "has_text": True}],
+               "unresolved": 0, "last": None}
+        self.assertEqual(verdicts.verdict(row, "me")[2], "A1")
+
     def test_an_approval_never_opens_a_conversation(self):
         row = {"author": "me", "draft": False, "merge": "CLEAN", "decision": "APPROVED",
                "assignees": ["me"],

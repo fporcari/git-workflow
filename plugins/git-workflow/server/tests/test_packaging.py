@@ -164,7 +164,11 @@ class Packaging(unittest.TestCase):
         for field in ("headRefOid", "reviews", "reviewThreads",
                       "statusCheckRollup"):
             self.assertIn(field, probe)
-        self.assertNotIn("bodyText", probe)
+        # the probe reads review bodies only to say whether one is empty (the
+        # provider keeps a bool): no thread or comment text rides on it
+        self.assertEqual(probe.count("bodyText"), 1)
+        self.assertIn("state bodyText submittedAt", probe)
+        self.assertNotIn("comments(", probe)
 
     def test_desks_stay_attached_unless_the_user_opts_out(self):
         """The desk is the remote, the launching chat is the workplace: every

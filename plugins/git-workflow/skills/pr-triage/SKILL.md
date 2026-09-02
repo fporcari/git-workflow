@@ -166,6 +166,10 @@ gh pr diff <n> --name-only | sed 's|/[^/]*$||' | sort -u
   with `reviews` also empty it is **unreviewed** → `get a reviewer`.
 - **An approval counts only on the current head.** With `dismiss_stale_reviews`, a
   `DISMISSED` entry counts for nothing.
+- **An approval with a body is read, not trusted.** Reviewers pick the wrong
+  button: "approve, but rename X first" is a change request. The engine cannot
+  tell that from "LGTM", so any approval carrying text drops the PR to `asks`
+  (*approvata con un testo: leggilo prima del merge*) and a model reads it.
 - **`CLEAN` means nothing on an unprotected base** — read `base` first. Stacked
   PRs: mark the chain, name the PR they sit on, judge them by the eventual base.
 - **`CHANGES_REQUESTED` is sticky, not an inbox.** `last` decides whose turn it
@@ -274,7 +278,7 @@ Closed set. Anything else is `needs a look - <the one unclear thing>` with `asks
 
 | what is to be done | when | autorun |
 |---|---|---|
-| `merge it` | his PR, not draft, `APPROVED`, zero standing requests, approvals on current head, `CLEAN` on a protected base | `A1` |
+| `merge it` | his PR, not draft, `APPROVED` with empty bodies, zero standing requests, approvals on current head, `CLEAN` on a protected base | `A1` |
 | `answer the review` | a reviewer's `CHANGES_REQUESTED` is last and the ask is one named local edit | `A2` |
 | `answer the review` | same, but the ask needs analysis first | `asks` |
 | `answer <login>` | a reviewer's `COMMENTED` is last and asks a question | `asks` |

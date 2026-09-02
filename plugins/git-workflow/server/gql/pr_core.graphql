@@ -8,7 +8,7 @@ query($q:String!){
         author{login}
         assignees(first:5){pageInfo{hasNextPage} nodes{login}}
         reviewRequests(first:8){pageInfo{hasNextPage} nodes{requestedReviewer{...on User{login}}}}
-        reviews(last:8){pageInfo{hasPreviousPage} nodes{author{login} state submittedAt commit{oid}}}
+        reviews(last:8){pageInfo{hasPreviousPage} nodes{author{login} state bodyText submittedAt commit{oid}}}
         comments(last:1){nodes{author{login} createdAt}}
         reviewThreads(first:10){pageInfo{hasNextPage} nodes{isResolved comments(last:1){nodes{author{login} createdAt}}}}
         closingIssuesReferences(first:8){pageInfo{hasNextPage} nodes{number title assignees(first:4){nodes{login}}}}

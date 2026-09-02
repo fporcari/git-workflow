@@ -134,6 +134,7 @@ class GitHubProvider(Provider):
                 "state": item.get("state"),
                 "submitted": item.get("submittedAt"),
                 "commit": (item.get("commit") or {}).get("oid"),
+                "has_text": bool((item.get("bodyText") or "").strip()),
             } for item in (pr.get("reviews") or {}).get("nodes") or []],
             "threads": threads.get("totalCount", 0),
             "unresolved": sum(not item.get("isResolved")
@@ -156,7 +157,8 @@ class GitHubProvider(Provider):
             who = (r.get("author") or {}).get("login")
             reviews.append({"who": who, "state": r["state"],
                             "on": r["submittedAt"][:10],
-                            "commit": (r.get("commit") or {}).get("oid")})
+                            "commit": (r.get("commit") or {}).get("oid"),
+                            "has_text": bool((r.get("bodyText") or "").strip())})
             spoke.append({"t": r["submittedAt"], "who": who, "ch": r["state"].lower()})
         unresolved = 0
         for th in node["reviewThreads"]["nodes"]:

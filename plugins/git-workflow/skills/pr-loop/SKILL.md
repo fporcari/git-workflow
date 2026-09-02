@@ -196,7 +196,10 @@ All of these, checked fresh, or it is not an A1:
    the assignee, which is why this never extends to anybody else's PR;
 2. `isDraft == false`;
 3. `reviewDecision == "APPROVED"`, zero standing `reviewRequests`, no
-   `CHANGES_REQUESTED`, no comment-only answer left unanswered;
+   `CHANGES_REQUESTED`, no comment-only answer left unanswered, and **no
+   approval carrying a body** — an approval that says something may be a
+   change request filed under the wrong button, so it is read, never merged
+   unattended;
 4. every approval on the **current head**;
 5. `mergeStateStatus == "CLEAN"` on a **protected** base.
 

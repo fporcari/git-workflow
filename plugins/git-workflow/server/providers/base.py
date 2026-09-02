@@ -9,7 +9,7 @@ provider whose merge state is a separate phase — see mergestates() below:
     base, base_head (base commit oid), head (commit oid), incomplete (bool),
     merge (CLEAN|DIRTY|BLOCKED|UNSTABLE|UNKNOWN), decision
     (APPROVED|CHANGES_REQUESTED|REVIEW_REQUIRED|None),
-    req [logins], reviews [{who, state, on}], unresolved (int), threads (int),
+    req [logins], reviews [{who, state, on, has_text}], unresolved (int), threads (int),
     closes [{issue, assignees}], last {t, who, ch} | None, url
 
 Issue row:

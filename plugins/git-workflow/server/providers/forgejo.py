@@ -72,7 +72,8 @@ class ForgejoProvider(Provider):
             if state in ("APPROVED", "CHANGES_REQUESTED", "COMMENT", "COMMENTED"):
                 who = (r.get("user") or {}).get("login")
                 on = (r.get("submitted_at") or "")[:10]
-                reviews.append({"who": who, "state": "COMMENTED" if state.startswith("COMMENT") else state, "on": on})
+                reviews.append({"who": who, "state": "COMMENTED" if state.startswith("COMMENT") else state,
+                                "on": on, "has_text": bool((r.get("body") or "").strip())})
                 if r.get("submitted_at"):
                     spoke.append({"t": r["submitted_at"], "who": who, "ch": state.lower()})
         by_user = {}

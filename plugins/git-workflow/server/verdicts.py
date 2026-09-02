@@ -93,6 +93,11 @@ def verdict(row, me, gate=None):
             return ("resolve the threads" + (" (bloccano il merge)" if hard else ""),
                     "attention", "asks")
         if decision == "APPROVED" and not req:
+            if any(r["state"] == "APPROVED" and r.get("has_text") for r in reviews):
+                # an approval that says something may be a request for changes
+                # filed under the wrong button: a model reads it, not this engine
+                return ("approvata con un testo: leggilo prima del merge",
+                        "decision", "asks")
             if merge == "CLEAN":
                 if row.get("incomplete"):
                     return ("provider result incomplete - inspect before merging",
