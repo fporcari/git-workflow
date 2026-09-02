@@ -65,7 +65,10 @@ inherited. `sonnet` is not in the palette: a wrong answer on somebody else's PR
 is public and has no repair. The profiles enforce the jobs' model; the chat's
 is enforced only where the host can: on Claude Code the plugin ships a
 PreToolUse hook (`hooks/hooks.json`) that blocks `pr-loop` below Opus or
-Fable, fail-closed; Codex has no hooks, so there the hint above is all.
+Fable, fail-closed, and a second one that blocks every rewrite of a PR's
+description (`gh pr edit --body`, a `PATCH` on `pulls/<n>`): a review is
+answered in a comment or thread, the body stays the author's record as opened.
+Codex has no hooks, so there both rules live only in the skills' text.
 
 The server is detached from the launching conversation. It reads provider
 cache, rows and job JSON files by itself, and it never starts a model merely

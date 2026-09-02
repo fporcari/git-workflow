@@ -241,6 +241,14 @@ simplification autonomously is the one way this operation does damage. If a
 premise does not hold, do not implement and do not argue in a vacuum — move the
 PR to Lane B with what you found.
 
+**The PR body is never the place for the answer.** It is the author's record
+of the change as opened, and the reviewers approved against it; a body
+rewritten to fit a comment leaves a description that matches neither what was
+reviewed nor, later, what merged (genropy#1054). Answer in the comment or in
+the thread. If the approach really moved and the body is now wrong, say so in
+the comment and leave the edit to the user, by hand — on Claude Code a hook
+blocks `gh pr edit --body` outright.
+
 Then: implement, run the narrowest check plus the linter, push, and answer in the
 thread. Quote the reviewer's own sentence as a blockquote with a permalink to the
 review — a review body has no thread of its own, so without the quote nobody can
@@ -337,6 +345,8 @@ and if the PR was approved, re-request and comment as in A2.
   the command.
 - Opening issues, marking a draft ready, closing a PR, changing assignees on
   somebody else's PR.
+- Rewriting a PR's description, own or not. The body is the record as opened;
+  answers go in comments and threads.
 - Anything a reviewer asked for that needs a decision about design or scope.
 
 ## Between the lanes

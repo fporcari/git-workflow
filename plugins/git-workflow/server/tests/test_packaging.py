@@ -185,8 +185,11 @@ class Packaging(unittest.TestCase):
         """Claude Code loads hooks/hooks.json; Codex ignores the directory, so
         the guard costs it nothing and the skills stay host-agnostic."""
         hooks = json.loads((PLUGIN / "hooks" / "hooks.json").read_text())
-        [entry] = hooks["hooks"]["PreToolUse"]
+        entry, bash_entry = hooks["hooks"]["PreToolUse"]
         self.assertEqual(entry["matcher"], "Skill")
+        self.assertEqual(bash_entry["matcher"], "Bash")
+        self.assertIn("${CLAUDE_PLUGIN_ROOT}/hooks/no-pr-body-rewrite.py",
+                      bash_entry["hooks"][0]["command"])
         self.assertIn("${CLAUDE_PLUGIN_ROOT}/hooks/require-opus-skill.py",
                       entry["hooks"][0]["command"])
         self.assertNotIn("hooks", self.manifest("codex"))
@@ -207,6 +210,47 @@ class Packaging(unittest.TestCase):
             self.assertEqual(run("git-workflow:pr-loop", "claude-sonnet-5"), 2)
             self.assertEqual(run("git-workflow:pr-loop", None), 2)
             self.assertEqual(run("git-workflow:pr-analyze", "claude-sonnet-5"), 0)
+
+    def test_the_body_rewrite_hook_blocks_the_gesture_and_nothing_else(self):
+        """A review is answered in a comment or thread; the PR description is
+        the author's record as opened (genropy#1054 lost it to a rewrite)."""
+        script = PLUGIN / "hooks" / "no-pr-body-rewrite.py"
+
+        def run(command):
+            payload = json.dumps({"tool_input": {"command": command}})
+            return subprocess.run([sys.executable, str(script)], input=payload,
+                                  capture_output=True, text=True).returncode
+        blocked = (
+            "gh pr edit 1054 --body 'new text'",
+            "gh pr edit 1054 -b 'new text'",
+            "gh pr edit 1054 --body-file /tmp/b.md",
+            "gh pr edit 1054 -F /tmp/b.md --title t",
+            "gh pr edit 1054 --body='x'",
+            "cd /x && gh pr edit 1054 --body-file b.md",
+            "gh api repos/o/r/pulls/1054 -X PATCH -f title=t",
+            "gh api --method PATCH repos/o/r/pulls/1054 -f body=x",
+            "gh api repos/o/r/pulls/1054 -f body=x",
+            "gh api repos/o/r/pulls/1054 --input body.json",
+            "gh api graphql -f query='mutation{updatePullRequest(input:{pullRequestId:\"x\",body:\"y\"}){clientMutationId}}'",
+        )
+        passed = (
+            "gh pr comment 1054 --body-file /tmp/c.md",
+            "gh pr edit 1054 --add-reviewer cgabriel",
+            "gh pr edit 1054 --title 'better title'",
+            "gh pr view 1054 --json body",
+            "gh api repos/o/r/pulls/1054",
+            "gh api repos/o/r/pulls/1054/comments -f body=x",
+            "gh api repos/o/r/pulls/1054/reviews/7/comments -f body=x",
+            "gh api repos/o/r/issues/1054/comments -f body=x",
+            "gh issue edit 12 --body 'issues are not guarded here'",
+            "gh pr review 1054 --approve --body-file f",
+            "echo 'gh pr edit 1 --body x' > notes.txt",
+            "git commit -m 'gh pr edit --body'",
+        )
+        for command in blocked:
+            self.assertEqual(run(command), 2, command)
+        for command in passed:
+            self.assertEqual(run(command), 0, command)
 
 
 if __name__ == "__main__":
