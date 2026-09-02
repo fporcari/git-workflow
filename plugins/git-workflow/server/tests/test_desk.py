@@ -1420,6 +1420,63 @@ class Blocks(unittest.TestCase):
         self.assertEqual(missing, [9999])
         self.assertFalse(queue["triage_complete"])
 
+    def _add_untriaged(self, desk, n=9999):
+        template = dict(desk.provider.data["rows"][0], n=n,
+                        title="brand new", author="dgpaci")
+        desk.provider.data["rows"].append(template)
+        cache.store(REPO, "queue", desk.provider.queue(REPO, desk.me))
+        cache.store(REPO, "membership", desk.provider.open_numbers(REPO, desk.me))
+        return next(r for r in desk.queue()["rows"] if r["n"] == n)
+
+    def _analysis(self, n):
+        return {"n": n, "author": "dgpaci", "problem": "p", "history": "h",
+                "propose": "x", "draft": None, "verified": [],
+                "not_verified": []}
+
+    def test_an_analyzed_pr_counts_as_triaged(self):
+        """The PR somebody flagged, analyzed directly without a press: the
+        analysis is strictly more than a triage cell, so it leaves
+        'da triagiare', gets its cell in the grid and the next press has
+        nothing left to work."""
+        desk = fresh_desk()
+        self.exported(desk)
+        row = self._add_untriaged(desk)
+        jobs.persist(REPO, self._analysis(9999), row["model_keys"])
+        queue = desk.queue()
+        moved = next(r for r in queue["rows"] if r["n"] == 9999)
+        self.assertEqual(moved["triage_status"], "current")
+        self.assertIn(moved["state"], ("attention", "waiting", "decision", "ready"))
+        self.assertTrue(queue["triage_complete"])
+        placed = [r["n"] for b in queue["grid"]["blocks"] for r in b["rows"]]
+        self.assertIn(9999, placed)
+        self.assertEqual(prdesk.model_tasks(queue["rows"],
+                                            deskstate.load(REPO)["prs"], desk.me)
+                         .get("9999"), None)
+
+    def test_an_analyzed_pr_stays_seen_when_its_facts_move(self):
+        """Same rule as a row the grid holds: the cell is re-verdicted, the
+        analysis panel is marked stale, and the PR does not fall back to
+        'da triagiare'."""
+        desk = fresh_desk()
+        self.exported(desk)
+        row = self._add_untriaged(desk)
+        jobs.persist(REPO, self._analysis(9999), row["model_keys"])
+        desk.provider.data["rows"][-1]["head"] = "f" * 40
+        cache.store(REPO, "queue", desk.provider.queue(REPO, desk.me))
+        moved = next(r for r in desk.queue()["rows"] if r["n"] == 9999)
+        self.assertEqual(moved["triage_status"], "current")
+        self.assertTrue(moved["analysis_stale"])
+
+    def test_a_note_without_an_analysis_does_not_count(self):
+        """A one-line `what` or a conflict reading is not an analysis."""
+        desk = fresh_desk()
+        self.exported(desk)
+        row = self._add_untriaged(desk)
+        jobs.persist_explanation(REPO, {"n": 9999, "what": "one line"}, 9999,
+                                 row["model_keys"]["what"])
+        moved = next(r for r in desk.queue()["rows"] if r["n"] == 9999)
+        self.assertEqual(moved["triage_status"], "missing")
+
 
 class TriageOwnership(unittest.TestCase):
     """The desk computes the grid and publishes it; a model adds per-PR facts.

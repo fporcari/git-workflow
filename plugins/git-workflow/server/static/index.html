@@ -610,7 +610,7 @@ const VIEWS=()=>DESK==="issue"?[
   {id:"free",label:"Unassigned",count:issues.filter(r=>!r.assignees.length).length,tip:"Le candidate per issue-loop: nessuno le ha ancora prese"},
   {id:"all",label:"Tutte",count:loaded?issues.length:"—",tip:"Tutte le issue aperte del repo"},
 ]:[
-  {id:"untriaged",label:"Da triagiare",count:prs.filter(r=>r.triage_status!=="current").length,tip:"PR aperte che non sono mai passate da pr-triage"},
+  {id:"untriaged",label:"Da triagiare",count:prs.filter(r=>r.triage_status!=="current").length,tip:"PR aperte che non sono mai passate da pr-triage né da un analyze"},
   {id:"todo",label:"Da fare",count:prs.filter(r=>r.triage_status==="current"&&r.state!=="waiting").length,tip:"Le PR triagiate dove la prossima mossa è tua"},
   {id:"waiting",label:"In attesa",count:prs.filter(r=>r.triage_status==="current"&&r.state==="waiting").length,tip:"PR triagiate ferme in attesa di altri"},
   {id:"all",label:"Tutte",count:loaded?prs.length:"—",tip:"Tutte le PR aperte in cui sei coinvolto"},

@@ -346,22 +346,29 @@ class Desk:
                 row, gate, complete_gates or row.get("base") in gates)
         return rows, raw, states, gates
 
-    def _apply_triage(self, rows, grid, gates):
-        """Live verdicts on the rows a triage has seen.
+    def _apply_triage(self, rows, grid, gates, notes=None):
+        """Live verdicts on the rows a triage or an analyze has seen.
 
         The grid has been pure engine output since 0.17 — nothing in it is a
         model's to protect — so a published row whose provider facts moved is
         RE-VERDICTED here (decorate, 0.07 ms) instead of expiring. `stale` is
         gone as a state: what the fingerprint used to guard, the engine now
-        recomputes on every read. `missing` remains what it was — a row no
-        triage press has ever seen — and is what the next press works.
+        recomputes on every read. `missing` is a row neither a triage press
+        nor an analyze has ever seen, and is what the next press works: an
+        analysis is strictly more than a triage cell, so the PR somebody
+        flagged and the user analyzed directly does not come back as
+        "da triagiare", and keeps its cell when its facts move, exactly like a
+        row the grid holds (analysis_stale marks the panel, not the cell).
         """
         records = triage_records(grid)
+        analyzed = {int(n) for n, note in (notes or {}).items()
+                    if (note or {}).get("analysis_key") and n.isdigit()}
+        seen = set(records) | analyzed
         counts = {"current": 0, "missing": 0, "stale": 0}
-        if records:
+        if seen:
             decorate(rows, self.me, gates)
         for row in rows:
-            if records and row["n"] in records:
+            if row["n"] in seen:
                 status = "current"
                 row["action"] = handoff(
                     row, self.repo,
@@ -396,7 +403,8 @@ class Desk:
     def queue(self, refresh=False):
         state = deskstate.load(self.repo)
         rows, raw, states, gates = self._queue_facts(refresh, state=state)
-        counts = self._apply_triage(rows, state.get("grid"), gates)
+        counts = self._apply_triage(rows, state.get("grid"), gates,
+                                    state.get("prs"))
         deskstate.annotate_prs(rows, state)
         for row in rows:
             note = row.get("skill") or {}
