@@ -196,7 +196,7 @@ globalThis.fetch = async () => { throw new Error("network is off in this test");
 
 /* ---- run the page's script ---- */
 const script = html.match(/<script>\n([\s\S]*)\n<\/script>/)[1];
-const page = new Function(`${script}\nreturn {applyDesk,applyState,render,renderSync,renderDetail,select,moveSelection,setSort,visiblePrs,visibleIssues,
+const page = new Function(`${script}\nreturn {applyDesk,applyState,render,renderSync,loadDesk,renderDetail,select,moveSelection,setSort,visiblePrs,visibleIssues,
   rowClick,togglePick,clearPicks,doRun,MAX_BATCH,pending,closed,startPending,endPending,
   get state(){return {prs,issues,selected,tab,view,loaded,DESK,truncated,pendingMerge,sort,
                       picked:[...picked],askBatch};},
@@ -800,6 +800,26 @@ try {
 }
 ok("the poll interval and the stale threshold are named, not buried",
    /const POLL=30000,STALE_PAINT=70/.test(html));
+
+/* A quiet desk answers 304 to every poll — the rows are inside the ETag, so
+   nothing changing means nothing to send. That is the server confirming the
+   paint, not a poll that achieved nothing: leaving the stamp alone marked a
+   current page as behind after two polls and never let it back. */
+globalThis.fetch = async () => ({status: 304, headers: {get: () => null},
+                                 json: async () => ({})});
+Date.now = () => realNow() + 80000;
+try {
+  page.renderSync();
+  ok("a paint nothing has confirmed still goes stale", /^⟳ 1m$/.test(label()), label());
+  await page.loadDesk(false);
+  ok("a 304 counts as a confirmation, not as a poll that did nothing",
+     /^⟳ 0s$/.test(label()), label());
+  ok("and it takes the stale mark off",
+     !document.getElementById("btnFetch").classList.contains("stale"));
+} finally {
+  Date.now = realNow;
+  globalThis.fetch = async () => { throw new Error("network is off in this test"); };
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

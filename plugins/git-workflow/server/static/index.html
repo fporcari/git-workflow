@@ -406,7 +406,10 @@ async function loadDesk(refetch){
     const resp=refetch
       ? await fetch("/api/fetch",{method:"POST",headers:{"X-Git-Workflow-Token":writeToken}})
       : await fetch("/api/desk",{headers:deskEtag?{"If-None-Match":deskEtag}:{}});
-    if(resp.status===304){fetching=false;renderSync();return;}
+    // a 304 is the server confirming THIS paint is still the truth, which is
+    // what the age measures: on a quiet desk every poll is a 304, and leaving
+    // the stamp alone would mark a perfectly current page as behind
+    if(resp.status===304){lastPaintAt=Date.now();fetching=false;renderSync();return;}
     if(!refetch)deskEtag=resp.headers.get("ETag");
     const d=await resp.json();
     if(d.error)throw new Error(d.error);
