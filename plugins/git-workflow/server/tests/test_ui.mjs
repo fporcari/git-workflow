@@ -140,13 +140,16 @@ const html = readFileSync(join(HERE, "..", "static", "index.html"), "utf8");
 const errors = [];
 const body = new El("body");
 const allEls = () => [body, ...body.descendants()];
+const docHandlers = {};
 globalThis.document = {
   getElementById: id => registry.get(id) || null,
   body,
   querySelector: sel => allEls().find(e => matchSel(e, sel)) || null,
   querySelectorAll: sel => allEls().filter(e => matchSel(e, sel)),
   createElement: t => new El(t),
-  addEventListener: () => {},
+  // recorded, not swallowed: the page's own visibility handler is under test
+  addEventListener: (k, fn) => { docHandlers[k] = fn; },
+  visibilityState: "visible",
   title: "",
 };
 Object.defineProperty(globalThis, "navigator",
@@ -193,7 +196,7 @@ globalThis.fetch = async () => { throw new Error("network is off in this test");
 
 /* ---- run the page's script ---- */
 const script = html.match(/<script>\n([\s\S]*)\n<\/script>/)[1];
-const page = new Function(`${script}\nreturn {applyDesk,applyState,render,renderDetail,select,moveSelection,setSort,visiblePrs,visibleIssues,
+const page = new Function(`${script}\nreturn {applyDesk,applyState,render,renderSync,loadDesk,renderDetail,select,moveSelection,setSort,visiblePrs,visibleIssues,
   rowClick,togglePick,clearPicks,doRun,MAX_BATCH,pending,closed,startPending,endPending,
   get state(){return {prs,issues,selected,tab,view,loaded,DESK,truncated,pendingMerge,sort,
                       picked:[...picked],askBatch};},
@@ -749,6 +752,74 @@ ok("the issue desk shows a finished issue-loop report too",
 ok("the issue desk report card names its flow and time",
    /issue-loop/.test(document.getElementById("jobPanel").innerHTML) &&
    /15:02:11/.test(document.getElementById("jobPanel").innerHTML));
+
+/* ---- 9. a tab left in the background must not keep an old render (#2) ----
+   The poll is a timer, and a hidden tab's timers are throttled: what makes the
+   desk a radar again is reconciling when it is looked at, plus a label that
+   says how old the paint is instead of what time it was. ---- */
+page.applyDesk(snapshot);
+page.render();
+
+ok("the page registers a visibility handler at all",
+   typeof docHandlers.visibilitychange === "function");
+
+let deskReads = 0;
+globalThis.fetch = async url => {
+  if (String(url).startsWith("/api/desk")) deskReads++;
+  return {status: 304, headers: {get: () => null}, json: async () => ({})};
+};
+document.visibilityState = "hidden";
+docHandlers.visibilitychange();
+await Promise.resolve();
+ok("going away does not spend a read", deskReads === 0);
+
+document.visibilityState = "visible";
+docHandlers.visibilitychange();
+await Promise.resolve();
+ok("coming back reconciles at once, without waiting for the next tick",
+   deskReads === 1);
+globalThis.fetch = async () => { throw new Error("network is off in this test"); };
+
+const label = () => document.getElementById("syncLabel").textContent;
+page.applyDesk(snapshot);
+page.renderSync();
+ok("the label is the age of the paint, not the clock it was made at",
+   /^⟳ \d+s$/.test(label()), label());
+ok("a fresh paint is not marked stale",
+   !document.getElementById("btnFetch").classList.contains("stale"));
+
+const realNow = Date.now;
+try {
+  Date.now = () => realNow() + 80000;      // two polls and change
+  page.renderSync();
+  ok("a paint older than two polls says so in the label", /^⟳ 1m$/.test(label()), label());
+  ok("and marks the button, so a frozen page announces itself",
+     document.getElementById("btnFetch").classList.contains("stale"));
+} finally {
+  Date.now = realNow;
+}
+ok("the poll interval and the stale threshold are named, not buried",
+   /const POLL=30000,STALE_PAINT=70/.test(html));
+
+/* A quiet desk answers 304 to every poll — the rows are inside the ETag, so
+   nothing changing means nothing to send. That is the server confirming the
+   paint, not a poll that achieved nothing: leaving the stamp alone marked a
+   current page as behind after two polls and never let it back. */
+globalThis.fetch = async () => ({status: 304, headers: {get: () => null},
+                                 json: async () => ({})});
+Date.now = () => realNow() + 80000;
+try {
+  page.renderSync();
+  ok("a paint nothing has confirmed still goes stale", /^⟳ 1m$/.test(label()), label());
+  await page.loadDesk(false);
+  ok("a 304 counts as a confirmation, not as a poll that did nothing",
+     /^⟳ 0s$/.test(label()), label());
+  ok("and it takes the stale mark off",
+     !document.getElementById("btnFetch").classList.contains("stale"));
+} finally {
+  Date.now = realNow;
+  globalThis.fetch = async () => { throw new Error("network is off in this test"); };
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
