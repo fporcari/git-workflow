@@ -26,6 +26,7 @@ body{font:13px/1.4 system-ui,sans-serif}
 .btn.working{border-color:var(--amber);color:var(--amber)}
 .btn.locked{border-style:dashed;color:var(--amber);border-color:var(--amber);cursor:default;background:color-mix(in srgb,var(--amber) 6%,var(--panel))}
 .sync{display:flex;align-items:center;gap:6px}
+.btn.sync.stale{border-color:var(--amber);color:var(--amber);background:color-mix(in srgb,var(--amber) 6%,var(--panel))}
 .sync i{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px color-mix(in srgb,var(--green) 12%,transparent);flex:none}
 .sync.loading i{background:var(--amber);box-shadow:0 0 0 3px color-mix(in srgb,var(--amber) 12%,transparent);animation:pulse 1s infinite}
 .sync.ko i{background:var(--red);box-shadow:0 0 0 3px color-mix(in srgb,var(--red) 12%,transparent)}
@@ -277,7 +278,8 @@ let meta={},writeToken="",DESK="pr",prs=[],issues=[],chase={},grid=null,shortlis
 let loaded=false,view="todo",query="",stateFilter=null,agentReady=true;
 let issuesTruncated=null,triageComplete=false,ranked=false,gates={};
 let selected=null,tab="quadro",sort={key:"created",dir:-1},acting={},truncated=null,pendingMerge=false;
-let deskEtag=null,fetching=false,lastGenerated=null,timings={};
+const POLL=30000,STALE_PAINT=70;   // a paint older than two polls is behind
+let deskEtag=null,fetching=false,lastGenerated=null,lastPaintAt=null,timings={};
 let staleRetry=null;
 let triageStamp=null;   // when the published triage changes, repaint the rows
 let providerRefresh=null; // a completed provider mutation forces one fresh read
@@ -425,7 +427,7 @@ function applyDesk(d){
   meta=d.meta||meta;writeToken=meta.write_token||writeToken;DESK=meta.desk||"pr";timings=d.timings||{};
   agentReady=meta.detached!==false;
   prs=d.queue.rows;issues=d.issues.rows;chase=d.queue.chase||{};
-  session=d.queue.session;lastGenerated=d.generated;
+  session=d.queue.session;lastGenerated=d.generated;lastPaintAt=Date.now();
   truncated=d.queue.truncated?d.queue.total:null;
   issuesTruncated=d.issues.truncated?d.issues.total:null;
   triageComplete=!!d.queue.triage_complete;
@@ -699,13 +701,23 @@ function scrollToWorking(){
   const tr=document.querySelector("tr.working")||document.querySelector("tr.selected");
   if(tr)tr.scrollIntoView({block:"nearest"});
 }
+function paintAge(){return lastPaintAt?Math.round((Date.now()-lastPaintAt)/1000):0;}
+function ageLabel(s){
+  if(s<60)return `${s}s`;
+  if(s<3600)return `${Math.floor(s/60)}m`;
+  return `${Math.floor(s/3600)}h`;
+}
 function renderSync(){
   const el=$("btnFetch"),lab=$("syncLabel");
   el.classList.toggle("loading",fetching);
   el.classList.toggle("ko",!fetching&&!loaded);
   const t=timings.queue;
-  lab.textContent=fetching?"leggo…":(loaded?`⟳ ${lastGenerated||""}`:"⟳ ricarica");
-  el.title=t?`ultimo giro: ${t.source} (${t.ms} ms, dato di ${t.age}s fa) — clic per rileggere il provider`
+  const stale=loaded&&paintAge()>STALE_PAINT;
+  lab.textContent=fetching?"leggo…":(loaded?`⟳ ${ageLabel(paintAge())}`:"⟳ ricarica");
+  el.classList.toggle("stale",!!stale);
+  const painted=lastGenerated?`dipinto alle ${lastGenerated}`:"";
+  el.title=stale?`${painted}: più di ${STALE_PAINT}s, la pagina è rimasta indietro — clic per rileggere il provider`
+          :t?`ultimo giro: ${t.source} (${t.ms} ms, dato di ${t.age}s fa), ${painted} — clic per rileggere il provider`
              :"clic per rileggere il provider";
 }
 
@@ -1254,7 +1266,13 @@ if(typeof location!=="undefined"&&location.protocol==="file:"){
 }else{
   render();
   loadDesk(false);
-  setInterval(()=>loadDesk(false),30000);
+  setInterval(()=>loadDesk(false),POLL);
+  // a background tab's timers are throttled, so the poll alone can leave any
+  // age of render on screen: reconcile the moment it is looked at again
+  document.addEventListener("visibilitychange",()=>{
+    if(document.visibilityState!=="hidden")loadDesk(false);
+  });
+  setInterval(renderSync,5000);
 }
 </script>
 </body>
