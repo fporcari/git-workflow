@@ -93,6 +93,11 @@ def verdict(row, me, gate=None):
             return ("resolve the threads" + (" (bloccano il merge)" if hard else ""),
                     "attention", "asks")
         if decision == "APPROVED" and not req:
+            # capability before everything below it: on a base he cannot land
+            # on, no approval makes the merge his to make
+            landing = _landing(gate)
+            if landing:
+                return landing
             if any(r["state"] == "APPROVED" and r.get("has_text") for r in reviews):
                 # an approval that says something may be a request for changes
                 # filed under the wrong button: a model reads it, not this engine
@@ -105,7 +110,7 @@ def verdict(row, me, gate=None):
                 if row.get("assignees") != [me]:
                     return ("assign the PR to its author before merging",
                             "attention", "asks")
-                return _landing(gate) or ("merge it", "ready", "A1")
+                return ("merge it", "ready", "A1")
             if merge == "BLOCKED":
                 if gate and unresolved and gate.get("conversation_resolution"):
                     return ("approvata ma i thread aperti bloccano il merge",
@@ -113,8 +118,8 @@ def verdict(row, me, gate=None):
                 if gate and not gate.get("protected"):
                     return ("approvata \u2014 base non protetta, BLOCKED \u00e8 "
                             "altro", "decision", "asks")
-                return _landing(gate) or ("approved but BLOCKED - check the gate",
-                                          "decision", "asks")
+                return ("approved but BLOCKED - check the gate",
+                        "decision", "asks")
             return ("approved - merge state not computed", "decision", "asks")
         if not reviews and not req:
             return ("get a reviewer", "attention", "asks")

@@ -170,6 +170,9 @@ gh pr diff <n> --name-only | sed 's|/[^/]*$||' | sort -u
   button: "approve, but rename X first" is a change request. The engine cannot
   tell that from "LGTM", so any approval carrying text drops the PR to `asks`
   (*approvata con un testo: leggilo prima del merge*) and a model reads it.
+  Only where the merge is his, though: the gate comes first, so with
+  `can_land: false` the row is `waiting` on whoever may land it and the text
+  is theirs to read.
 - **`CLEAN` means nothing on an unprotected base** — read `base` first. Stacked
   PRs: mark the chain, name the PR they sit on, judge them by the eventual base.
 - **`CHANGES_REQUESTED` is sticky, not an inbox.** `last` decides whose turn it
