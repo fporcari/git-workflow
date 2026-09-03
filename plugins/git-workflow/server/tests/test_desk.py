@@ -971,6 +971,20 @@ class WhereThingsLive(unittest.TestCase):
         self.assertTrue(got.is_dir())
         self.assertEqual(oct(got.stat().st_mode)[-3:], "700")
 
+    def test_the_state_dir_can_be_pointed_somewhere_throwaway(self):
+        """A test run must start from nothing and leave nothing: the durable
+        half is the only state that survives a run, and a grid left behind
+        makes the next run's virgin-boot checks fail for no reason of theirs."""
+        aside = tempfile.mkdtemp(prefix="state-knob-")
+        probe = ("import deskstate,sys;"
+                 "sys.stdout.write(str(deskstate.state_path('o/r')))")
+        got = subprocess.run(
+            [sys.executable, "-c", probe], capture_output=True, text=True,
+            cwd=str(ROOT),
+            env=dict(os.environ, HOME=_HOME, GIT_WORKFLOW_STATE_DIR=aside))
+        self.assertEqual(got.returncode, 0, got.stderr)
+        self.assertTrue(got.stdout.startswith(aside), got.stdout)
+
     def test_the_old_layout_is_swept_out_of_the_home_dir(self):
         """A stale cache left in ~/.local/state reads like live state."""
         deskstate.STATE_DIR.mkdir(parents=True, exist_ok=True)

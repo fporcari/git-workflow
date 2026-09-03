@@ -52,13 +52,21 @@ def _env_timeout(name, default):
     return value if value > 0 else default
 
 
+def _env_dir(name, default):
+    value = (os.environ.get(name) or "").strip()
+    return Path(value).expanduser() if value else default
+
+
 # the budget a click gets as a one-shot job, and therefore how long the same
 # click may stay silent in an attached chat before that chat is presumed dead
 ANALYZE_TIMEOUT = _env_timeout("GIT_WORKFLOW_ANALYZE_TIMEOUT", 900)
 OPERATION_TIMEOUT = _env_timeout("GIT_WORKFLOW_OPERATION_TIMEOUT", 3600)
 READ_ONLY_KINDS = ("analyze", "explain", "issue-analyze")
 
-STATE_DIR = Path.home() / ".local" / "state" / "git-workflow"
+# the durable half is the only state that survives a run, so a test run
+# points it somewhere throwaway and starts from nothing
+STATE_DIR = _env_dir("GIT_WORKFLOW_STATE_DIR",
+                     Path.home() / ".local" / "state" / "git-workflow")
 # per-user, so two accounts on one machine never share a queue
 RUNTIME_DIR = Path(tempfile.gettempdir()) / ("git-workflow-%s" % os.getuid())
 
