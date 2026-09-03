@@ -253,6 +253,21 @@ class Verdicts(unittest.TestCase):
         self.assertEqual(autorun, "asks")
         self.assertIn("leggilo", todo)
 
+    def test_an_approval_with_a_body_on_a_base_i_cannot_land_is_not_mine(self):
+        # a hotfix assigned to the maintainer, by convention: the body is his
+        # to read, and the assignee check must not fire on a row handed away
+        row = {"author": "me", "draft": False, "merge": "CLEAN", "decision": "APPROVED",
+               "assignees": ["maintainer"], "req": [],
+               "reviews": [{"who": "x", "state": "APPROVED", "has_text": True}],
+               "unresolved": 0, "last": None, "base": "master"}
+        gate = {"branch": "master", "can_land": False, "landers": ["maintainer"],
+                "protected": True, "enforce_admins": True,
+                "conversation_resolution": False}
+        todo, state, autorun = verdicts.verdict(row, "me", gate=gate)
+        self.assertEqual(state, "waiting")
+        self.assertEqual(autorun, "-")
+        self.assertIn("maintainer", todo)
+
     def test_a_bare_approval_stays_a1(self):
         row = {"author": "me", "draft": False, "merge": "CLEAN", "decision": "APPROVED",
                "assignees": ["me"], "req": [],
