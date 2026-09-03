@@ -1,7 +1,13 @@
 /* UI test — loads the real static/index.html against a live fixture desk.
  *
  *   node tests/test_ui.mjs [port]          # port of a running fixture desk
- *   python3 prdesk.py --provider fixture --repo genropy/genropy --port 8397
+ *   GIT_WORKFLOW_STATE_DIR=$(mktemp -d) \
+ *     python3 prdesk.py --provider fixture --repo genropy/genropy --port 8397
+ *
+ * The state dir is not optional. A published triage is durable by design, so a
+ * desk started on the real one answers the next run's first /api/desk with the
+ * previous run's grid, and the checks on a virgin fetch fail for no reason of
+ * their own. `run.sh` does this for you.
  *
  * No browser and no dependencies: a small DOM shim plus fetch against the
  * real server, so the page's own render path is what gets exercised. It
