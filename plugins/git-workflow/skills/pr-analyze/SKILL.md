@@ -122,7 +122,9 @@ Produce four distinct facts:
 - `propose`: one concrete next action, with the review state or message it
   entails. If it is not the user's action to take, say whose action it is.
 - `plan`, **only** when the PR carries the `needs-verification` label and no
-  `COMMENTED` review by the user sits on the current head: the numbered steps
+  successful verification report by the user sits on the current head
+  (the latest report must end with `Verification result: PASS`, as specified
+  in `pr-loop`): the numbered steps
   a fresh agent will run to verify it — the narrowest test that exercises the
   changed mechanism, the suite, the claim in the body to check against the
   code, the page or command to try by hand with the expected outcome. Each
@@ -163,8 +165,8 @@ fences or prose. The schema is:
  "plan": ["step 1 …", "step 2 …"]}
 ```
 
-`plan` is present only on a PR to verify (see §3), and then non-empty; omit it
-otherwise.
+`plan` is a non-empty array on a PR to verify (see §3), and `null` otherwise.
+Always include the key for both hosts.
 
 In chat, show exactly this Italian decision block — **as text, never inside a
 code fence**. A fence turns it into something to copy, kills the word-wrap

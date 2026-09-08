@@ -54,10 +54,12 @@ Create the label first (idempotent), then pass it:
 
 ```bash
 gh label create needs-verification --repo <owner>/<repo> --force \
-  -c 5319E7 -d "opened by an agent: fresh-eyes review and a run before merging"
+  -c 5319E7 -d "independent verification required before merging"
 gh pr create ... --label needs-verification
 ```
 
 Never remove it: it names the review regime, and the merge closes it. The
-proof that the verification happened is a `COMMENTED` review by the user on
-the current head, which `pr-loop` posts when it runs the plan.
+proof is the latest verification report by the user on the current head,
+posted as a `COMMENTED` review with `commit_id` set to the tested SHA. Its final
+line must be `Verification result: PASS`; `FAIL` and `BLOCKED` keep the gate
+closed. An ordinary comment is not a verification report.

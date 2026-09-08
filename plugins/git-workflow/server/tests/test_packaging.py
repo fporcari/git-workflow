@@ -91,6 +91,9 @@ class Packaging(unittest.TestCase):
         batch = json.loads(
             (PLUGIN / "server" / "schemas" / "triage-result.json").read_text())
         batch_props = batch["properties"]["prs"]["items"]["properties"]
+        for schema in (single, batch["properties"]["prs"]["items"]):
+            self.assertEqual(set(schema["properties"]), set(schema["required"]))
+            self.assertIn("null", schema["properties"]["plan"]["type"])
         for key in ("n", "author", "problem", "history", "propose", "draft",
                     "verified", "not_verified", "plan"):
             self.assertIn(key, single["properties"])

@@ -6,7 +6,7 @@ query($q:String!){
       ...on PullRequest{
         number state mergedAt title bodyText createdAt isDraft baseRefName baseRefOid headRefOid reviewDecision
         author{login}
-        labels(first:10){nodes{name}}
+        labels(first:100){pageInfo{hasNextPage} nodes{name}}
         assignees(first:5){pageInfo{hasNextPage} nodes{login}}
         reviewRequests(first:8){pageInfo{hasNextPage} nodes{requestedReviewer{...on User{login}}}}
         reviews(last:8){pageInfo{hasPreviousPage} nodes{author{login} state bodyText submittedAt commit{oid}}}

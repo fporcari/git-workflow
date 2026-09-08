@@ -4,7 +4,7 @@ query($owner:String!,$name:String!,$number:Int!){
       number title bodyText createdAt updatedAt url
       isDraft baseRefName headRefName headRefOid mergeStateStatus reviewDecision
       author{login}
-      labels(first:20){nodes{name}}
+      labels(first:100){pageInfo{hasNextPage} nodes{name}}
       assignees(first:20){pageInfo{hasNextPage} nodes{login}}
       reviewRequests(first:100){
         pageInfo{hasNextPage}

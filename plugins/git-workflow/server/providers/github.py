@@ -30,7 +30,7 @@ from pathlib import Path
 
 import gate as gatelib
 
-from .base import Provider
+from .base import Provider, verification_result
 
 GQL = Path(__file__).resolve().parents[1] / "gql"
 
@@ -135,12 +135,14 @@ class GitHubProvider(Provider):
                 "state": item.get("state"),
                 "submitted": item.get("submittedAt"),
                 "commit": (item.get("commit") or {}).get("oid"),
+                "verification": verification_result(item.get("bodyText")),
                 "has_text": bool((item.get("bodyText") or "").strip()),
             } for item in (pr.get("reviews") or {}).get("nodes") or []],
             "threads": threads.get("totalCount", 0),
             "unresolved": sum(not item.get("isResolved")
                               for item in threads.get("nodes") or []),
             "incomplete": any((
+                (pr.get("labels") or {}).get("pageInfo", {}).get("hasNextPage"),
                 (pr.get("reviewRequests") or {}).get("pageInfo", {}).get("hasNextPage"),
                 (pr.get("reviews") or {}).get("pageInfo", {}).get("hasPreviousPage"),
                 threads.get("pageInfo", {}).get("hasNextPage"),
@@ -159,6 +161,7 @@ class GitHubProvider(Provider):
             reviews.append({"who": who, "state": r["state"],
                             "on": r["submittedAt"][:10],
                             "commit": (r.get("commit") or {}).get("oid"),
+                            "verification": verification_result(r.get("bodyText")),
                             "has_text": bool((r.get("bodyText") or "").strip())})
             spoke.append({"t": r["submittedAt"], "who": who, "ch": r["state"].lower()})
         unresolved = 0
@@ -180,6 +183,7 @@ class GitHubProvider(Provider):
             "base_head": node.get("baseRefOid"),
             "head": node.get("headRefOid"),
             "incomplete": any((
+                (node.get("labels") or {}).get("pageInfo", {}).get("hasNextPage"),
                 node["assignees"]["pageInfo"]["hasNextPage"],
                 node["reviewRequests"]["pageInfo"]["hasNextPage"],
                 node["reviews"]["pageInfo"]["hasPreviousPage"],

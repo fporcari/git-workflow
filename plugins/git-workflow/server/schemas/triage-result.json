@@ -19,11 +19,11 @@
           "draft": {"type": ["string", "null"]},
           "verified": {"type": "array", "items": {"type": "string"}},
           "not_verified": {"type": "array", "items": {"type": "string"}},
-          "plan": {"type": "array", "items": {"type": "string", "minLength": 1}, "minItems": 1},
+          "plan": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1}, "minItems": 1},
           "conflict_kind": {"enum": ["mechanical", "substantive", null]},
           "finding": {"type": ["string", "null"]}
         },
-        "required": ["n", "author", "problem", "history", "propose", "draft", "verified", "not_verified", "conflict_kind", "finding"]
+        "required": ["n", "author", "problem", "history", "propose", "draft", "verified", "not_verified", "plan", "conflict_kind", "finding"]
       }
     },
     "issues": {

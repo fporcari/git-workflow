@@ -170,8 +170,10 @@ gh pr diff <n> --name-only | sed 's|/[^/]*$||' | sort -u
   agent opened that PR under his login, so it is a subordinate's work: `verify
   it` — a fresh reading and a run — comes before any merge, before waiting on a
   reviewer, and even when an approval is already in. The proof is a
-  `COMMENTED` review by him on the **current head**; a push voids it like an
-  approval. Verified, with nobody else asked and nobody else reviewing, the
+  successful verification report by him on the **current head**, following
+  the `pr-loop` verification protocol; a push voids it like an approval.
+  The latest report must end with `Verification result: PASS`; `FAIL`,
+  `BLOCKED` and ordinary comments never unlock the gate. Verified, with nobody else asked and nobody else reviewing, the
   row is `verified - merge at your call`: the repo has no one to get, and the
   merge is his decision, never an `A1`. Verified with reviewers in play, the
   ordinary rules resume — a human approval on top of the report makes it an
@@ -303,7 +305,7 @@ Closed set. Anything else is `needs a look - <the one unclear thing>` with `asks
 | `review it` | he is a requested reviewer | `asks` |
 | `re-review it` | he left `CHANGES_REQUESTED` and the author has answered since | `asks` |
 | `get a reviewer` | `reviews` empty and no useful standing request | `asks` |
-| `verify it` | his PR carries `needs-verification` and no `COMMENTED` review of his sits on the current head | `asks` |
+| `verify it` | his PR carries `needs-verification` and no successful verification report of his sits on the current head | `asks` |
 | `verified - merge at your call` | same label, his report on the head, nobody else asked or reviewing | `asks` |
 | `resolve the threads` | `unresolved > 0` with conversation resolution on | `asks` |
 | `mark ready` | `isDraft`, work looks complete | `yours` |

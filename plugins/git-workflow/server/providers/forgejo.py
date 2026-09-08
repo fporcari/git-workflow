@@ -19,7 +19,7 @@ import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
-from .base import Provider
+from .base import Provider, verification_result
 
 STATE_MAP = {"REQUEST_CHANGES": "CHANGES_REQUESTED"}
 
@@ -74,6 +74,7 @@ class ForgejoProvider(Provider):
                 on = (r.get("submitted_at") or "")[:10]
                 reviews.append({"who": who, "state": "COMMENTED" if state.startswith("COMMENT") else state,
                                 "on": on, "commit": r.get("commit_id"),
+                                "verification": verification_result(r.get("body")),
                                 "has_text": bool((r.get("body") or "").strip())})
                 if r.get("submitted_at"):
                     spoke.append({"t": r["submitted_at"], "who": who, "ch": state.lower()})

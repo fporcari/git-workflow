@@ -10,7 +10,7 @@ provider whose merge state is a separate phase — see mergestates() below:
     base, base_head (base commit oid), head (commit oid), incomplete (bool),
     merge (CLEAN|DIRTY|BLOCKED|UNSTABLE|UNKNOWN), decision
     (APPROVED|CHANGES_REQUESTED|REVIEW_REQUIRED|None),
-    req [logins], reviews [{who, state, on, commit, has_text}], unresolved (int),
+    req [logins], reviews [{who, state, on, commit, has_text, verification}], unresolved (int),
     threads (int),
     closes [{issue, assignees}], last {t, who, ch} | None, url
 
@@ -94,3 +94,13 @@ class Provider:
         are assigned to him — two cheap searches that decide what a model
         has to read. `complete` is False when a page cap cut them short."""
         return {"commented": [], "assigned": [], "complete": True}
+
+
+def verification_result(body):
+    line = (body or "").strip().splitlines()
+    if not line:
+        return None
+    for result in ("PASS", "FAIL", "BLOCKED"):
+        if line[-1] == "Verification result: " + result:
+            return result
+    return None

@@ -511,8 +511,7 @@ def persist_triage(repo, result, flow, exported):
                     analysis_key=rows[n]["model_keys"]["analysis"])
                 if item.get("draft"):
                     record["draft"] = item["draft"]
-                if item.get("plan"):
-                    record["plan"] = item["plan"]
+                record["plan"] = item.get("plan")
             if "conflict" in tasks:
                 if item.get("conflict_kind") not in ("mechanical", "substantive"):
                     raise ValueError("agent did not classify conflict #%s" % n)
@@ -525,7 +524,10 @@ def persist_triage(repo, result, flow, exported):
         def mutate(state):
             target = state.setdefault("prs", {})
             for n, record in records.items():
-                target.setdefault(n, {}).update(record)
+                entry = target.setdefault(n, {})
+                entry.update(record)
+                if "plan" in record and record["plan"] is None:
+                    entry.pop("plan")
         deskstate.update(repo, mutate)
         return
 

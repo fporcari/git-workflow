@@ -53,15 +53,18 @@ VERIFY_LABEL = "needs-verification"
 
 
 def verified(row, me):
-    """The proof that the fresh-eyes verification happened on THIS head: a
-    COMMENTED review by the user carrying the report. A push invalidates it
-    the way it invalidates an approval, and a bodiless COMMENTED — what an
-    inline reply in a thread produces — is not a report."""
+    """The latest verification report by the user on THIS head decides, and
+    only a PASS opens the gate: a push voids it like an approval, a later
+    FAIL on the same head voids an earlier PASS, a review without the
+    protocol's closing line is not a report."""
     head = row.get("head")
-    return bool(head) and any(
-        r.get("who") == me and r.get("state") == "COMMENTED"
-        and r.get("has_text") and r.get("commit") == head
-        for r in row.get("reviews") or [])
+    if not head:
+        return False
+    for review in reversed(row.get("reviews") or []):
+        if (review.get("who") == me and review.get("state") == "COMMENTED"
+                and review.get("commit") == head and review.get("verification")):
+            return review["verification"] == "PASS"
+    return False
 
 
 def verdict(row, me, gate=None):

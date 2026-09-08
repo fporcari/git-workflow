@@ -202,8 +202,9 @@ All of these, checked fresh, or it is not an A1:
    unattended;
 4. every approval on the **current head**;
 5. `mergeStateStatus == "CLEAN"` on a **protected** base;
-6. no `needs-verification` label without a `COMMENTED` review of his on the
-   current head — an agent's PR is merged only after its fresh-eyes run.
+6. no `needs-verification` label without a successful verification report of
+   his on the current head (the protocol below); a later failed or blocked
+   report invalidates an earlier pass on that head.
 
 Squash when the branch carries fixups or merge commits, delete the branch, then
 verify the linked issues actually closed.
@@ -451,23 +452,29 @@ go-ahead, hand the plan to a **fresh agent** (runtime.md, background
 delegation) — never the session that wrote the PR, never this one's context —
 working in its own worktree on the PR head:
 
-1. run every step, in order, and record its outcome; a step that cannot be
-   run is reported as not run, never as passed;
-2. post the report as a review on the PR — `gh pr review <n> --comment
-   --body-file <report>`, one line per step with its outcome, and a closing
-   line saying whether the PR is fit to merge. The `COMMENTED` review on the
-   head is what turns the row from `verify it` to the next verdict; an issue
-   comment does not;
-3. never remove the label, never approve, never merge: the row comes back as
-   `verified - merge at your call` (nobody else to ask), proposed as a merge
-   in its own Lane B turn, or resumes the ordinary rules (reviewers in play),
-   where a human approval on the reported head makes it an `A1`.
+1. record the worktree's tested SHA (`git rev-parse HEAD`) before running the
+   plan; run every step in order and record its outcome. A step that cannot be
+   run is not passed;
+2. prepare the English report with one line per step. End with exactly
+   `Verification result: PASS` only when every step passed and the PR is fit
+   to merge; otherwise use `Verification result: FAIL` or
+   `Verification result: BLOCKED`. These lines carry no author/tool attribution;
+3. publish the report through `gh api --method POST
+   repos/<owner>/<repo>/pulls/<n>/reviews --input <review.json>`. The JSON file
+   contains `{"commit_id": "<tested SHA>", "event": "COMMENT", "body": "<report>"}`.
+   Always set `commit_id` explicitly to the tested SHA, even if the PR moved
+   during the run. Never use `gh pr review` here: it does not pin the tested
+   commit. Re-read the current head after posting; a different head still
+   needs verification;
+4. never remove the label, approve or merge in the verification session.
+   Only the latest verification report on the current head with result `PASS`
+   unlocks the next verdict. `FAIL` or `BLOCKED` leaves verification outstanding:
+   report the findings and let the user decide the next action.
 
-A failed step is a finding, not a fix: report it in the review, leave the row
-as it is, and let him decide whether to fix it here or open an issue. On
-`verified - merge at your call` the proposal is the merge itself, with the
-report's closing line quoted; a `vai` merges as an A1 would, and the closing
-report says the merge had no second human because the repo has none.
+With a successful report and nobody else asked, the proposal is the merge in
+its own Lane B turn, quoting the report's conclusion. With reviewers in play,
+normal review requirements still apply. A failed step is a finding, not a fix.
+An ordinary text review, or a report on a different SHA, never proves a pass.
 
 `propose` must be a single concrete action, not a menu: *approve with a note
 about X*, *request changes on the CI failure*, *answer the reviewer that the

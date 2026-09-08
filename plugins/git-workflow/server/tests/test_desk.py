@@ -185,7 +185,7 @@ class QueueMembership(unittest.TestCase):
                 "reviewRequests": {"pageInfo": {"hasNextPage": False}, "nodes": []},
                 "reviews": {"pageInfo": {"hasPreviousPage": False}, "nodes": [{
                     "author": {"login": "me"}, "state": "COMMENTED",
-                    "submittedAt": "2026-09-02T00:00:00Z", "bodyText": "report",
+                    "submittedAt": "2026-09-02T00:00:00Z", "bodyText": "Verification result: PASS",
                     "commit": {"oid": "h"}}]},
                 "comments": {"nodes": []},
                 "reviewThreads": {"pageInfo": {"hasNextPage": False}, "nodes": []},
@@ -196,13 +196,16 @@ class QueueMembership(unittest.TestCase):
         self.assertEqual(row["reviews"][0]["commit"], "h")
         self.assertTrue(verdicts.verified(row, "me"))
 
+        node["labels"]["pageInfo"] = {"hasNextPage": True}
+        self.assertTrue(github_provider.GitHubProvider()._row(REPO, node)["incomplete"])
+
         with mock.patch.dict(os.environ, {"FORGEJO_URL": "https://f", "FORGEJO_TOKEN": "t"}):
             fj = forgejo_provider.ForgejoProvider()
         pr = {"number": 3, "title": "t", "created_at": "2026-09-01T00:00:00Z",
               "user": {"login": "me"}, "labels": [{"name": "needs-verification"}],
               "assignees": [], "draft": False, "base": {"ref": "main", "sha": "b"},
               "head": {"sha": "h"}, "mergeable": True, "requested_reviewers": []}
-        revs = [{"state": "COMMENT", "user": {"login": "me"}, "body": "report",
+        revs = [{"state": "COMMENT", "user": {"login": "me"}, "body": "Verification result: PASS",
                  "submitted_at": "2026-09-02T00:00:00Z", "commit_id": "h"}]
         row = fj._row(REPO, pr, revs)
         self.assertEqual(row["labels"], ["needs-verification"])
@@ -330,6 +333,29 @@ class Verdicts(unittest.TestCase):
         self.assertEqual(verdicts.block_of({"todo": todo, "state": state,
                                             "autorun": autorun}), "Review da fare")
 
+    def test_only_a_successful_report_unlocks_an_approved_pr(self):
+        for body in ("All tests failed.", "Thanks, I will check later.",
+                     "Verification result: FAIL", "Verification result: BLOCKED",
+                     "Verification result: PASS\nActually, a test failed."):
+            report = {"who": "me", "state": "COMMENTED", "commit": "h2",
+                      "has_text": True,
+                      "verification": github_provider.verification_result(body)}
+            row = self.labelled(decision="APPROVED", reviews=[report, {
+                "who": "reviewer", "state": "APPROVED", "commit": "h2"}])
+            self.assertEqual(verdicts.verdict(row, "me")[0], "verify it", body)
+
+    def test_a_later_failed_report_invalidates_a_pass_on_the_same_head(self):
+        reports = [{"who": "me", "state": "COMMENTED", "commit": "h2",
+                    "verification": result} for result in ("PASS", "FAIL")]
+        self.assertFalse(verdicts.verified(self.labelled(reviews=reports), "me"))
+        reports.append(dict(reports[0], commit="h3"))
+        self.assertFalse(verdicts.verified(self.labelled(reviews=reports), "me"))
+
+    def test_truncated_labels_cannot_unlock_a_merge(self):
+        row = self.labelled(labels=[], incomplete=True, decision="APPROVED",
+                            reviews=[{"who": "reviewer", "state": "APPROVED"}])
+        self.assertNotEqual(verdicts.verdict(row, "me")[2], "A1")
+
     def test_an_approval_does_not_skip_the_verification(self):
         row = self.labelled(decision="APPROVED",
                             reviews=[{"who": "x", "state": "APPROVED", "commit": "h2"}])
@@ -347,7 +373,7 @@ class Verdicts(unittest.TestCase):
     def test_without_a_known_head_nothing_counts_as_verified(self):
         row = self.labelled(head=None,
                             reviews=[{"who": "me", "state": "COMMENTED", "commit": None,
-                                      "has_text": True}])
+                                      "has_text": True, "verification": "PASS"}])
         self.assertEqual(verdicts.verdict(row, "me")[0], "verify it")
 
     def test_a_dirty_branch_is_realigned_before_it_is_verified(self):
@@ -361,7 +387,7 @@ class Verdicts(unittest.TestCase):
         self.assertEqual(verdicts.verdict(row, "me")[0], "verify it")
 
     def test_verified_but_not_clean_is_not_a_merge_call(self):
-        report = {"who": "me", "state": "COMMENTED", "commit": "h2", "has_text": True}
+        report = {"who": "me", "state": "COMMENTED", "commit": "h2", "has_text": True, "verification": "PASS"}
         for merge in ("BLOCKED", "UNKNOWN", None):
             todo, state, autorun = verdicts.verdict(
                 self.labelled(merge=merge, reviews=[report]), "me")
@@ -372,7 +398,7 @@ class Verdicts(unittest.TestCase):
 
     def test_verified_with_nobody_else_to_ask_is_his_call_never_a1(self):
         row = self.labelled(reviews=[{"who": "me", "state": "COMMENTED", "commit": "h2",
-                                      "has_text": True}])
+                                      "has_text": True, "verification": "PASS"}])
         todo, state, autorun = verdicts.verdict(row, "me")
         self.assertEqual((state, autorun), ("decision", "asks"))
         self.assertIn("merge at your call", todo)
@@ -380,14 +406,14 @@ class Verdicts(unittest.TestCase):
     def test_verified_and_approved_follows_the_normal_road(self):
         row = self.labelled(decision="APPROVED",
                             reviews=[{"who": "me", "state": "COMMENTED", "commit": "h2",
-                                      "has_text": True},
+                                      "has_text": True, "verification": "PASS"},
                                      {"who": "x", "state": "APPROVED"}])
         self.assertEqual(verdicts.verdict(row, "me")[2], "A1")
 
     def test_verified_with_a_reviewer_asked_waits_on_that_reviewer(self):
         row = self.labelled(req=["x"],
                             reviews=[{"who": "me", "state": "COMMENTED", "commit": "h2",
-                                      "has_text": True}],
+                                      "has_text": True, "verification": "PASS"}],
                             last={"who": "me", "ch": "commented", "t": "2026-01-01"})
         todo, state, _ = verdicts.verdict(row, "me")
         self.assertEqual(state, "waiting")
@@ -1056,6 +1082,13 @@ class HeadlessAgents(unittest.TestCase):
         self.assertEqual(records["17"]["analysis_key"], "a17")
         self.assertEqual(records["18"]["conflict_key"], "c18")
         self.assertNotIn("analysis_key", records["18"])
+        self.assertNotIn("plan", records["17"])
+        result["prs"][0]["plan"] = ["run the suite"]
+        jobs.persist_triage(repo, result, "pr-triage", exported)
+        self.assertEqual(deskstate.load(repo)["prs"]["17"]["plan"], ["run the suite"])
+        result["prs"][0]["plan"] = None
+        jobs.persist_triage(repo, result, "pr-triage", exported)
+        self.assertNotIn("plan", deskstate.load(repo)["prs"]["17"])
 
     def test_triage_rejects_an_item_not_in_the_request_file(self):
         with self.assertRaisesRegex(ValueError, "wrong PR triage items"):
