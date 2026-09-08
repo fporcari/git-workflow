@@ -98,3 +98,63 @@ class FixtureProvider(Provider):
         self._sleep()
         return self.data.get("issue_relations") or {
             "commented": [], "assigned": [], "complete": True}
+
+    # ---- per-item reads (gw): recorded under pr_details / issue_details /
+    # diffs / api, keyed by number or endpoint; a PR without a recorded
+    # detail is synthesized from its queue row so every fixture serves gw.
+
+    def pulls(self, repo, state="open"):
+        rows = [row for row in self.data["rows"] if row.get("state", "OPEN") == state.upper()]
+        return [{"n": r["n"], "title": r["title"], "author": r["author"],
+                 "draft": r.get("draft", False), "base": r.get("base"), "head": r.get("head_ref"),
+                 "created": r["created"], "updated": r.get("updated"),
+                 "labels": r.get("labels") or [], "assignees": r.get("assignees") or [r["author"]],
+                 "req": r.get("req") or [], "url": r.get("url")} for r in rows]
+
+    def pr_detail(self, repo, n):
+        recorded = (self.data.get("pr_details") or {}).get(str(n))
+        if recorded:
+            return recorded
+        row = next((row for row in self.data["rows"] if row["n"] == n), None)
+        if not row:
+            raise RuntimeError("fixture has no PR %s" % n)
+        reviews = row.get("reviews") or []
+        return {"n": n, "title": row["title"], "body": row.get("summary") or "",
+                "state": "open", "draft": row.get("draft", False), "author": row["author"],
+                "assignees": row.get("assignees") or [row["author"]],
+                "labels": row.get("labels") or [], "created": row["created"], "updated": None,
+                "base": {"ref": row.get("base"), "sha": row.get("base_head")},
+                "head": {"ref": row.get("head_ref"), "sha": row.get("head")},
+                "merge": row.get("merge") or "UNKNOWN",
+                "decision": row.get("decision"), "req": row.get("req") or [],
+                "reviews": reviews,
+                "closes": [{"issue": c["issue"], "source": "provider"} for c in row.get("closes") or []],
+                "comments": row.get("threads", 0), "url": row.get("url")}
+
+    def pr_reviews(self, repo, n):
+        return self.pr_detail(repo, n)["reviews"]
+
+    def pr_diff(self, repo, n):
+        diffs = self.data.get("diffs") or {}
+        if str(n) not in diffs:
+            raise RuntimeError("fixture has no diff for PR %s" % n)
+        return diffs[str(n)]
+
+    def issue_detail(self, repo, n):
+        recorded = (self.data.get("issue_details") or {}).get(str(n))
+        if recorded:
+            return recorded
+        row = next((row for row in self.data["issues"] if row["n"] == n), None)
+        if not row:
+            raise RuntimeError("fixture has no issue %s" % n)
+        return {"n": n, "title": row["title"], "body": "", "state": "open",
+                "author": row["author"], "assignees": row.get("assignees") or [],
+                "labels": row.get("labels") or [], "created": row["created"],
+                "updated": row.get("updated"), "url": row.get("url"), "comments": []}
+
+    def api(self, endpoint, method="GET", fields=None):
+        recorded = self.data.get("api") or {}
+        key = "%s %s" % (method, endpoint.lstrip("/"))
+        if key not in recorded:
+            raise RuntimeError("fixture has no recorded call %r" % key)
+        return recorded[key]

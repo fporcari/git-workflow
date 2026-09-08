@@ -30,7 +30,7 @@ from pathlib import Path
 
 import gate as gatelib
 
-from .base import Provider, verification_result
+from .base import Provider, REVIEW_STATES, decision_from, verification_result
 
 GQL = Path(__file__).resolve().parents[1] / "gql"
 
@@ -265,3 +265,110 @@ class GitHubProvider(Provider):
             })
         rows.sort(key=lambda r: r["created"], reverse=True)
         return {"rows": rows, "total": total, "truncated": more}
+
+    # ---- per-item reads (gw) -------------------------------------------
+    #
+    # REST for the item itself: `requested_reviewers`, `labels`,
+    # `mergeable_state` and the reviews' `commit_id` are all there, and the
+    # same endpoints exist on Forgejo with the same names. GraphQL only for
+    # what REST does not have — the linked issues.
+
+    CLOSES_GQL = ("query($owner:String!,$name:String!,$number:Int!){"
+                  "repository(owner:$owner,name:$name){pullRequest(number:$number){"
+                  "closingIssuesReferences(first:50){nodes{number}}}}}")
+
+    def _rest(self, endpoint, method="GET", fields=None):
+        args = ["api", endpoint]
+        if method != "GET":
+            args += ["-X", method]
+        for key, value in (fields or {}).items():
+            args += ["-f", "%s=%s" % (key, value)]
+        out = _gh(*args)
+        return json.loads(out) if out.strip() else None
+
+    def api(self, endpoint, method="GET", fields=None):
+        return self._rest(endpoint, method, fields)
+
+    @staticmethod
+    def _login(user):
+        return (user or {}).get("login")
+
+    @staticmethod
+    def _merge(pr):
+        if pr.get("merged"):
+            return "MERGED"
+        state = (pr.get("mergeable_state") or "unknown").upper()
+        return state if state in ("CLEAN", "DIRTY", "BLOCKED", "UNSTABLE", "BEHIND") else "UNKNOWN"
+
+    def _brief(self, pr):
+        return {
+            "n": pr["number"], "title": pr["title"],
+            "author": self._login(pr.get("user")), "draft": bool(pr.get("draft")),
+            "base": (pr.get("base") or {}).get("ref"),
+            "head": (pr.get("head") or {}).get("ref"),
+            "created": (pr.get("created_at") or "")[:10],
+            "updated": pr.get("updated_at"),
+            "labels": [label["name"] for label in pr.get("labels") or []],
+            "assignees": [a["login"] for a in pr.get("assignees") or []],
+            "req": [u["login"] for u in pr.get("requested_reviewers") or []],
+            "url": pr.get("html_url"),
+        }
+
+    def pulls(self, repo, state="open"):
+        pulls = self._rest("repos/%s/pulls?state=%s&per_page=100&sort=created&direction=desc"
+                           % (repo, state)) or []
+        return [self._brief(pr) for pr in pulls]
+
+    def pr_reviews(self, repo, n):
+        reviews = self._rest("repos/%s/pulls/%s/reviews?per_page=100" % (repo, n)) or []
+        out = []
+        for review in reviews:
+            state = review.get("state", "")
+            if state not in REVIEW_STATES:
+                continue
+            out.append({"who": self._login(review.get("user")), "state": state,
+                        "on": (review.get("submitted_at") or "")[:10],
+                        "commit": review.get("commit_id"),
+                        "has_text": bool((review.get("body") or "").strip())})
+        return out
+
+    def _closes(self, repo, n):
+        owner, name = repo.split("/", 1)
+        raw = _gh("api", "graphql", "-f", "query=%s" % self.CLOSES_GQL,
+                  "-f", "owner=%s" % owner, "-f", "name=%s" % name, "-F", "number=%s" % n)
+        pr = json.loads(raw)["data"]["repository"]["pullRequest"] or {}
+        return [{"issue": node["number"], "source": "provider"}
+                for node in (pr.get("closingIssuesReferences") or {}).get("nodes") or []]
+
+    def pr_detail(self, repo, n):
+        pr = self._rest("repos/%s/pulls/%s" % (repo, n))
+        reviews = self.pr_reviews(repo, n)
+        req = [u["login"] for u in pr.get("requested_reviewers") or []]
+        state = "merged" if pr.get("merged") else pr.get("state")
+        return dict(self._brief(pr), **{
+            "body": pr.get("body") or "", "state": state,
+            "base": {"ref": pr["base"]["ref"], "sha": pr["base"]["sha"]},
+            "head": {"ref": pr["head"]["ref"], "sha": pr["head"]["sha"]},
+            "merge": self._merge(pr),
+            "decision": decision_from(reviews, req),
+            "reviews": reviews,
+            "closes": self._closes(repo, n),
+            "comments": (pr.get("comments") or 0) + (pr.get("review_comments") or 0),
+        })
+
+    def pr_diff(self, repo, n):
+        return _gh("pr", "diff", str(n), "--repo", repo)
+
+    def issue_detail(self, repo, n):
+        issue = self._rest("repos/%s/issues/%s" % (repo, n))
+        comments = self._rest("repos/%s/issues/%s/comments?per_page=100" % (repo, n)) or []
+        return {
+            "n": issue["number"], "title": issue["title"], "body": issue.get("body") or "",
+            "state": issue.get("state"), "author": self._login(issue.get("user")),
+            "assignees": [a["login"] for a in issue.get("assignees") or []],
+            "labels": [label["name"] for label in issue.get("labels") or []],
+            "created": issue.get("created_at"), "updated": issue.get("updated_at"),
+            "url": issue.get("html_url"),
+            "comments": [{"who": self._login(c.get("user")), "t": c.get("created_at"),
+                          "body": c.get("body") or ""} for c in comments],
+        }

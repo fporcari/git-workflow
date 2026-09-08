@@ -17,7 +17,51 @@ provider whose merge state is a separate phase — see mergestates() below:
 Issue row:
     n, title, created, author, labels [names], assignees [logins],
     comments (int), url
+
+The `gw` CLI adds per-item reads, same shape on every service:
+
+PR detail:
+    n, title, body, state (open|closed|merged), draft, author, assignees,
+    labels, created, updated, base {ref, sha}, head {ref, sha},
+    merge (CLEAN|DIRTY|BLOCKED|UNSTABLE|BEHIND|UNKNOWN),
+    decision (derived from the reviews, see decision_from),
+    req [logins], reviews [{who, state, on, commit, has_text}],
+    closes [{issue, source}] (source: provider|body), comments (int), url
+
+Issue detail:
+    n, title, body, state, author, assignees, labels, created, updated, url,
+    comments [{who, t, body}]
 """
+
+import re
+
+CLOSES = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s*#(\d+)", re.I)
+REVIEW_STATES = ("APPROVED", "CHANGES_REQUESTED", "COMMENTED", "DISMISSED")
+
+
+def closes_from_body(body):
+    """The issues a PR body says it closes — what a service without a
+    linked-issues API (Forgejo) resolves at merge time from these keywords."""
+    seen = []
+    for number in CLOSES.findall(body or ""):
+        if int(number) not in seen:
+            seen.append(int(number))
+    return [{"issue": n, "source": "body"} for n in seen]
+
+
+def decision_from(reviews, requests):
+    """One rule for every service: the latest review of each person counts,
+    a standing CHANGES_REQUESTED blocks, otherwise any APPROVED approves,
+    otherwise a pending request or a mere comment leaves the review required."""
+    latest = {}
+    for review in reviews:
+        if review.get("state") in ("APPROVED", "CHANGES_REQUESTED"):
+            latest[review.get("who")] = review["state"]
+    if "CHANGES_REQUESTED" in latest.values():
+        return "CHANGES_REQUESTED"
+    if "APPROVED" in latest.values():
+        return "APPROVED"
+    return "REVIEW_REQUIRED" if (reviews or requests) else None
 
 
 class Provider:
@@ -94,6 +138,49 @@ class Provider:
         are assigned to him — two cheap searches that decide what a model
         has to read. `complete` is False when a page cap cut them short."""
         return {"commented": [], "assigned": [], "complete": True}
+
+    # ---- per-item reads, the gw CLI's verbs ---------------------------
+
+    def pulls(self, repo, state="open"):
+        """Every PR in `state`, newest first, as brief rows:
+        n, title, author, draft, base, head, created, updated, labels,
+        assignees, req, url."""
+        raise NotImplementedError
+
+    def pr_detail(self, repo, n):
+        """One PR, the shape documented at the top of this file."""
+        raise NotImplementedError
+
+    def pr_reviews(self, repo, n):
+        """[{who, state, on, commit, has_text}], oldest first. `commit` is
+        the head the review was given on: an approval on another commit is
+        not an approval of this one."""
+        raise NotImplementedError
+
+    def pr_diff(self, repo, n):
+        """The unified diff as text."""
+        raise NotImplementedError
+
+    def issue_detail(self, repo, n):
+        """One issue with its comments, the shape documented at the top."""
+        raise NotImplementedError
+
+    def api(self, endpoint, method="GET", fields=None):
+        """Raw passthrough to the service's REST API, endpoint relative to
+        its API root. For what the verbs do not carry — never for writes
+        the verbs exist for."""
+        raise NotImplementedError
+
+
+def diff_paths(diff):
+    """The files a unified diff touches, in order, once each."""
+    paths = []
+    for line in (diff or "").splitlines():
+        if line.startswith("diff --git "):
+            path = line.split(" b/", 1)[-1]
+            if path not in paths:
+                paths.append(path)
+    return paths
 
 
 def verification_result(body):

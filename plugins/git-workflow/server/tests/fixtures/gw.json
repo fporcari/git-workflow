@@ -1,0 +1,40 @@
+{
+ "repo": "acme/widgets",
+ "me": "alice",
+ "default_branch": "main",
+ "rows": [
+  {"n": 7, "title": "Fix the widget", "created": "2026-09-01", "author": "alice",
+   "labels": ["bug"], "assignees": ["alice"], "draft": false, "base": "main",
+   "base_head": "b" , "head": "h7", "head_ref": "fix/7-widget", "incomplete": false,
+   "merge": "CLEAN", "decision": "APPROVED", "req": [],
+   "reviews": [{"who": "bob", "state": "APPROVED", "on": "2026-09-02", "commit": "h7", "has_text": true}],
+   "unresolved": 0, "threads": 1, "closes": [{"issue": 3, "assignees": ["alice"]}],
+   "summary": "Fixes #3", "last": null, "url": "https://example.test/acme/widgets/pull/7"},
+  {"n": 8, "title": "Draft thing", "created": "2026-09-03", "author": "carol",
+   "labels": [], "assignees": ["carol"], "draft": true, "base": "main",
+   "base_head": "b", "head": "h8", "head_ref": "wip/8", "incomplete": false,
+   "merge": "DIRTY", "decision": null, "req": ["alice"], "reviews": [],
+   "unresolved": 0, "threads": 0, "closes": [], "summary": null, "last": null,
+   "url": "https://example.test/acme/widgets/pull/8"}
+ ],
+ "issues": [
+  {"n": 3, "title": "Widget breaks", "created": "2026-08-30", "updated": "2026-09-01T00:00:00Z",
+   "author": "dave", "labels": ["bug"], "assignees": [], "comments": 1,
+   "url": "https://example.test/acme/widgets/issues/3"}
+ ],
+ "gates": {}, "issue_relations": {"commented": [], "assigned": [], "complete": true},
+ "branches": ["main", "fix/7-widget"],
+ "issue_details": {
+  "3": {"n": 3, "title": "Widget breaks", "body": "It breaks.", "state": "open",
+        "author": "dave", "assignees": [], "labels": ["bug"],
+        "created": "2026-08-30T10:00:00Z", "updated": "2026-09-01T00:00:00Z",
+        "url": "https://example.test/acme/widgets/issues/3",
+        "comments": [{"who": "alice", "t": "2026-09-01T00:00:00Z", "body": "Working on this."}]}
+ },
+ "diffs": {
+  "7": "diff --git a/widgets/core.py b/widgets/core.py\n--- a/widgets/core.py\n+++ b/widgets/core.py\n@@ -1 +1 @@\n-x\n+y\ndiff --git a/CHANGELOG.md b/CHANGELOG.md\n--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1 +1,2 @@\n+- fix\n"
+ },
+ "api": {
+  "GET repos/acme/widgets/branches/main/protection": {"enforce_admins": {"enabled": true}}
+ }
+}

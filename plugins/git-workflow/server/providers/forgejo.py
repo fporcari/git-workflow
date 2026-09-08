@@ -15,11 +15,12 @@ Field mapping notes:
 
 import json
 import os
+import urllib.error
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
-from .base import Provider, verification_result
+from .base import Provider, REVIEW_STATES, closes_from_body, decision_from, verification_result
 
 STATE_MAP = {"REQUEST_CHANGES": "CHANGES_REQUESTED"}
 
@@ -27,22 +28,39 @@ STATE_MAP = {"REQUEST_CHANGES": "CHANGES_REQUESTED"}
 class ForgejoProvider(Provider):
     name = "forgejo"
 
-    def __init__(self):
-        self.base = os.environ.get("FORGEJO_URL", "").rstrip("/")
+    def __init__(self, base=None):
+        self.base = (base or os.environ.get("FORGEJO_URL", "")).rstrip("/")
         self.token = os.environ.get("FORGEJO_TOKEN", "")
         if not self.base or not self.token:
             raise SystemExit("forgejo provider needs FORGEJO_URL and FORGEJO_TOKEN in the environment")
 
-    def _get(self, path, **params):
+    def _request(self, path, method="GET", params=None, fields=None, accept="application/json"):
         url = "%s/api/v1%s" % (self.base, path)
         if params:
             url += "?" + urllib.parse.urlencode(params)
-        req = urllib.request.Request(url, headers={"Authorization": "token %s" % self.token})
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            return json.loads(resp.read().decode())
+        data = json.dumps(fields).encode() if fields else None
+        headers = {"Authorization": "token %s" % self.token, "Accept": accept}
+        if data:
+            headers["Content-Type"] = "application/json"
+        req = urllib.request.Request(url, data=data, method=method, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                return resp.read().decode()
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode(errors="replace")[:400]
+            raise RuntimeError("forgejo %s %s failed: HTTP %s %s" % (method, path, exc.code, detail))
+
+    def _get(self, path, **params):
+        return json.loads(self._request(path, params=params) or "null")
+
+    def _get_text(self, path):
+        return self._request(path, accept="text/plain")
 
     def whoami(self):
         return self._get("/user")["login"]
+
+    def default_branch(self, repo):
+        return self._get("/repos/%s" % repo).get("default_branch") or "main"
 
     def queue(self, repo, me):
         pulls = self._get("/repos/%s/pulls" % repo, state="open", limit=50)
@@ -134,3 +152,93 @@ class ForgejoProvider(Provider):
             })
         rows.sort(key=lambda r: r["created"], reverse=True)
         return {"rows": rows, "total": len(rows), "truncated": len(issues) >= 100}
+
+    # ---- per-item reads (gw) -------------------------------------------
+    #
+    # Forgejo's REST v1 mirrors GitHub's on pulls and issues: same endpoint
+    # names, same field names for what matters here. What it lacks is the
+    # linked-issue list, resolved at merge time from the body's keywords —
+    # so `closes` is read from the body and says so.
+
+    def api(self, endpoint, method="GET", fields=None):
+        body = self._request("/" + endpoint.lstrip("/"), method=method, fields=fields)
+        return json.loads(body) if body.strip() else None
+
+    @staticmethod
+    def _login(user):
+        return (user or {}).get("login")
+
+    @staticmethod
+    def _merge(pr):
+        if pr.get("merged"):
+            return "MERGED"
+        mergeable = pr.get("mergeable")
+        return "CLEAN" if mergeable else ("DIRTY" if mergeable is False else "UNKNOWN")
+
+    def _brief(self, pr):
+        return {
+            "n": pr["number"], "title": pr["title"],
+            "author": self._login(pr.get("user")), "draft": bool(pr.get("draft")),
+            "base": (pr.get("base") or {}).get("ref"),
+            "head": (pr.get("head") or {}).get("ref"),
+            "created": (pr.get("created_at") or "")[:10],
+            "updated": pr.get("updated_at"),
+            "labels": [label["name"] for label in pr.get("labels") or []],
+            "assignees": [a["login"] for a in pr.get("assignees") or []],
+            "req": [u["login"] for u in pr.get("requested_reviewers") or [] if u],
+            "url": pr.get("html_url"),
+        }
+
+    def pulls(self, repo, state="open"):
+        pulls = self._get("/repos/%s/pulls" % repo, state=state, limit=50,
+                          sort="recentupdate") or []
+        pulls.sort(key=lambda pr: pr.get("created_at") or "", reverse=True)
+        return [self._brief(pr) for pr in pulls]
+
+    def pr_reviews(self, repo, n):
+        out = []
+        for review in self._get("/repos/%s/pulls/%s/reviews" % (repo, n)) or []:
+            state = STATE_MAP.get(review.get("state", ""), review.get("state", ""))
+            if state.startswith("COMMENT"):
+                state = "COMMENTED"
+            if state not in REVIEW_STATES:
+                continue
+            out.append({"who": self._login(review.get("user")), "state": state,
+                        "on": (review.get("submitted_at") or "")[:10],
+                        "commit": review.get("commit_id"),
+                        "has_text": bool((review.get("body") or "").strip())})
+        out.sort(key=lambda r: r["on"])
+        return out
+
+    def pr_detail(self, repo, n):
+        pr = self._get("/repos/%s/pulls/%s" % (repo, n))
+        reviews = self.pr_reviews(repo, n)
+        req = [u["login"] for u in pr.get("requested_reviewers") or [] if u]
+        state = "merged" if pr.get("merged") else pr.get("state")
+        return dict(self._brief(pr), **{
+            "body": pr.get("body") or "", "state": state,
+            "base": {"ref": pr["base"]["ref"], "sha": pr["base"]["sha"]},
+            "head": {"ref": pr["head"]["ref"], "sha": pr["head"]["sha"]},
+            "merge": self._merge(pr),
+            "decision": decision_from(reviews, req),
+            "reviews": reviews,
+            "closes": closes_from_body(pr.get("body")),
+            "comments": (pr.get("comments") or 0) + (pr.get("review_comments") or 0),
+        })
+
+    def pr_diff(self, repo, n):
+        return self._get_text("/repos/%s/pulls/%s.diff" % (repo, n))
+
+    def issue_detail(self, repo, n):
+        issue = self._get("/repos/%s/issues/%s" % (repo, n))
+        comments = self._get("/repos/%s/issues/%s/comments" % (repo, n)) or []
+        return {
+            "n": issue["number"], "title": issue["title"], "body": issue.get("body") or "",
+            "state": issue.get("state"), "author": self._login(issue.get("user")),
+            "assignees": [a["login"] for a in issue.get("assignees") or []],
+            "labels": [label["name"] for label in issue.get("labels") or []],
+            "created": issue.get("created_at"), "updated": issue.get("updated_at"),
+            "url": issue.get("html_url"),
+            "comments": [{"who": self._login(c.get("user")), "t": c.get("created_at"),
+                          "body": c.get("body") or ""} for c in comments],
+        }

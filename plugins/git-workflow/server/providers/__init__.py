@@ -9,8 +9,13 @@ PROVIDERS = {
 }
 
 
-def get_provider(name):
+def get_provider(name, host=None):
+    """The provider by name; `host` is the origin's, so a Forgejo provider
+    can address the instance a checkout actually points at."""
     try:
-        return PROVIDERS[name]()
+        cls = PROVIDERS[name]
     except KeyError:
         raise SystemExit("unknown provider %r (available: %s)" % (name, ", ".join(PROVIDERS)))
+    if name == "forgejo" and host:
+        return cls(base="https://%s" % host)
+    return cls()

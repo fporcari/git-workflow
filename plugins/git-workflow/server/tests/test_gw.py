@@ -1,0 +1,252 @@
+"""gw CLI tests — stdlib unittest, fixture provider or mocked transports.
+
+    python3 -m unittest tests.test_gw -v      (from server/)
+
+Covers host detection (the one place a wrong default would read as "nothing
+to do"), every verb on the fixture, and the two live providers against
+recorded REST payloads so the same JSON shape is proven on both services.
+"""
+
+import io
+import json
+import os
+import sys
+import unittest
+from contextlib import redirect_stderr, redirect_stdout
+from pathlib import Path
+from unittest import mock
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+import gw                          # noqa: E402
+import prdesk                      # noqa: E402
+from providers import detect       # noqa: E402
+from providers import base         # noqa: E402
+from providers.forgejo import ForgejoProvider  # noqa: E402
+from providers.github import GitHubProvider    # noqa: E402
+
+FIXTURE = str(ROOT / "tests" / "fixtures" / "gw.json")
+
+
+def run(*argv, fixture=FIXTURE):
+    out, err = io.StringIO(), io.StringIO()
+    env = {"DESK_FIXTURE": fixture} if fixture else {}
+    with mock.patch.dict(os.environ, env), redirect_stdout(out), redirect_stderr(err):
+        code = gw.main(list(argv))
+    return code, out.getvalue(), err.getvalue()
+
+
+class DetectTest(unittest.TestCase):
+    def test_every_remote_form_yields_host_and_repo(self):
+        for url in ("ssh://git@hub.genro.com/erpy/erpy-engine.git",
+                    "git@hub.genro.com:erpy/erpy-engine.git",
+                    "https://hub.genro.com/erpy/erpy-engine",
+                    "HTTPS://HUB.GENRO.COM/erpy/erpy-engine.git"):
+            self.assertEqual(detect.parse_remote(url), ("hub.genro.com", "erpy/erpy-engine"), url)
+
+    def test_github_is_github_and_forgejo_needs_its_url(self):
+        self.assertEqual(detect.provider_for("github.com"), "github")
+        with mock.patch.dict(os.environ, {"FORGEJO_URL": "https://hub.genro.com/"}):
+            self.assertEqual(detect.provider_for("hub.genro.com"), "forgejo")
+        with mock.patch.dict(os.environ, {"FORGEJO_URL": ""}):
+            with self.assertRaises(SystemExit) as ctx:
+                detect.provider_for("hub.genro.com")
+            self.assertIn("FORGEJO_URL=https://hub.genro.com", str(ctx.exception))
+
+    def test_an_unknown_host_is_an_error_not_a_default(self):
+        with self.assertRaises(SystemExit):
+            detect.provider_for("gitlab.example.org")
+
+    def test_a_host_prefixed_repo_needs_no_origin(self):
+        with mock.patch.object(detect, "origin_url", side_effect=AssertionError("origin read")):
+            self.assertEqual(detect.resolve("github.com/acme/widgets"), ("github", "acme/widgets"))
+            self.assertEqual(detect.resolve("acme/widgets", "fixture"), ("fixture", "acme/widgets"))
+
+    def test_the_cli_exits_2_on_an_unknown_host(self):
+        with mock.patch.object(detect, "origin_url", return_value="https://gitlab.example.org/a/b.git"):
+            code, out, err = run("whoami")
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("unknown git host", err)
+
+    def test_the_desk_no_longer_defaults_to_github(self):
+        with mock.patch.object(detect, "origin_url", return_value="ssh://git@hub.genro.com/erpy/x.git"), \
+             mock.patch.dict(os.environ, {"FORGEJO_URL": ""}):
+            args = mock.Mock(repo=None, provider=None)
+            with self.assertRaises(SystemExit):
+                prdesk.provider_and_repo(args)
+
+
+class FixtureVerbsTest(unittest.TestCase):
+    R = ("--provider", "fixture", "--repo", "acme/widgets")
+
+    def verb(self, *argv):
+        code, out, err = run(*self.R, *argv)
+        self.assertEqual(code, 0, err)
+        return json.loads(out)
+
+    def test_whoami_and_repo(self):
+        self.assertEqual(self.verb("whoami"), {"login": "alice"})
+        self.assertEqual(self.verb("repo", "default-branch"), {"default_branch": "main"})
+        info = self.verb("repo", "info")
+        self.assertEqual((info["repo"], info["provider"], info["default_branch"]),
+                         ("acme/widgets", "fixture", "main"))
+
+    def test_pr_list_and_mine(self):
+        self.assertEqual([r["n"] for r in self.verb("pr", "list")], [7, 8])
+        self.assertEqual([r["n"] for r in self.verb("pr", "list", "--mine")], [7])
+
+    def test_pr_view_carries_the_documented_shape(self):
+        pr = self.verb("pr", "view", "7")
+        for key in ("n", "title", "body", "state", "draft", "author", "assignees", "labels",
+                    "created", "updated", "base", "head", "merge", "decision", "req",
+                    "reviews", "closes", "comments", "url"):
+            self.assertIn(key, pr)
+        self.assertEqual(pr["head"], {"ref": "fix/7-widget", "sha": "h7"})
+        self.assertEqual(pr["closes"], [{"issue": 3, "source": "provider"}])
+        self.assertEqual(self.verb("pr", "reviews", "7")[0]["commit"], "h7")
+
+    def test_pr_diff_text_and_names(self):
+        code, out, _ = run(*self.R, "pr", "diff", "7")
+        self.assertEqual(code, 0)
+        self.assertTrue(out.startswith("diff --git a/widgets/core.py"))
+        self.assertEqual(self.verb("pr", "diff", "7", "--name-only"), ["widgets/core.py", "CHANGELOG.md"])
+
+    def test_issue_list_and_view(self):
+        self.assertEqual([i["n"] for i in self.verb("issue", "list")], [3])
+        issue = self.verb("issue", "view", "3")
+        self.assertEqual(issue["comments"][0]["who"], "alice")
+
+    def test_api_expands_repo_and_returns_the_recorded_body(self):
+        self.assertEqual(self.verb("api", "repos/{repo}/branches/main/protection"),
+                         {"enforce_admins": {"enabled": True}})
+
+    def test_a_missing_item_exits_1_with_a_message(self):
+        code, out, err = run(*self.R, "pr", "view", "99")
+        self.assertEqual((code, out), (1, ""))
+        self.assertIn("no PR 99", err)
+
+
+# ---- recorded payloads, the shape both REST APIs share -------------------
+
+def _user(login):
+    return {"login": login, "id": 1}
+
+
+PULL = {
+    "number": 12, "title": "Add gw", "body": "Adds it.\n\nFixes #4",
+    "state": "open", "draft": False, "merged": False, "mergeable": True,
+    "mergeable_state": "blocked", "user": _user("alice"),
+    "assignees": [_user("alice")], "labels": [{"name": "needs-verification"}],
+    "requested_reviewers": [_user("bob")],
+    "base": {"ref": "main", "sha": "b" * 40}, "head": {"ref": "codex/gw", "sha": "h" * 40},
+    "created_at": "2026-09-08T10:00:00Z", "updated_at": "2026-09-08T11:00:00Z",
+    "comments": 2, "review_comments": 1, "html_url": "https://x/acme/widgets/pull/12",
+}
+REVIEWS_GH = [
+    {"user": _user("bob"), "state": "CHANGES_REQUESTED", "commit_id": "0" * 40,
+     "submitted_at": "2026-09-08T10:30:00Z", "body": "no"},
+    {"user": _user("bob"), "state": "APPROVED", "commit_id": "h" * 40,
+     "submitted_at": "2026-09-08T10:45:00Z", "body": ""},
+    {"user": _user("bob"), "state": "PENDING", "commit_id": "h" * 40, "submitted_at": None, "body": ""},
+]
+REVIEWS_FJ = [dict(r, state={"CHANGES_REQUESTED": "REQUEST_CHANGES"}.get(r["state"], r["state"]))
+              for r in REVIEWS_GH]
+ISSUE = {"number": 4, "title": "Need gw", "body": "please", "state": "open",
+         "user": _user("dave"), "assignees": [], "labels": [{"name": "enhancement"}],
+         "created_at": "2026-09-01T00:00:00Z", "updated_at": "2026-09-02T00:00:00Z",
+         "html_url": "https://x/acme/widgets/issues/4"}
+COMMENTS = [{"user": _user("alice"), "created_at": "2026-09-02T00:00:00Z", "body": "on it"}]
+DIFF = "diff --git a/server/gw.py b/server/gw.py\n--- a/server/gw.py\n+++ b/server/gw.py\n@@ -0,0 +1 @@\n+x\n"
+
+EXPECTED = {
+    "n": 12, "title": "Add gw", "body": "Adds it.\n\nFixes #4", "state": "open",
+    "draft": False, "author": "alice", "assignees": ["alice"], "labels": ["needs-verification"],
+    "created": "2026-09-08", "updated": "2026-09-08T11:00:00Z",
+    "base": {"ref": "main", "sha": "b" * 40}, "head": {"ref": "codex/gw", "sha": "h" * 40},
+    "decision": "APPROVED", "req": ["bob"],
+    "reviews": [
+        {"who": "bob", "state": "CHANGES_REQUESTED", "on": "2026-09-08", "commit": "0" * 40, "has_text": True},
+        {"who": "bob", "state": "APPROVED", "on": "2026-09-08", "commit": "h" * 40, "has_text": False},
+    ],
+    "comments": 3, "url": "https://x/acme/widgets/pull/12",
+}
+
+
+class GitHubShapeTest(unittest.TestCase):
+    def gh(self, *args, **kw):
+        joined = " ".join(args)
+        if joined.startswith("api graphql"):
+            return json.dumps({"data": {"repository": {"pullRequest": {
+                "closingIssuesReferences": {"nodes": [{"number": 4}]}}}}})
+        table = {
+            "api repos/acme/widgets/pulls/12": PULL,
+            "api repos/acme/widgets/pulls/12/reviews?per_page=100": REVIEWS_GH,
+            "api repos/acme/widgets/pulls?state=open&per_page=100&sort=created&direction=desc": [PULL],
+            "api repos/acme/widgets/issues/4": ISSUE,
+            "api repos/acme/widgets/issues/4/comments?per_page=100": COMMENTS,
+        }
+        if joined == "pr diff 12 --repo acme/widgets":
+            return DIFF
+        return json.dumps(table[joined])
+
+    def test_pr_detail_shape(self):
+        with mock.patch("providers.github._gh", side_effect=self.gh):
+            pr = GitHubProvider().pr_detail("acme/widgets", 12)
+        self.assertEqual(pr, dict(EXPECTED, merge="BLOCKED",
+                                  closes=[{"issue": 4, "source": "provider"}]))
+
+    def test_pulls_issue_and_diff(self):
+        with mock.patch("providers.github._gh", side_effect=self.gh):
+            p = GitHubProvider()
+            self.assertEqual(p.pulls("acme/widgets")[0]["req"], ["bob"])
+            issue = p.issue_detail("acme/widgets", 4)
+            self.assertEqual(base.diff_paths(p.pr_diff("acme/widgets", 12)), ["server/gw.py"])
+        self.assertEqual((issue["author"], issue["labels"], issue["comments"][0]["who"]),
+                         ("dave", ["enhancement"], "alice"))
+
+
+class ForgejoShapeTest(unittest.TestCase):
+    def request(self, path, method="GET", params=None, fields=None, accept=None):
+        table = {
+            "/repos/acme/widgets/pulls/12": PULL,
+            "/repos/acme/widgets/pulls/12/reviews": REVIEWS_FJ,
+            "/repos/acme/widgets/pulls": [PULL],
+            "/repos/acme/widgets/issues/4": ISSUE,
+            "/repos/acme/widgets/issues/4/comments": COMMENTS,
+            "/repos/acme/widgets": {"default_branch": "main"},
+            "/user": _user("alice"),
+        }
+        if path.endswith(".diff"):
+            return DIFF
+        return json.dumps(table[path])
+
+    def provider(self):
+        with mock.patch.dict(os.environ, {"FORGEJO_TOKEN": "t"}):
+            return ForgejoProvider(base="https://hub.example")
+
+    def test_pr_detail_has_the_same_shape_as_github(self):
+        p = self.provider()
+        with mock.patch.object(ForgejoProvider, "_request", side_effect=self.request):
+            pr = p.pr_detail("acme/widgets", 12)
+        self.assertEqual(pr, dict(EXPECTED, merge="CLEAN",
+                                  closes=[{"issue": 4, "source": "body"}]))
+
+    def test_the_rest_of_the_verbs(self):
+        p = self.provider()
+        with mock.patch.object(ForgejoProvider, "_request", side_effect=self.request):
+            self.assertEqual(p.whoami(), "alice")
+            self.assertEqual(p.default_branch("acme/widgets"), "main")
+            self.assertEqual(p.pulls("acme/widgets")[0]["n"], 12)
+            self.assertEqual(p.issue_detail("acme/widgets", 4)["comments"][0]["body"], "on it")
+            self.assertEqual(base.diff_paths(p.pr_diff("acme/widgets", 12)), ["server/gw.py"])
+
+    def test_the_provider_addresses_the_origin_host(self):
+        self.assertEqual(self.provider().base, "https://hub.example")
+        with mock.patch.dict(os.environ, {"FORGEJO_TOKEN": ""}):
+            with self.assertRaises(SystemExit):
+                ForgejoProvider(base="https://hub.example")
+
+
+if __name__ == "__main__":
+    unittest.main()
