@@ -36,8 +36,11 @@ class ForgejoProvider(Provider):
 
     def _request(self, path, method="GET", params=None, fields=None, accept="application/json"):
         url = "%s/api/v1%s" % (self.base, path)
+        if method == "GET" and fields:
+            params = dict(params or {}, **fields)
+            fields = None
         if params:
-            url += "?" + urllib.parse.urlencode(params)
+            url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
         data = json.dumps(fields).encode() if fields else None
         headers = {"Authorization": "token %s" % self.token, "Accept": accept}
         if data:
@@ -52,6 +55,15 @@ class ForgejoProvider(Provider):
 
     def _get(self, path, **params):
         return json.loads(self._request(path, params=params) or "null")
+
+    def _get_all(self, path, **params):
+        rows, page = [], 1
+        while True:
+            batch = self._get(path, **dict(params, page=page, limit=50)) or []
+            if not batch:
+                return rows
+            rows.extend(batch)
+            page += 1
 
     def _get_text(self, path):
         return self._request(path, accept="text/plain")
@@ -190,14 +202,14 @@ class ForgejoProvider(Provider):
         }
 
     def pulls(self, repo, state="open"):
-        pulls = self._get("/repos/%s/pulls" % repo, state=state, limit=50,
+        pulls = self._get_all("/repos/%s/pulls" % repo, state=state,
                           sort="recentupdate") or []
         pulls.sort(key=lambda pr: pr.get("created_at") or "", reverse=True)
         return [self._brief(pr) for pr in pulls]
 
     def pr_reviews(self, repo, n):
         out = []
-        for review in self._get("/repos/%s/pulls/%s/reviews" % (repo, n)) or []:
+        for review in self._get_all("/repos/%s/pulls/%s/reviews" % (repo, n)) or []:
             state = STATE_MAP.get(review.get("state", ""), review.get("state", ""))
             if state.startswith("COMMENT"):
                 state = "COMMENTED"
@@ -231,7 +243,7 @@ class ForgejoProvider(Provider):
 
     def issue_detail(self, repo, n):
         issue = self._get("/repos/%s/issues/%s" % (repo, n))
-        comments = self._get("/repos/%s/issues/%s/comments" % (repo, n)) or []
+        comments = self._get_all("/repos/%s/issues/%s/comments" % (repo, n)) or []
         return {
             "n": issue["number"], "title": issue["title"], "body": issue.get("body") or "",
             "state": issue.get("state"), "author": self._login(issue.get("user")),

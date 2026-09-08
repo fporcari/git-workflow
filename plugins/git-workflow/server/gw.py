@@ -75,7 +75,10 @@ def cmd_pr_diff(p, repo, args):
 
 
 def cmd_issue_list(p, repo, args):
-    _out(p.issues(repo)["rows"])
+    result = p.issues(repo)
+    if result.get("truncated"):
+        raise RuntimeError("issue list is incomplete: the provider reached its page limit")
+    _out(result["rows"])
 
 
 def cmd_issue_view(p, repo, args):
@@ -135,9 +138,7 @@ def build_parser():
 def main(argv=None):
     args = build_parser().parse_args(argv)
     try:
-        name, repo = detect.resolve(args.repo, args.provider)
-        args.host = detect.parse_remote(detect.origin_url())[0] \
-            if not args.repo or args.repo.count("/") != 2 else args.repo.split("/", 1)[0]
+        name, repo, args.host = detect.resolve(args.repo, args.provider)
     except SystemExit as exc:
         sys.stderr.write("gw: %s\n" % exc)
         return 2

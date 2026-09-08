@@ -74,8 +74,7 @@ def provider_and_repo(args):
     """The provider the checkout's host names, unless --provider forces one.
     A GitHub read against a Forgejo checkout returns an empty queue, not an
     error — so the default is never GitHub, it is the origin's host."""
-    name, repo = detect.resolve(args.repo, args.provider)
-    host = detect.parse_remote(detect.origin_url())[0] if name == "forgejo" else None
+    name, repo, host = detect.resolve(args.repo, args.provider)
     return get_provider(name, host=host), repo
 
 

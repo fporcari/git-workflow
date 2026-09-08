@@ -60,8 +60,24 @@ class DetectTest(unittest.TestCase):
 
     def test_a_host_prefixed_repo_needs_no_origin(self):
         with mock.patch.object(detect, "origin_url", side_effect=AssertionError("origin read")):
-            self.assertEqual(detect.resolve("github.com/acme/widgets"), ("github", "acme/widgets"))
-            self.assertEqual(detect.resolve("acme/widgets", "fixture"), ("fixture", "acme/widgets"))
+            self.assertEqual(detect.resolve("github.com/acme/widgets"), ("github", "acme/widgets", "github.com"))
+            self.assertEqual(detect.resolve("acme/widgets", "fixture"), ("fixture", "acme/widgets", None))
+
+    def test_explicit_provider_and_repo_need_no_origin(self):
+        with mock.patch.object(detect, "origin_url", side_effect=AssertionError("origin read")):
+            code, out, err = run("--provider", "fixture", "--repo", "acme/widgets", "whoami")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(json.loads(out), {"login": "alice"})
+
+    def test_desk_and_cli_preserve_explicit_forgejo_host(self):
+        with mock.patch.dict(os.environ, {"FORGEJO_URL": "https://hub.example", "FORGEJO_TOKEN": "t"}), \
+             mock.patch.object(detect, "origin_url", side_effect=AssertionError("origin read")), \
+             mock.patch.object(ForgejoProvider, "default_branch", return_value="main"):
+            p, repo = prdesk.provider_and_repo(mock.Mock(repo="hub.example/acme/widgets", provider=None))
+            code, out, err = run("--repo", "hub.example/acme/widgets", "repo", "info")
+        self.assertEqual((p.base, repo), ("https://hub.example", "acme/widgets"))
+        self.assertEqual(code, 0, err)
+        self.assertEqual(json.loads(out)["host"], "hub.example")
 
     def test_the_cli_exits_2_on_an_unknown_host(self):
         with mock.patch.object(detect, "origin_url", return_value="https://gitlab.example.org/a/b.git"):
@@ -116,6 +132,12 @@ class FixtureVerbsTest(unittest.TestCase):
         self.assertEqual([i["n"] for i in self.verb("issue", "list")], [3])
         issue = self.verb("issue", "view", "3")
         self.assertEqual(issue["comments"][0]["who"], "alice")
+
+    def test_incomplete_issue_list_fails_without_partial_output(self):
+        with mock.patch("providers.fixture.FixtureProvider.issues", return_value={"rows": [], "truncated": True}):
+            code, out, err = run(*self.R, "issue", "list")
+        self.assertEqual((code, out), (1, ""))
+        self.assertIn("incomplete", err)
 
     def test_api_expands_repo_and_returns_the_recorded_body(self):
         self.assertEqual(self.verb("api", "repos/{repo}/branches/main/protection"),
@@ -177,8 +199,8 @@ class GitHubShapeTest(unittest.TestCase):
     def gh(self, *args, **kw):
         joined = " ".join(args)
         if joined.startswith("api graphql"):
-            return json.dumps({"data": {"repository": {"pullRequest": {
-                "closingIssuesReferences": {"nodes": [{"number": 4}]}}}}})
+            return json.dumps([{"data": {"repository": {"pullRequest": {
+                "closingIssuesReferences": {"nodes": [{"number": 4}]}}}}}])
         table = {
             "api repos/acme/widgets/pulls/12": PULL,
             "api repos/acme/widgets/pulls/12/reviews?per_page=100": REVIEWS_GH,
@@ -188,7 +210,57 @@ class GitHubShapeTest(unittest.TestCase):
         }
         if joined == "pr diff 12 --repo acme/widgets":
             return DIFF
-        return json.dumps(table[joined])
+        data = table[" ".join(args[:2])]
+        return json.dumps([data] if "--paginate" in args else data)
+
+    def test_lists_and_reviews_include_later_pages(self):
+        def gh(*args):
+            if args[1].endswith("/12"):
+                return json.dumps(PULL)
+            if args[1] == "graphql":
+                return self.gh(*args)
+            self.assertIn("--paginate", args)
+            self.assertIn("--slurp", args)
+            if "/reviews?" in args[1]:
+                return json.dumps([[REVIEWS_GH[0]], [REVIEWS_GH[1]]])
+            return json.dumps([[dict(PULL, user=_user("other"))], [PULL]])
+
+        with mock.patch("providers.github._gh", side_effect=gh), \
+             mock.patch.object(GitHubProvider, "whoami", return_value="alice"):
+            pr = GitHubProvider().pr_detail("acme/widgets", 12)
+            code, out, err = run("--repo", "github.com/acme/widgets", "pr", "list", "--mine")
+        self.assertEqual(pr["decision"], "APPROVED")
+        self.assertEqual(len(pr["reviews"]), 2)
+        self.assertEqual(code, 0, err)
+        self.assertEqual([row["author"] for row in json.loads(out)], ["alice"])
+
+    def test_issue_comments_include_later_pages(self):
+        def gh(*args):
+            if "/comments?" in args[1]:
+                self.assertIn("--paginate", args)
+                self.assertIn("--slurp", args)
+                return json.dumps([COMMENTS, [dict(COMMENTS[0], body="later")]])
+            return json.dumps(ISSUE)
+
+        with mock.patch("providers.github._gh", side_effect=gh):
+            issue = GitHubProvider().issue_detail("acme/widgets", 4)
+        self.assertEqual([c["body"] for c in issue["comments"]], ["on it", "later"])
+
+    def test_linked_issues_include_later_pages(self):
+        pages = [{"data": {"repository": {"pullRequest": {
+            "closingIssuesReferences": {"nodes": [{"number": n}]}}}}} for n in (4, 5)]
+        with mock.patch("providers.github._gh", return_value=json.dumps(pages)) as gh:
+            closes = GitHubProvider()._closes("acme/widgets", 12)
+        self.assertEqual([c["issue"] for c in closes], [4, 5])
+        self.assertIn("--paginate", gh.call_args.args)
+        self.assertIn("--slurp", gh.call_args.args)
+        self.assertIn("after:$endCursor", GitHubProvider.CLOSES_GQL)
+        self.assertIn("pageInfo{hasNextPage endCursor}", GitHubProvider.CLOSES_GQL)
+
+    def test_get_fields_never_switch_to_post(self):
+        with mock.patch("providers.github._gh", return_value="[]") as gh:
+            GitHubProvider().api("repos/acme/widgets/issues", method="GET", fields={"state": "open"})
+        gh.assert_called_once_with("api", "repos/acme/widgets/issues", "-X", "GET", "-f", "state=open")
 
     def test_pr_detail_shape(self):
         with mock.patch("providers.github._gh", side_effect=self.gh):
@@ -219,6 +291,8 @@ class ForgejoShapeTest(unittest.TestCase):
         }
         if path.endswith(".diff"):
             return DIFF
+        if params and params.get("page", 1) > 1:
+            return "[]"
         return json.dumps(table[path])
 
     def provider(self):
@@ -240,6 +314,43 @@ class ForgejoShapeTest(unittest.TestCase):
             self.assertEqual(p.pulls("acme/widgets")[0]["n"], 12)
             self.assertEqual(p.issue_detail("acme/widgets", 4)["comments"][0]["body"], "on it")
             self.assertEqual(base.diff_paths(p.pr_diff("acme/widgets", 12)), ["server/gw.py"])
+
+    def test_lists_reviews_and_comments_include_later_pages(self):
+        def request(path, **kwargs):
+            params = kwargs.get("params") or {}
+            page = params.get("page", 1)
+            if page > 2:
+                return "[]"
+            if path.endswith("/reviews"):
+                return json.dumps([REVIEWS_FJ[page - 1]])
+            if path.endswith("/comments"):
+                return json.dumps([dict(COMMENTS[0], body=str(page))])
+            if path.endswith("/pulls"):
+                return json.dumps([dict(PULL, user=_user("other" if page == 1 else "alice"))])
+            return self.request(path, **kwargs)
+
+        p = self.provider()
+        with mock.patch.object(ForgejoProvider, "_request", side_effect=request), \
+             mock.patch("gw.get_provider", return_value=p):
+            pr = p.pr_detail("acme/widgets", 12)
+            issue = p.issue_detail("acme/widgets", 4)
+            code, out, err = run("--provider", "forgejo", "--repo", "hub.example/acme/widgets",
+                                 "pr", "list", "--mine")
+        self.assertEqual(pr["decision"], "APPROVED")
+        self.assertEqual(len(pr["reviews"]), 2)
+        self.assertEqual([c["body"] for c in issue["comments"]], ["1", "2"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual([row["author"] for row in json.loads(out)], ["alice"])
+
+    def test_get_fields_are_query_parameters(self):
+        p = self.provider()
+        with mock.patch("urllib.request.urlopen") as urlopen:
+            urlopen.return_value.__enter__.return_value.read.return_value = b"[]"
+            p.api("repos/acme/widgets/issues?limit=10", fields={"state": "open"})
+        request = urlopen.call_args.args[0]
+        self.assertEqual(request.get_method(), "GET")
+        self.assertEqual(request.full_url, "https://hub.example/api/v1/repos/acme/widgets/issues?limit=10&state=open")
+        self.assertIsNone(request.data)
 
     def test_the_provider_addresses_the_origin_host(self):
         self.assertEqual(self.provider().base, "https://hub.example")

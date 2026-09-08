@@ -273,18 +273,20 @@ class GitHubProvider(Provider):
     # same endpoints exist on Forgejo with the same names. GraphQL only for
     # what REST does not have — the linked issues.
 
-    CLOSES_GQL = ("query($owner:String!,$name:String!,$number:Int!){"
+    CLOSES_GQL = ("query($owner:String!,$name:String!,$number:Int!,$endCursor:String){"
                   "repository(owner:$owner,name:$name){pullRequest(number:$number){"
-                  "closingIssuesReferences(first:50){nodes{number}}}}}")
+                  "closingIssuesReferences(first:100,after:$endCursor){"
+                  "pageInfo{hasNextPage endCursor} nodes{number}}}}}")
 
-    def _rest(self, endpoint, method="GET", fields=None):
-        args = ["api", endpoint]
-        if method != "GET":
-            args += ["-X", method]
+    def _rest(self, endpoint, method="GET", fields=None, paginate=False):
+        args = ["api", endpoint, "-X", method]
         for key, value in (fields or {}).items():
             args += ["-f", "%s=%s" % (key, value)]
+        if paginate:
+            args += ["--paginate", "--slurp"]
         out = _gh(*args)
-        return json.loads(out) if out.strip() else None
+        data = json.loads(out) if out.strip() else None
+        return [item for page in data for item in page] if paginate else data
 
     def api(self, endpoint, method="GET", fields=None):
         return self._rest(endpoint, method, fields)
@@ -316,11 +318,11 @@ class GitHubProvider(Provider):
 
     def pulls(self, repo, state="open"):
         pulls = self._rest("repos/%s/pulls?state=%s&per_page=100&sort=created&direction=desc"
-                           % (repo, state)) or []
+                           % (repo, state), paginate=True) or []
         return [self._brief(pr) for pr in pulls]
 
     def pr_reviews(self, repo, n):
-        reviews = self._rest("repos/%s/pulls/%s/reviews?per_page=100" % (repo, n)) or []
+        reviews = self._rest("repos/%s/pulls/%s/reviews?per_page=100" % (repo, n), paginate=True) or []
         out = []
         for review in reviews:
             state = review.get("state", "")
@@ -335,10 +337,11 @@ class GitHubProvider(Provider):
     def _closes(self, repo, n):
         owner, name = repo.split("/", 1)
         raw = _gh("api", "graphql", "-f", "query=%s" % self.CLOSES_GQL,
-                  "-f", "owner=%s" % owner, "-f", "name=%s" % name, "-F", "number=%s" % n)
-        pr = json.loads(raw)["data"]["repository"]["pullRequest"] or {}
+                  "-f", "owner=%s" % owner, "-f", "name=%s" % name, "-F", "number=%s" % n,
+                  "--paginate", "--slurp")
         return [{"issue": node["number"], "source": "provider"}
-                for node in (pr.get("closingIssuesReferences") or {}).get("nodes") or []]
+                for page in json.loads(raw)
+                for node in page["data"]["repository"]["pullRequest"]["closingIssuesReferences"]["nodes"]]
 
     def pr_detail(self, repo, n):
         pr = self._rest("repos/%s/pulls/%s" % (repo, n))
@@ -361,7 +364,7 @@ class GitHubProvider(Provider):
 
     def issue_detail(self, repo, n):
         issue = self._rest("repos/%s/issues/%s" % (repo, n))
-        comments = self._rest("repos/%s/issues/%s/comments?per_page=100" % (repo, n)) or []
+        comments = self._rest("repos/%s/issues/%s/comments?per_page=100" % (repo, n), paginate=True) or []
         return {
             "n": issue["number"], "title": issue["title"], "body": issue.get("body") or "",
             "state": issue.get("state"), "author": self._login(issue.get("user")),

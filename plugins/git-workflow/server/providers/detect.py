@@ -54,7 +54,7 @@ def provider_for(host):
 
 
 def resolve(repo=None, provider=None, cwd=None):
-    """(provider name, 'owner/repo') for a CLI call.
+    """(provider name, 'owner/repo', host) for a CLI call.
 
     --repo may carry a host prefix (host/owner/repo); without one the host is
     the origin's. --provider forces the name, fixture included.
@@ -67,4 +67,6 @@ def resolve(repo=None, provider=None, cwd=None):
         origin_host, origin_repo = parse_remote(origin_url(cwd))
         repo = repo or origin_repo
         host = host or origin_host
-    return provider or provider_for(host), repo
+    name = provider or provider_for(host)
+    host = host or {"github": "github.com", "forgejo": forgejo_host()}.get(name)
+    return name, repo, host
