@@ -63,3 +63,30 @@ proof is the latest verification report by the user on the current head,
 posted as a `COMMENTED` review with `commit_id` set to the tested SHA. Its final
 line must be `Verification result: PASS`; `FAIL` and `BLOCKED` keep the gate
 closed. An ordinary comment is not a verification report.
+
+## Serving the instance from a worktree
+
+The instance already running on the machine serves the **main checkout** —
+the base, not the PR. A browser check against it passes for the wrong reason
+or fails for the wrong reason, and the user cannot tell which. So a UI step
+never reuses a running instance: the verifying agent serves its own.
+
+- **Ask which instance first.** The repo's code is one thing; the instance it
+  runs as (site, database, configuration) is another, and the user has more
+  than one. Before serving, ask him which instance to start the check on,
+  offering the ones the repo's launch recipe lists. Never pick one for him.
+- **The launch recipe is the repo's, not the plugin's.** Look, in order, for a
+  project skill named `run` or `ui-test` in the repo, then for a configuration
+  in `.claude/launch.json`. Its contract: given the worktree path, the chosen
+  instance and a free port, it starts the app serving **that worktree's
+  code** and prints the URL. No recipe → the UI steps are `BLOCKED`, with the
+  line "no launch recipe in the repo", never skipped in silence.
+- Start it with `cwd` inside the worktree, `PYTHONPATH` into the worktree, a
+  scratch `GENRO_GNRFOLDER` of its own, on a port probed free — never the
+  port of the instance he is using.
+- **Prove what is being served before the first click**: the module's
+  `__file__` under the worktree, or a string the PR itself introduced, read
+  from the served page. A green check on unproven code is worth nothing.
+- Point the browser at that URL only (runtime.md, "Opening a URL"). Kill the
+  process when the check ends, and say in the report which SHA and port were
+  served.

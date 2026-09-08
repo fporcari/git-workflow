@@ -100,8 +100,12 @@ label every PR they open `needs-verification`: it stands under your login, but
 the hands were not yours, so the desk reads it as work to check, not as your
 own — `verify it` comes before any merge, also in a repository where there is
 nobody else to ask. `pr-analyze` answers with a numbered verification plan,
-`pr-loop` hands the plan to a fresh agent, whose report lands as a review on
-the PR head; with nobody else to ask, the merge is then your decision.
+`pr-loop` shows the plan as the checklist you approve, asks which instance to
+run the browser checks on, and hands it to a fresh agent that serves the PR
+from its own worktree — never your running instance — and reports as a review
+on the PR head; with nobody else to ask, the merge is then your decision. The
+launch recipe is the repo's own (a `run`/`ui-test` project skill or
+`.claude/launch.json`); without one the UI steps come back blocked, not faked.
 
 **"Show me, don't tell me."** — the detached dashboards:
 

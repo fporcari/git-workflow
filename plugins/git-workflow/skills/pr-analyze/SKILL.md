@@ -133,6 +133,19 @@ Produce four distinct facts:
   verifica" and nothing else, because the merge is not on the table before
   the plan has run.
 
+  When the diff touches something a browser sees — a page, a resource, a
+  template, anything under a webpages/static/UI path — the plan has two
+  parts. First the **instance step**: "worktree at `<headOid>`, instance
+  *(chosen by the user)* served from it on a free port by the repo's launch
+  recipe, served code proven" — written as one step, with the instance left
+  to him (`pr-loop` asks). Then the **UI checklist**: one step per thing to
+  try in that browser, each as *where → what to do → what he must see*,
+  covering the change itself, the path the change could break next to it,
+  and one thing that must stay as it was. The checklist is the part he
+  reads before saying go, so it names screens and actions in his words, not
+  files. No launch recipe in the repo → the instance step says so and the
+  checklist stays, marked as blocked until a recipe exists.
+
 The PR title and body are claims. Prefer the linked issue and verified call path
 when they disagree. Do not turn a file list into the problem statement.
 

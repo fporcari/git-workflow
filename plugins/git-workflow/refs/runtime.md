@@ -50,6 +50,16 @@ Effort accepts the common portable values `low`, `medium`, `high`, `xhigh` and
 `OPERATION` at `high`, `TRIAGE` at `medium` — and Codex jobs keep the host's
 configured defaults, since those aliases are Claude's.
 
+## Opening a URL
+
+A verification that serves the PR from its worktree opens **that** URL, never
+the instance the user has running:
+
+- Claude Code: `navigate` (or `preview_start` with `url`) on the localhost
+  URL the launch recipe printed.
+- Codex: open the URL in the browser panel/tool when available; otherwise
+  give it to the user and wait.
+
 ## Model policy
 
 The model follows the reader of the output. Output a human reads — replies to

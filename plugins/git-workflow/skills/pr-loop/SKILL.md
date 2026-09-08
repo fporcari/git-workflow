@@ -447,15 +447,30 @@ at him.
 ### `verify it` — the agent's PR gets a second pair of eyes
 
 A PR labelled `needs-verification` was written by an agent under his login.
-The proposal is the plan `pr-analyze` returned (`plan`, numbered steps); on a
-go-ahead, hand the plan to a **fresh agent** (runtime.md, background
+The proposal is the plan `pr-analyze` returned (`plan`, numbered steps),
+shown in full as the **checklist he is approving** — he reads what will be
+tried and what must be seen, and he can strike or add a line before the go.
+
+**When the plan has an instance step, ask which instance before the go**, in
+the same question: the candidates come from the repo's launch recipe
+(worktree-traps.md, "Serving the instance from a worktree"); with none
+listed, ask him to name one. The plan is not runnable until he has answered,
+and the answer is written into the instance step. Never start on the
+instance he has running.
+
+On a go-ahead, hand the plan to a **fresh agent** (runtime.md, background
 delegation) — never the session that wrote the PR, never this one's context —
 working in its own worktree on the PR head:
 
 1. record the worktree's tested SHA (`git rev-parse HEAD`) before running the
-   plan; run every step in order and record its outcome. A step that cannot be
-   run is not passed;
-2. prepare the English report with one line per step. End with exactly
+   plan; serve the chosen instance from the worktree per the recipe, prove
+   the served code is the worktree's, and point the browser at that URL
+   only; then run every step in order and record its outcome. A step that
+   cannot be run is not passed; a UI step without a launch recipe is
+   `BLOCKED`, said as such;
+2. prepare the English report as the checklist with one line per step —
+   the step as approved, its outcome, and for a UI step what was actually
+   seen — plus the SHA and port served, and the instance name. End with exactly
    `Verification result: PASS` only when every step passed and the PR is fit
    to merge; otherwise use `Verification result: FAIL` or
    `Verification result: BLOCKED`. These lines carry no author/tool attribution;
