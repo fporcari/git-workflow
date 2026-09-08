@@ -412,6 +412,11 @@ def parse_result(agent, stdout, output_path=None, expected_n=None):
                all(isinstance(item, str) for item in result[key])
                for key in ("verified", "not_verified")):
         raise ValueError("agent returned invalid verification lists")
+    plan = result.get("plan")
+    if plan is not None and not (isinstance(plan, list) and plan and
+                                 all(isinstance(step, str) and step.strip()
+                                     for step in plan)):
+        raise ValueError("agent returned an invalid verification plan")
     return result
 
 
@@ -435,9 +440,13 @@ def persist(repo, result, analysis_keys=None):
             record["problem_head"] = keys["problem_head"]
         if result.get("draft"):
             record["draft"] = result["draft"]
+        if result.get("plan"):
+            record["plan"] = result["plan"]
         target = state.setdefault("prs", {}).setdefault(str(result["n"]), {})
         if not result.get("draft"):
             target.pop("draft", None)
+        if not result.get("plan"):
+            target.pop("plan", None)
         target.update(record)
     deskstate.update(repo, mutate)
 
@@ -502,6 +511,8 @@ def persist_triage(repo, result, flow, exported):
                     analysis_key=rows[n]["model_keys"]["analysis"])
                 if item.get("draft"):
                     record["draft"] = item["draft"]
+                if item.get("plan"):
+                    record["plan"] = item["plan"]
             if "conflict" in tasks:
                 if item.get("conflict_kind") not in ("mechanical", "substantive"):
                     raise ValueError("agent did not classify conflict #%s" % n)

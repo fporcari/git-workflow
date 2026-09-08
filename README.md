@@ -95,6 +95,14 @@ executed in parallel, each fix in its own worktree.
 **The same three lines on the issue side**: `/issue-triage`, `/issue-loop`,
 `/issue-loop 1156,1149 batch=2`.
 
+**A PR an agent opened is a subordinate's PR.** `issue-loop` and `issue-work`
+label every PR they open `needs-verification`: it stands under your login, but
+the hands were not yours, so the desk reads it as work to check, not as your
+own — `verify it` comes before any merge, also in a repository where there is
+nobody else to ask. `pr-analyze` answers with a numbered verification plan,
+`pr-loop` hands the plan to a fresh agent, whose report lands as a review on
+the PR head; with nobody else to ask, the merge is then your decision.
+
 **"Show me, don't tell me."** — the detached dashboards:
 
 ```

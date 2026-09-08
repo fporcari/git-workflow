@@ -83,6 +83,19 @@ class Packaging(unittest.TestCase):
         self.assertIn("author", schema["required"])
         self.assertIn("problem", schema["required"])
 
+    def test_the_schemas_admit_every_key_the_server_persists(self):
+        """`additionalProperties: false` plus a constrained-output agent: a key
+        the schema lacks is dropped in silence before the server sees it."""
+        single = json.loads(
+            (PLUGIN / "server" / "schemas" / "pr-analysis.json").read_text())
+        batch = json.loads(
+            (PLUGIN / "server" / "schemas" / "triage-result.json").read_text())
+        batch_props = batch["properties"]["prs"]["items"]["properties"]
+        for key in ("n", "author", "problem", "history", "propose", "draft",
+                    "verified", "not_verified", "plan"):
+            self.assertIn(key, single["properties"])
+            self.assertIn(key, batch_props)
+
     def test_the_headless_analysis_cannot_write_through_gh(self):
         """`gh api` accepts -X POST: an allowlist that grants it grants the
         merge too, and this agent is read-only."""

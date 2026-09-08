@@ -5,11 +5,13 @@ verdict engine and the UI never know which service they are talking to.
 
 PR row (the pr-triage skill's rows.json shape). `merge` may be None on a
 provider whose merge state is a separate phase — see mergestates() below:
-    n, title, created (YYYY-MM-DD), author, assignees [logins], draft (bool),
+    n, title, created (YYYY-MM-DD), author, labels [names], assignees [logins],
+    draft (bool),
     base, base_head (base commit oid), head (commit oid), incomplete (bool),
     merge (CLEAN|DIRTY|BLOCKED|UNSTABLE|UNKNOWN), decision
     (APPROVED|CHANGES_REQUESTED|REVIEW_REQUIRED|None),
-    req [logins], reviews [{who, state, on, has_text}], unresolved (int), threads (int),
+    req [logins], reviews [{who, state, on, commit, has_text}], unresolved (int),
+    threads (int),
     closes [{issue, assignees}], last {t, who, ch} | None, url
 
 Issue row:

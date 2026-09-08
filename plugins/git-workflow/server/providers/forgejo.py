@@ -73,7 +73,8 @@ class ForgejoProvider(Provider):
                 who = (r.get("user") or {}).get("login")
                 on = (r.get("submitted_at") or "")[:10]
                 reviews.append({"who": who, "state": "COMMENTED" if state.startswith("COMMENT") else state,
-                                "on": on, "has_text": bool((r.get("body") or "").strip())})
+                                "on": on, "commit": r.get("commit_id"),
+                                "has_text": bool((r.get("body") or "").strip())})
                 if r.get("submitted_at"):
                     spoke.append({"t": r["submitted_at"], "who": who, "ch": state.lower()})
         by_user = {}
@@ -92,6 +93,7 @@ class ForgejoProvider(Provider):
             "title": pr["title"],
             "created": (pr.get("created_at") or "")[:10],
             "author": (pr.get("user") or {}).get("login"),
+            "labels": [label["name"] for label in pr.get("labels") or []],
             "assignees": [a["login"] for a in pr.get("assignees") or []],
             "draft": bool(pr.get("draft")),
             "base": (pr.get("base") or {}).get("ref"),

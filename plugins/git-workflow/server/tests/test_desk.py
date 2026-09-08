@@ -41,6 +41,7 @@ import prdesk           # noqa: E402
 import safejson         # noqa: E402
 import verdicts         # noqa: E402
 from providers import get_provider  # noqa: E402
+from providers import forgejo as forgejo_provider  # noqa: E402
 from providers import github as github_provider  # noqa: E402
 
 deskstate.STATE_DIR = Path(_HOME) / ".local" / "state" / "git-workflow"
@@ -71,7 +72,7 @@ def fresh_desk(**kw):
 class RowContract(unittest.TestCase):
     """The shape every skill and the UI read. Breaking it breaks them."""
 
-    PR_KEYS = {"n", "title", "created", "author", "assignees", "draft", "base",
+    PR_KEYS = {"n", "title", "created", "author", "labels", "assignees", "draft", "base",
                "base_head", "head", "incomplete", "merge",
                "decision", "req", "reviews", "unresolved", "threads", "closes",
                "last", "url", "todo", "state", "autorun", "action",
@@ -174,6 +175,39 @@ class QueueMembership(unittest.TestCase):
         self.assertEqual(probe["checks"]["state"], "SUCCESS")
         self.assertEqual(probe["unresolved"], 1)
         self.assertNotIn("body", json.dumps(probe))
+
+    def test_provider_rows_carry_labels_and_the_reviewed_commit(self):
+        node = {"number": 3, "title": "t", "createdAt": "2026-09-01T00:00:00Z",
+                "author": {"login": "me"}, "isDraft": False, "baseRefName": "main",
+                "baseRefOid": "b", "headRefOid": "h",
+                "labels": {"nodes": [{"name": "needs-verification"}]},
+                "assignees": {"pageInfo": {"hasNextPage": False}, "nodes": []},
+                "reviewRequests": {"pageInfo": {"hasNextPage": False}, "nodes": []},
+                "reviews": {"pageInfo": {"hasPreviousPage": False}, "nodes": [{
+                    "author": {"login": "me"}, "state": "COMMENTED",
+                    "submittedAt": "2026-09-02T00:00:00Z", "bodyText": "report",
+                    "commit": {"oid": "h"}}]},
+                "comments": {"nodes": []},
+                "reviewThreads": {"pageInfo": {"hasNextPage": False}, "nodes": []},
+                "closingIssuesReferences": {"pageInfo": {"hasNextPage": False}, "nodes": []},
+                "reviewDecision": None, "bodyText": ""}
+        row = github_provider.GitHubProvider()._row(REPO, node)
+        self.assertEqual(row["labels"], ["needs-verification"])
+        self.assertEqual(row["reviews"][0]["commit"], "h")
+        self.assertTrue(verdicts.verified(row, "me"))
+
+        with mock.patch.dict(os.environ, {"FORGEJO_URL": "https://f", "FORGEJO_TOKEN": "t"}):
+            fj = forgejo_provider.ForgejoProvider()
+        pr = {"number": 3, "title": "t", "created_at": "2026-09-01T00:00:00Z",
+              "user": {"login": "me"}, "labels": [{"name": "needs-verification"}],
+              "assignees": [], "draft": False, "base": {"ref": "main", "sha": "b"},
+              "head": {"sha": "h"}, "mergeable": True, "requested_reviewers": []}
+        revs = [{"state": "COMMENT", "user": {"login": "me"}, "body": "report",
+                 "submitted_at": "2026-09-02T00:00:00Z", "commit_id": "h"}]
+        row = fj._row(REPO, pr, revs)
+        self.assertEqual(row["labels"], ["needs-verification"])
+        self.assertEqual(row["reviews"][0]["commit"], "h")
+        self.assertTrue(verdicts.verified(row, "me"))
 
     def test_a_new_membership_forces_the_detailed_queue_forward(self):
         desk = fresh_desk()
@@ -282,6 +316,87 @@ class Verdicts(unittest.TestCase):
                "req": [], "reviews": [{"who": "x", "state": "APPROVED"}],
                "unresolved": 0, "last": {"who": "x", "ch": "approved", "t": "2026-01-01"}}
         self.assertEqual(verdicts.verdict(row, "me")[2], "A1")
+
+    def labelled(self, **over):
+        row = {"author": "me", "assignees": ["me"], "draft": False, "merge": "CLEAN",
+               "decision": None, "req": [], "reviews": [], "unresolved": 0,
+               "last": None, "head": "h2", "labels": [verdicts.VERIFY_LABEL]}
+        row.update(over)
+        return row
+
+    def test_a_pr_to_verify_is_his_move_before_anyone_reviews(self):
+        todo, state, autorun = verdicts.verdict(self.labelled(), "me")
+        self.assertEqual((todo, state, autorun), ("verify it", "attention", "asks"))
+        self.assertEqual(verdicts.block_of({"todo": todo, "state": state,
+                                            "autorun": autorun}), "Review da fare")
+
+    def test_an_approval_does_not_skip_the_verification(self):
+        row = self.labelled(decision="APPROVED",
+                            reviews=[{"who": "x", "state": "APPROVED", "commit": "h2"}])
+        self.assertEqual(verdicts.verdict(row, "me")[0], "verify it")
+
+    def test_a_report_on_an_older_head_is_not_a_verification(self):
+        row = self.labelled(reviews=[{"who": "me", "state": "COMMENTED", "commit": "h1"}])
+        self.assertEqual(verdicts.verdict(row, "me")[0], "verify it")
+
+    def test_an_inline_reply_is_not_a_report(self):
+        row = self.labelled(reviews=[{"who": "me", "state": "COMMENTED", "commit": "h2",
+                                      "has_text": False}])
+        self.assertEqual(verdicts.verdict(row, "me")[0], "verify it")
+
+    def test_without_a_known_head_nothing_counts_as_verified(self):
+        row = self.labelled(head=None,
+                            reviews=[{"who": "me", "state": "COMMENTED", "commit": None,
+                                      "has_text": True}])
+        self.assertEqual(verdicts.verdict(row, "me")[0], "verify it")
+
+    def test_a_dirty_branch_is_realigned_before_it_is_verified(self):
+        row = self.labelled(merge="DIRTY", conflict_kind="mechanical")
+        self.assertEqual(verdicts.verdict(row, "me")[2], "A3")
+
+    def test_the_verification_comes_before_answering_a_reviewer(self):
+        row = self.labelled(decision="CHANGES_REQUESTED",
+                            reviews=[{"who": "x", "state": "CHANGES_REQUESTED"}],
+                            last={"who": "x", "ch": "changes_requested", "t": "2026-01-01"})
+        self.assertEqual(verdicts.verdict(row, "me")[0], "verify it")
+
+    def test_verified_but_not_clean_is_not_a_merge_call(self):
+        report = {"who": "me", "state": "COMMENTED", "commit": "h2", "has_text": True}
+        for merge in ("BLOCKED", "UNKNOWN", None):
+            todo, state, autorun = verdicts.verdict(
+                self.labelled(merge=merge, reviews=[report]), "me")
+            self.assertEqual(autorun, "asks")
+            self.assertNotIn("your call", todo)
+        todo = verdicts.verdict(self.labelled(assignees=[], reviews=[report]), "me")[0]
+        self.assertIn("assign", todo)
+
+    def test_verified_with_nobody_else_to_ask_is_his_call_never_a1(self):
+        row = self.labelled(reviews=[{"who": "me", "state": "COMMENTED", "commit": "h2",
+                                      "has_text": True}])
+        todo, state, autorun = verdicts.verdict(row, "me")
+        self.assertEqual((state, autorun), ("decision", "asks"))
+        self.assertIn("merge at your call", todo)
+
+    def test_verified_and_approved_follows_the_normal_road(self):
+        row = self.labelled(decision="APPROVED",
+                            reviews=[{"who": "me", "state": "COMMENTED", "commit": "h2",
+                                      "has_text": True},
+                                     {"who": "x", "state": "APPROVED"}])
+        self.assertEqual(verdicts.verdict(row, "me")[2], "A1")
+
+    def test_verified_with_a_reviewer_asked_waits_on_that_reviewer(self):
+        row = self.labelled(req=["x"],
+                            reviews=[{"who": "me", "state": "COMMENTED", "commit": "h2",
+                                      "has_text": True}],
+                            last={"who": "me", "ch": "commented", "t": "2026-01-01"})
+        todo, state, _ = verdicts.verdict(row, "me")
+        self.assertEqual(state, "waiting")
+        self.assertIn("x", todo)
+
+    def test_the_label_is_a_verdict_input(self):
+        plain = self.labelled(labels=[])
+        self.assertNotEqual(prdesk.triage_key(self.labelled(), None),
+                            prdesk.triage_key(plain, None))
 
 
 class Cache(unittest.TestCase):
@@ -535,6 +650,24 @@ class HeadlessAgents(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "expected #18"):
             jobs.parse_result("claude", json.dumps({
                 "result": json.dumps(self.RESULT)}), expected_n=18)
+
+    def test_a_verification_plan_is_a_list_of_steps_or_absent(self):
+        with_plan = dict(self.RESULT, plan=["run the suite", "open the page"])
+        parsed = jobs.parse_result("claude", json.dumps({
+            "result": json.dumps(with_plan)}), expected_n=17)
+        self.assertEqual(parsed["plan"], ["run the suite", "open the page"])
+        for bad in ([], ["ok", ""], "run it"):
+            with self.assertRaisesRegex(ValueError, "verification plan"):
+                jobs.parse_result("claude", json.dumps({
+                    "result": json.dumps(dict(self.RESULT, plan=bad))}), expected_n=17)
+
+    def test_a_plan_is_persisted_and_a_planless_result_drops_the_old_one(self):
+        repo = REPO + "-plan"
+        deskstate.reset(repo)
+        jobs.persist(repo, dict(self.RESULT, plan=["step"]), "k1")
+        self.assertEqual(deskstate.load(repo)["prs"]["17"]["plan"], ["step"])
+        jobs.persist(repo, self.RESULT, "k2")
+        self.assertNotIn("plan", deskstate.load(repo)["prs"]["17"])
 
     def test_result_requires_a_non_empty_decision_block(self):
         result = dict(self.RESULT, problem="")

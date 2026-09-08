@@ -42,7 +42,8 @@ If SINGLE-PHASE (any size): take it end to end.
   `<PLUGIN_ROOT>/refs/worktree-traps.md` — verbatim rules: no
   forks/remotes, PYTHONPATH into the worktree, no git stash, narrowest check
   now, `Fixes #<n>` verified in `closingIssuesReferences`, `--assignee` the
-  author, `--reviewer` from CODEOWNERS and confirmed.
+  author, `--reviewer` from CODEOWNERS and confirmed, `--label
+  needs-verification` on every PR (the label is created first).
 - Open **draft** when a decision is open (posted on the ISSUE, linked from
   the body); ready otherwise. Never claim a verification not performed.
 - Remove the worktree, report the PR link, and update the desk state entry

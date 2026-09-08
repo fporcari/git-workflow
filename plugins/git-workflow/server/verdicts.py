@@ -49,6 +49,21 @@ def _landing(gate):
             % (gate["branch"], who), "waiting", "-")
 
 
+VERIFY_LABEL = "needs-verification"
+
+
+def verified(row, me):
+    """The proof that the fresh-eyes verification happened on THIS head: a
+    COMMENTED review by the user carrying the report. A push invalidates it
+    the way it invalidates an approval, and a bodiless COMMENTED — what an
+    inline reply in a thread produces — is not a report."""
+    head = row.get("head")
+    return bool(head) and any(
+        r.get("who") == me and r.get("state") == "COMMENTED"
+        and r.get("has_text") and r.get("commit") == head
+        for r in row.get("reviews") or [])
+
+
 def verdict(row, me, gate=None):
     """Return (todo, state, autorun) for one normalized PR row.
 
@@ -85,6 +100,26 @@ def verdict(row, me, gate=None):
             if row.get("conflict_kind") == "mechanical" and not row.get("incomplete"):
                 return ("realign with the base", "attention", "A3")
             return ("inspect the conflict before realigning", "attention", "asks")
+        if VERIFY_LABEL in (row.get("labels") or []):
+            # the label says this PR was written under his login by somebody
+            # else's hands: a fresh reading and a run come before any merge,
+            # and a repo with nobody else to ask ends on his own decision
+            if not verified(row, me):
+                return ("verify it", "attention", "asks")
+            if not req and not any(r.get("who") != me for r in reviews):
+                landing = _landing(gate)
+                if landing:
+                    return landing
+                if merge != "CLEAN":
+                    return ("verified but %s - check before merging" % merge,
+                            "decision", "asks")
+                if row.get("incomplete"):
+                    return ("provider result incomplete - inspect before merging",
+                            "decision", "asks")
+                if row.get("assignees") != [me]:
+                    return ("assign the PR to its author before merging",
+                            "attention", "asks")
+                return ("verified - merge at your call", "decision", "asks")
         answered = last_who in (me, None)
         if decision == "CHANGES_REQUESTED" and not answered:
             return ("answer the review", "attention", "asks")
@@ -178,7 +213,7 @@ def decorate(rows, me, gates=None):
 
 BLOCK_TITLES = ("Da mergiare subito", "Azione banale", "Review da fare",
                 "Solo tue", "In attesa di altri")
-REVIEW_TODOS = ("review it", "re-review it")
+REVIEW_TODOS = ("review it", "re-review it", "verify it")
 
 
 def block_of(row):

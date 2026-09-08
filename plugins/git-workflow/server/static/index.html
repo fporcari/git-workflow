@@ -978,7 +978,8 @@ function renderPrTab(r){
         ${r.analysis_stale?`<small class="triageChip" title="Head, review o gate sono cambiati dopo questa lettura">↻ analisi da aggiornare</small>`:""}
         ${sk.problem?`<p>${esc(sk.problem)}</p>`:legacyAnalysis?`<p>${esc(sk.analysis)}</p>`:`<div class="tabEmpty">Nessuna analisi ancora. <b>▶ Analizza</b> avvia pr-analyze una volta, salva il JSON e riempie questo tab.</div>`}
         ${sk.history?`<h2>Storia</h2><p>${esc(sk.history)}</p>`:""}
-        ${sk.next?`<h2>Proposta</h2><p>${esc(sk.next)}</p>`:""}${actBadge(r)}</article>
+        ${sk.next?`<h2>Proposta</h2><p>${esc(sk.next)}</p>`:""}
+        ${sk.plan&&sk.plan.length?`<h2>Piano di verifica</h2><ol>${sk.plan.map(step=>`<li>${esc(step)}</li>`).join("")}</ol>`:""}${actBadge(r)}</article>
       <aside><h2>Segnali</h2>
         <div class="signal"><b>merge</b><span>${esc(r.merge||"in arrivo…")}</span></div>
         <div class="signal"><b>review</b><span>${esc(r.decision||"nessuna")}</span></div>

@@ -166,6 +166,18 @@ gh pr diff <n> --name-only | sed 's|/[^/]*$||' | sort -u
   with `reviews` also empty it is **unreviewed** → `get a reviewer`.
 - **An approval counts only on the current head.** With `dismiss_stale_reviews`, a
   `DISMISSED` entry counts for nothing.
+- **The `needs-verification` label is his move until proven otherwise.** An
+  agent opened that PR under his login, so it is a subordinate's work: `verify
+  it` — a fresh reading and a run — comes before any merge, before waiting on a
+  reviewer, and even when an approval is already in. The proof is a
+  `COMMENTED` review by him on the **current head**; a push voids it like an
+  approval. Verified, with nobody else asked and nobody else reviewing, the
+  row is `verified - merge at your call`: the repo has no one to get, and the
+  merge is his decision, never an `A1`. Verified with reviewers in play, the
+  ordinary rules resume — a human approval on top of the report makes it an
+  `A1` like any other. Only `DIRTY` comes before the label: a branch about to
+  be realigned is not worth verifying yet. A bodiless `COMMENTED` (an inline
+  reply) is not a report.
 - **An approval with a body is read, not trusted.** Reviewers pick the wrong
   button: "approve, but rename X first" is a change request. The engine cannot
   tell that from "LGTM", so any approval carrying text drops the PR to `asks`
@@ -214,8 +226,8 @@ a diff read, the honest cell is `asks`.
    than printing an empty table.
 2. **Azione banale** — `A2`/`A3`: the named one-line edit, the mechanical
    realign. Work needing no thought, only a go. Never put a design decision here.
-3. **Review da fare** — `review it`, `re-review it`. Above his own chasing,
-   because here he is somebody else's blocker.
+3. **Review da fare** — `review it`, `re-review it`, `verify it`. Above his own
+   chasing, because here he is somebody's blocker — the agent's, on a `verify it`.
 4. **Da sollecitare, per persona** — the fenced blocks of §6 and *nothing else*:
    no table, no per-PR line, no count. A chase is a message to paste, not a task.
 5. **Solo tue** — `decide with`, an `answer <login>` that is a judgement call, a
@@ -291,6 +303,8 @@ Closed set. Anything else is `needs a look - <the one unclear thing>` with `asks
 | `review it` | he is a requested reviewer | `asks` |
 | `re-review it` | he left `CHANGES_REQUESTED` and the author has answered since | `asks` |
 | `get a reviewer` | `reviews` empty and no useful standing request | `asks` |
+| `verify it` | his PR carries `needs-verification` and no `COMMENTED` review of his sits on the current head | `asks` |
+| `verified - merge at your call` | same label, his report on the head, nobody else asked or reviewing | `asks` |
 | `resolve the threads` | `unresolved > 0` with conversation resolution on | `asks` |
 | `mark ready` | `isDraft`, work looks complete | `yours` |
 | `finish it` | `isDraft`, work genuinely unfinished | `yours` |

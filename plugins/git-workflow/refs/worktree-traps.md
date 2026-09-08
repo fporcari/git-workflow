@@ -45,3 +45,19 @@ empty. `--assignee` the author; `--reviewer` resolved from CODEOWNERS on the
 touched paths and checked against
 `gh api repos/<owner>/<repo>/collaborators` — a login with no access is
 dropped without an error — then confirm `reviewRequests` landed.
+
+**Every PR an agent opens carries the label `needs-verification`.** It opens
+under the user's login, but the hands were not his: the label is what makes
+the PR desk read it as a subordinate's work — `verify it` before any merge,
+also when there is nobody else in the repo to ask — instead of as his own.
+Create the label first (idempotent), then pass it:
+
+```bash
+gh label create needs-verification --repo <owner>/<repo> --force \
+  -c 5319E7 -d "opened by an agent: fresh-eyes review and a run before merging"
+gh pr create ... --label needs-verification
+```
+
+Never remove it: it names the review regime, and the merge closes it. The
+proof that the verification happened is a `COMMENTED` review by the user on
+the current head, which `pr-loop` posts when it runs the plan.

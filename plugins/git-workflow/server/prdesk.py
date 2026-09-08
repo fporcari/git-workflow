@@ -79,9 +79,9 @@ def detect_repo():
 
 # the fields a verdict is a function of, and nothing else: hashing the whole
 # row made a title edit or a body edit expire a triage that would not change
-VERDICT_FIELDS = ("author", "draft", "base", "head", "merge", "decision",
-                  "req", "reviews", "unresolved", "incomplete", "assignees",
-                  "conflict_kind", "last")
+VERDICT_FIELDS = ("author", "labels", "draft", "base", "head", "merge",
+                  "decision", "req", "reviews", "unresolved", "incomplete",
+                  "assignees", "conflict_kind", "last")
 GATE_FIELDS = ("branch", "protected", "can_land", "landers", "approvals",
                "codeowners_required", "owners", "per_path", "dismiss_stale",
                "conversation_resolution")
@@ -114,7 +114,7 @@ def model_keys(row, gate=None, gate_known=True):
     problem_key = fingerprint([
         row.get("author"), row.get("head"), row.get("summary"),
         explained_issues])
-    history_fields = ("draft", "base", "base_head", "head", "merge",
+    history_fields = ("labels", "draft", "base", "base_head", "head", "merge",
                       "decision", "req", "reviews", "unresolved", "incomplete",
                       "assignees", "last")
     history_key = (fingerprint(

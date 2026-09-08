@@ -201,7 +201,9 @@ All of these, checked fresh, or it is not an A1:
    change request filed under the wrong button, so it is read, never merged
    unattended;
 4. every approval on the **current head**;
-5. `mergeStateStatus == "CLEAN"` on a **protected** base.
+5. `mergeStateStatus == "CLEAN"` on a **protected** base;
+6. no `needs-verification` label without a `COMMENTED` review of his on the
+   current head — an agent's PR is merged only after its fresh-eyes run.
 
 Squash when the branch carries fixups or merge commits, delete the branch, then
 verify the linked issues actually closed.
@@ -440,6 +442,32 @@ Lane B, and — the part that makes stopping halfway clean — **the PRs never
 reached, in queue order**, so picking this up later starts where it left off.
 An unanswered proposal counts as the same thing: do not keep pushing the queue
 at him.
+
+### `verify it` — the agent's PR gets a second pair of eyes
+
+A PR labelled `needs-verification` was written by an agent under his login.
+The proposal is the plan `pr-analyze` returned (`plan`, numbered steps); on a
+go-ahead, hand the plan to a **fresh agent** (runtime.md, background
+delegation) — never the session that wrote the PR, never this one's context —
+working in its own worktree on the PR head:
+
+1. run every step, in order, and record its outcome; a step that cannot be
+   run is reported as not run, never as passed;
+2. post the report as a review on the PR — `gh pr review <n> --comment
+   --body-file <report>`, one line per step with its outcome, and a closing
+   line saying whether the PR is fit to merge. The `COMMENTED` review on the
+   head is what turns the row from `verify it` to the next verdict; an issue
+   comment does not;
+3. never remove the label, never approve, never merge: the row comes back as
+   `verified - merge at your call` (nobody else to ask), proposed as a merge
+   in its own Lane B turn, or resumes the ordinary rules (reviewers in play),
+   where a human approval on the reported head makes it an `A1`.
+
+A failed step is a finding, not a fix: report it in the review, leave the row
+as it is, and let him decide whether to fix it here or open an issue. On
+`verified - merge at your call` the proposal is the merge itself, with the
+report's closing line quoted; a `vai` merges as an A1 would, and the closing
+report says the merge had no second human because the repo has none.
 
 `propose` must be a single concrete action, not a menu: *approve with a note
 about X*, *request changes on the CI failure*, *answer the reviewer that the

@@ -27,7 +27,7 @@ Schema (all keys optional):
   "session":   "PR triage · genropy · 2026-08-25",
   "prs":    {"1152": {"what": "...", "what_key": "...",
                       "analysis": "...", "analysis_key": "...", "draft": "...",
-                      "next": "...", "conflict_kind": "mechanical",
+                      "next": "...", "plan": ["..."], "conflict_kind": "mechanical",
                       "conflict_key": "..."}},
   "issues": {"1156": {"type": "DEFECT", "finding": "...", "size": "EASY",
                       "phase": "SINGLE-PHASE"}},

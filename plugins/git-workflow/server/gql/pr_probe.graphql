@@ -2,6 +2,7 @@ query($owner:String!,$name:String!,$number:Int!){
   repository(owner:$owner,name:$name){
     pullRequest(number:$number){
       headRefOid baseRefOid mergeStateStatus reviewDecision
+      labels(first:20){nodes{name}}
       reviewRequests(first:100){
         pageInfo{hasNextPage}
         nodes{

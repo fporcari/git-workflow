@@ -124,6 +124,7 @@ class GitHubProvider(Provider):
             "base_head": pr.get("baseRefOid"),
             "merge": pr.get("mergeStateStatus"),
             "decision": pr.get("reviewDecision"),
+            "labels": [label["name"] for label in (pr.get("labels") or {}).get("nodes") or []],
             "requests": [
                 ((node.get("requestedReviewer") or {}).get("login") or
                  (node.get("requestedReviewer") or {}).get("slug"))
@@ -172,6 +173,7 @@ class GitHubProvider(Provider):
             "title": node["title"],
             "created": node["createdAt"][:10],
             "author": (node.get("author") or {}).get("login") or "ghost",
+            "labels": [label["name"] for label in (node.get("labels") or {}).get("nodes") or []],
             "assignees": [a["login"] for a in node["assignees"]["nodes"]],
             "draft": node["isDraft"],
             "base": node["baseRefName"],

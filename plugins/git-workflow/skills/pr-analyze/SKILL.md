@@ -121,6 +121,15 @@ Produce four distinct facts:
   threads, requested reviewers, checks and how long it has been waiting;
 - `propose`: one concrete next action, with the review state or message it
   entails. If it is not the user's action to take, say whose action it is.
+- `plan`, **only** when the PR carries the `needs-verification` label and no
+  `COMMENTED` review by the user sits on the current head: the numbered steps
+  a fresh agent will run to verify it — the narrowest test that exercises the
+  changed mechanism, the suite, the claim in the body to check against the
+  code, the page or command to try by hand with the expected outcome. Each
+  step is one runnable line with what "passed" looks like; three to seven
+  steps, in the order they are run. `propose` is then "eseguire il piano di
+  verifica" and nothing else, because the merge is not on the table before
+  the plan has run.
 
 The PR title and body are claims. Prefer the linked issue and verified call path
 when they disagree. Do not turn a file list into the problem statement.
@@ -128,7 +137,8 @@ when they disagree. Do not turn a file list into the problem statement.
 ## 4 · Choose one proposal
 
 `propose` is one concrete action, not a menu. If it cannot be one line, the
-analysis is not finished. Draft the exact English review/comment only when that
+analysis is not finished. On a PR to verify the action is running `plan`; the
+plan is where the detail goes. Draft the exact English review/comment only when that
 action needs text posted on the PR; otherwise `draft` is `null`.
 
 ## 5 · Output
@@ -149,8 +159,12 @@ fences or prose. The schema is:
  "propose": "one line: exactly what will be done on a go-ahead",
  "draft": "full text of the comment/review to post, or null",
  "verified": ["what was actually checked this session"],
- "not_verified": ["what was not checked, named honestly"]}
+ "not_verified": ["what was not checked, named honestly"],
+ "plan": ["step 1 …", "step 2 …"]}
 ```
+
+`plan` is present only on a PR to verify (see §3), and then non-empty; omit it
+otherwise.
 
 In chat, show exactly this Italian decision block — **as text, never inside a
 code fence**. A fence turns it into something to copy, kills the word-wrap
@@ -171,11 +185,16 @@ one plain paragraph after its bold label, nothing more.
 **Storia** · <history>
 **Proposta** · <propose>
 
+**Piano di verifica**
+1. <step>
+2. <step>
+
 Procedo con questa proposta?
 ```
 
 One line each, in that order, with the label in bold. Nothing before the
-block, nothing after the question.
+block, nothing after the question. The numbered plan appears only when `plan`
+is returned, between the proposal and the question.
 
 Do not say merely that a draft exists: in detached desk mode it is returned in
 the structured result and the server makes it visible there. Outside the desk,
@@ -199,6 +218,7 @@ missing, preserve other keys):
                   "analysis": "<problema + storia, in italiano>",
                   "analysis_key": "<the event's analysis_key>",
                   "next": "<la proposta, in italiano>",
+                  "plan": ["<gli step, in italiano>"],
                   "draft": "<the English draft, or omit>"}}}
 ```
 

@@ -195,7 +195,8 @@ while the members of one component run in sequence. Sixteen bugs are not
 sixteen agents.
 
 The merge stays out of it, as always: every PR opens with its reviewer
-requested, and nothing is merged unattended. That is the later control step
+requested and the `needs-verification` label (worktree-traps.md), and nothing
+is merged unattended. That is the later control step
 this mode leans on — say so in the closing report rather than implying the
 work is done.
 
@@ -254,7 +255,7 @@ Each agent returns `{n, status: ok|failed, pr, why}`. Then:
 Reached by `basta` / `stop` / `per ora ok`, by an exhausted list, or by a
 proposal he did not answer. Do not keep pushing the queue at him.
 
-Tables: PRs opened (issue → PR → draft/ready → verified → assignee+reviewer)
+Tables: PRs opened (issue → PR → draft/ready → verified → assignee+reviewer+label)
 — after a `bugfix` run, say in the same breath that the review of those PRs is
 the control step that is still owed,
 the failures with their reason, WORKFLOW ones with their phases, decisions

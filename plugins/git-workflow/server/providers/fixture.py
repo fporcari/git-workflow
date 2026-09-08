@@ -41,6 +41,7 @@ class FixtureProvider(Provider):
         for source in self.data["rows"]:
             row = dict(source, merge=None)
             row.setdefault("assignees", [row["author"]])
+            row.setdefault("labels", [])
             row.setdefault("base_head", None)
             row.setdefault("head", None)
             row.setdefault("incomplete", False)
