@@ -184,6 +184,68 @@ class Provider:
         raise NotImplementedError
 
 
+def login(user):
+    return (user or {}).get("login")
+
+
+def logins(users):
+    return [u["login"] for u in users or [] if u]
+
+
+def review_row(review, state):
+    """A review in the REST shape GitHub and Forgejo share, with `state`
+    already normalized by the provider."""
+    return {"who": login(review.get("user")), "state": state,
+            "on": (review.get("submitted_at") or "")[:10],
+            "commit": review.get("commit_id"),
+            "has_text": bool((review.get("body") or "").strip())}
+
+
+def brief_row(pr):
+    return {
+        "n": pr["number"], "title": pr["title"],
+        "author": login(pr.get("user")), "draft": bool(pr.get("draft")),
+        "base": (pr.get("base") or {}).get("ref"),
+        "head": (pr.get("head") or {}).get("ref"),
+        "created": (pr.get("created_at") or "")[:10],
+        "updated": pr.get("updated_at"),
+        "labels": [label["name"] for label in pr.get("labels") or []],
+        "assignees": logins(pr.get("assignees")),
+        "req": logins(pr.get("requested_reviewers")),
+        "url": pr.get("html_url"),
+    }
+
+
+def detail_row(pr, reviews, merge, closes):
+    """The PR detail documented above; the provider supplies what differs
+    between services: the merge state and where `closes` comes from."""
+    brief = brief_row(pr)
+    return dict(brief, **{
+        "body": pr.get("body") or "",
+        "state": "merged" if pr.get("merged") else pr.get("state"),
+        "base": {"ref": pr["base"]["ref"], "sha": pr["base"]["sha"]},
+        "head": {"ref": pr["head"]["ref"], "sha": pr["head"]["sha"]},
+        "merge": merge,
+        "decision": decision_from(reviews, brief["req"]),
+        "reviews": reviews,
+        "closes": closes,
+        "comments": (pr.get("comments") or 0) + (pr.get("review_comments") or 0),
+    })
+
+
+def issue_row(issue, comments):
+    return {
+        "n": issue["number"], "title": issue["title"], "body": issue.get("body") or "",
+        "state": issue.get("state"), "author": login(issue.get("user")),
+        "assignees": logins(issue.get("assignees")),
+        "labels": [label["name"] for label in issue.get("labels") or []],
+        "created": issue.get("created_at"), "updated": issue.get("updated_at"),
+        "url": issue.get("html_url"),
+        "comments": [{"who": login(c.get("user")), "t": c.get("created_at"),
+                      "body": c.get("body") or ""} for c in comments],
+    }
+
+
 def diff_paths(diff):
     """The files a unified diff touches, in order, once each."""
     paths = []

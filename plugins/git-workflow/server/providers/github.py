@@ -30,7 +30,8 @@ from pathlib import Path
 
 import gate as gatelib
 
-from .base import Provider, REVIEW_STATES, decision_from, verification_result
+from .base import (Provider, REVIEW_STATES, brief_row, detail_row, issue_row, review_row,
+                   verification_result)
 
 GQL = Path(__file__).resolve().parents[1] / "gql"
 
@@ -295,14 +296,10 @@ class GitHubProvider(Provider):
             args += ["--paginate", "--slurp"]
         out = _gh(*args)
         data = json.loads(out) if out.strip() else None
-        return [item for page in data for item in page] if paginate else data
+        return [item for page in data or [] for item in page] if paginate else data
 
     def api(self, endpoint, method="GET", fields=None):
         return self._rest(endpoint, method, fields)
-
-    @staticmethod
-    def _login(user):
-        return (user or {}).get("login")
 
     @staticmethod
     def _merge(pr):
@@ -311,37 +308,14 @@ class GitHubProvider(Provider):
         state = (pr.get("mergeable_state") or "unknown").upper()
         return state if state in ("CLEAN", "DIRTY", "BLOCKED", "UNSTABLE", "BEHIND") else "UNKNOWN"
 
-    def _brief(self, pr):
-        return {
-            "n": pr["number"], "title": pr["title"],
-            "author": self._login(pr.get("user")), "draft": bool(pr.get("draft")),
-            "base": (pr.get("base") or {}).get("ref"),
-            "head": (pr.get("head") or {}).get("ref"),
-            "created": (pr.get("created_at") or "")[:10],
-            "updated": pr.get("updated_at"),
-            "labels": [label["name"] for label in pr.get("labels") or []],
-            "assignees": [a["login"] for a in pr.get("assignees") or []],
-            "req": [u["login"] for u in pr.get("requested_reviewers") or []],
-            "url": pr.get("html_url"),
-        }
-
     def pulls(self, repo, state="open"):
         pulls = self._rest("repos/%s/pulls?state=%s&per_page=100&sort=created&direction=desc"
-                           % (repo, state), paginate=True) or []
-        return [self._brief(pr) for pr in pulls]
+                           % (repo, state), paginate=True)
+        return [brief_row(pr) for pr in pulls]
 
     def pr_reviews(self, repo, n):
-        reviews = self._rest("repos/%s/pulls/%s/reviews?per_page=100" % (repo, n), paginate=True) or []
-        out = []
-        for review in reviews:
-            state = review.get("state", "")
-            if state not in REVIEW_STATES:
-                continue
-            out.append({"who": self._login(review.get("user")), "state": state,
-                        "on": (review.get("submitted_at") or "")[:10],
-                        "commit": review.get("commit_id"),
-                        "has_text": bool((review.get("body") or "").strip())})
-        return out
+        reviews = self._rest("repos/%s/pulls/%s/reviews?per_page=100" % (repo, n), paginate=True)
+        return [review_row(r, r.get("state", "")) for r in reviews if r.get("state") in REVIEW_STATES]
 
     def _closes(self, repo, n):
         owner, name = repo.split("/", 1)
@@ -354,33 +328,11 @@ class GitHubProvider(Provider):
 
     def pr_detail(self, repo, n):
         pr = self._rest("repos/%s/pulls/%s" % (repo, n))
-        reviews = self.pr_reviews(repo, n)
-        req = [u["login"] for u in pr.get("requested_reviewers") or []]
-        state = "merged" if pr.get("merged") else pr.get("state")
-        return dict(self._brief(pr), **{
-            "body": pr.get("body") or "", "state": state,
-            "base": {"ref": pr["base"]["ref"], "sha": pr["base"]["sha"]},
-            "head": {"ref": pr["head"]["ref"], "sha": pr["head"]["sha"]},
-            "merge": self._merge(pr),
-            "decision": decision_from(reviews, req),
-            "reviews": reviews,
-            "closes": self._closes(repo, n),
-            "comments": (pr.get("comments") or 0) + (pr.get("review_comments") or 0),
-        })
+        return detail_row(pr, self.pr_reviews(repo, n), self._merge(pr), self._closes(repo, n))
 
     def pr_diff(self, repo, n):
         return _gh("pr", "diff", str(n), "--repo", repo)
 
     def issue_detail(self, repo, n):
-        issue = self._rest("repos/%s/issues/%s" % (repo, n))
-        comments = self._rest("repos/%s/issues/%s/comments?per_page=100" % (repo, n), paginate=True) or []
-        return {
-            "n": issue["number"], "title": issue["title"], "body": issue.get("body") or "",
-            "state": issue.get("state"), "author": self._login(issue.get("user")),
-            "assignees": [a["login"] for a in issue.get("assignees") or []],
-            "labels": [label["name"] for label in issue.get("labels") or []],
-            "created": issue.get("created_at"), "updated": issue.get("updated_at"),
-            "url": issue.get("html_url"),
-            "comments": [{"who": self._login(c.get("user")), "t": c.get("created_at"),
-                          "body": c.get("body") or ""} for c in comments],
-        }
+        return issue_row(self._rest("repos/%s/issues/%s" % (repo, n)),
+                         self._rest("repos/%s/issues/%s/comments?per_page=100" % (repo, n), paginate=True))

@@ -22,7 +22,8 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 
-from .base import Provider, REVIEW_STATES, closes_from_body, decision_from, verification_result
+from .base import (Provider, REVIEW_STATES, brief_row, closes_from_body, decision_from, detail_row,
+                   issue_row, logins, review_row, verification_result)
 
 STATE_MAP = {"REQUEST_CHANGES": "CHANGES_REQUESTED", "COMMENT": "COMMENTED"}
 PAGE = 50
@@ -125,40 +126,26 @@ class ForgejoProvider(Provider):
         for r in revs:
             state = _review_state(r)
             if state in ("APPROVED", "CHANGES_REQUESTED", "COMMENTED"):
-                who = (r.get("user") or {}).get("login")
-                on = (r.get("submitted_at") or "")[:10]
-                reviews.append({"who": who, "state": state,
-                                "on": on, "commit": r.get("commit_id"),
-                                "verification": verification_result(r.get("body")),
-                                "has_text": bool((r.get("body") or "").strip())})
+                reviews.append(dict(review_row(r, state), verification=verification_result(r.get("body"))))
                 if r.get("submitted_at"):
-                    spoke.append({"t": r["submitted_at"], "who": who, "ch": state.lower()})
-        by_user = {}
-        for r in reviews:
-            by_user[r["who"]] = r["state"]
-        if "CHANGES_REQUESTED" in by_user.values():
-            decision = "CHANGES_REQUESTED"
-        elif "APPROVED" in by_user.values():
-            decision = "APPROVED"
-        else:
-            decision = "REVIEW_REQUIRED" if reviews else None
+                    spoke.append({"t": r["submitted_at"], "who": reviews[-1]["who"], "ch": state.lower()})
         spoke.sort(key=lambda s: s["t"])
-        mergeable = pr.get("mergeable")
+        req = logins(pr.get("requested_reviewers"))
         return {
             "n": pr["number"],
             "title": pr["title"],
             "created": (pr.get("created_at") or "")[:10],
             "author": (pr.get("user") or {}).get("login"),
             "labels": [label["name"] for label in pr.get("labels") or []],
-            "assignees": [a["login"] for a in pr.get("assignees") or []],
+            "assignees": logins(pr.get("assignees")),
             "draft": bool(pr.get("draft")),
             "base": (pr.get("base") or {}).get("ref"),
             "base_head": (pr.get("base") or {}).get("sha"),
             "head": (pr.get("head") or {}).get("sha"),
             "incomplete": False,
-            "merge": "CLEAN" if mergeable else ("DIRTY" if mergeable is False else "UNKNOWN"),
-            "decision": decision,
-            "req": [u["login"] for u in pr.get("requested_reviewers") or [] if u],
+            "merge": self._merge(pr),
+            "decision": decision_from(reviews, req),
+            "req": req,
             "reviews": reviews,
             "unresolved": 0,
             "threads": sum(r.get("comments_count") or 0 for r in revs),
@@ -202,78 +189,31 @@ class ForgejoProvider(Provider):
         return json.loads(body) if body.strip() else None
 
     @staticmethod
-    def _login(user):
-        return (user or {}).get("login")
-
-    @staticmethod
     def _merge(pr):
         if pr.get("merged"):
             return "MERGED"
         mergeable = pr.get("mergeable")
         return "CLEAN" if mergeable else ("DIRTY" if mergeable is False else "UNKNOWN")
 
-    def _brief(self, pr):
-        return {
-            "n": pr["number"], "title": pr["title"],
-            "author": self._login(pr.get("user")), "draft": bool(pr.get("draft")),
-            "base": (pr.get("base") or {}).get("ref"),
-            "head": (pr.get("head") or {}).get("ref"),
-            "created": (pr.get("created_at") or "")[:10],
-            "updated": pr.get("updated_at"),
-            "labels": [label["name"] for label in pr.get("labels") or []],
-            "assignees": [a["login"] for a in pr.get("assignees") or []],
-            "req": [u["login"] for u in pr.get("requested_reviewers") or [] if u],
-            "url": pr.get("html_url"),
-        }
-
     def pulls(self, repo, state="open"):
-        pulls = self._get_all("/repos/%s/pulls" % repo, state=state,
-                          sort="recentupdate") or []
+        pulls = self._get_all("/repos/%s/pulls" % repo, state=state, sort="recentupdate")
         pulls.sort(key=lambda pr: pr.get("created_at") or "", reverse=True)
-        return [self._brief(pr) for pr in pulls]
+        return [brief_row(pr) for pr in pulls]
 
     def pr_reviews(self, repo, n):
-        out = []
-        for review in self._get_all("/repos/%s/pulls/%s/reviews" % (repo, n)) or []:
-            state = _review_state(review)
-            if state not in REVIEW_STATES:
-                continue
-            out.append({"who": self._login(review.get("user")), "state": state,
-                        "on": (review.get("submitted_at") or "")[:10],
-                        "commit": review.get("commit_id"),
-                        "has_text": bool((review.get("body") or "").strip())})
+        reviews = self._get_all("/repos/%s/pulls/%s/reviews" % (repo, n))
+        states = [(r, _review_state(r)) for r in reviews]
+        out = [review_row(r, state) for r, state in states if state in REVIEW_STATES]
         out.sort(key=lambda r: r["on"])
         return out
 
     def pr_detail(self, repo, n):
         pr = self._get("/repos/%s/pulls/%s" % (repo, n))
-        reviews = self.pr_reviews(repo, n)
-        req = [u["login"] for u in pr.get("requested_reviewers") or [] if u]
-        state = "merged" if pr.get("merged") else pr.get("state")
-        return dict(self._brief(pr), **{
-            "body": pr.get("body") or "", "state": state,
-            "base": {"ref": pr["base"]["ref"], "sha": pr["base"]["sha"]},
-            "head": {"ref": pr["head"]["ref"], "sha": pr["head"]["sha"]},
-            "merge": self._merge(pr),
-            "decision": decision_from(reviews, req),
-            "reviews": reviews,
-            "closes": closes_from_body(pr.get("body")),
-            "comments": (pr.get("comments") or 0) + (pr.get("review_comments") or 0),
-        })
+        return detail_row(pr, self.pr_reviews(repo, n), self._merge(pr), closes_from_body(pr.get("body")))
 
     def pr_diff(self, repo, n):
         return self._get_text("/repos/%s/pulls/%s.diff" % (repo, n))
 
     def issue_detail(self, repo, n):
-        issue = self._get("/repos/%s/issues/%s" % (repo, n))
-        comments = self._get("/repos/%s/issues/%s/comments" % (repo, n)) or []
-        return {
-            "n": issue["number"], "title": issue["title"], "body": issue.get("body") or "",
-            "state": issue.get("state"), "author": self._login(issue.get("user")),
-            "assignees": [a["login"] for a in issue.get("assignees") or []],
-            "labels": [label["name"] for label in issue.get("labels") or []],
-            "created": issue.get("created_at"), "updated": issue.get("updated_at"),
-            "url": issue.get("html_url"),
-            "comments": [{"who": self._login(c.get("user")), "t": c.get("created_at"),
-                          "body": c.get("body") or ""} for c in comments],
-        }
+        return issue_row(self._get("/repos/%s/issues/%s" % (repo, n)),
+                         self._get("/repos/%s/issues/%s/comments" % (repo, n)) or [])

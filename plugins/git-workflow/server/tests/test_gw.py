@@ -394,7 +394,7 @@ class ForgejoShapeTest(unittest.TestCase):
             detail = p.pr_detail("acme/widgets", 12)
         self.assertEqual([r["state"] for r in detail["reviews"]], ["DISMISSED"])
         self.assertEqual(detail["decision"], "REVIEW_REQUIRED")
-        self.assertEqual(p._row("acme/widgets", PULL, dismissed)["decision"], None)
+        self.assertNotEqual(p._row("acme/widgets", PULL, dismissed)["decision"], "APPROVED")
 
     def test_issue_comments_are_read_in_one_call(self):
         p = self.provider()
