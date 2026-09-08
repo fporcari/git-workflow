@@ -22,7 +22,15 @@ from concurrent.futures import ThreadPoolExecutor
 
 from .base import Provider, REVIEW_STATES, closes_from_body, decision_from, verification_result
 
-STATE_MAP = {"REQUEST_CHANGES": "CHANGES_REQUESTED"}
+STATE_MAP = {"REQUEST_CHANGES": "CHANGES_REQUESTED", "COMMENT": "COMMENTED"}
+PAGE = 50
+
+
+def _review_state(review):
+    if review.get("dismissed"):
+        return "DISMISSED"
+    state = review.get("state", "")
+    return STATE_MAP.get(state, state)
 
 
 class ForgejoProvider(Provider):
@@ -59,10 +67,10 @@ class ForgejoProvider(Provider):
     def _get_all(self, path, **params):
         rows, page = [], 1
         while True:
-            batch = self._get(path, **dict(params, page=page, limit=50)) or []
-            if not batch:
-                return rows
+            batch = self._get(path, **dict(params, page=page, limit=PAGE)) or []
             rows.extend(batch)
+            if len(batch) < PAGE:
+                return rows
             page += 1
 
     def _get_text(self, path):
@@ -98,11 +106,11 @@ class ForgejoProvider(Provider):
     def _row(self, repo, pr, revs):
         reviews, spoke = [], []
         for r in revs:
-            state = STATE_MAP.get(r.get("state", ""), r.get("state", ""))
-            if state in ("APPROVED", "CHANGES_REQUESTED", "COMMENT", "COMMENTED"):
+            state = _review_state(r)
+            if state in ("APPROVED", "CHANGES_REQUESTED", "COMMENTED"):
                 who = (r.get("user") or {}).get("login")
                 on = (r.get("submitted_at") or "")[:10]
-                reviews.append({"who": who, "state": "COMMENTED" if state.startswith("COMMENT") else state,
+                reviews.append({"who": who, "state": state,
                                 "on": on, "commit": r.get("commit_id"),
                                 "verification": verification_result(r.get("body")),
                                 "has_text": bool((r.get("body") or "").strip())})
@@ -210,9 +218,7 @@ class ForgejoProvider(Provider):
     def pr_reviews(self, repo, n):
         out = []
         for review in self._get_all("/repos/%s/pulls/%s/reviews" % (repo, n)) or []:
-            state = STATE_MAP.get(review.get("state", ""), review.get("state", ""))
-            if state.startswith("COMMENT"):
-                state = "COMMENTED"
+            state = _review_state(review)
             if state not in REVIEW_STATES:
                 continue
             out.append({"who": self._login(review.get("user")), "state": state,
@@ -243,7 +249,7 @@ class ForgejoProvider(Provider):
 
     def issue_detail(self, repo, n):
         issue = self._get("/repos/%s/issues/%s" % (repo, n))
-        comments = self._get_all("/repos/%s/issues/%s/comments" % (repo, n)) or []
+        comments = self._get("/repos/%s/issues/%s/comments" % (repo, n)) or []
         return {
             "n": issue["number"], "title": issue["title"], "body": issue.get("body") or "",
             "state": issue.get("state"), "author": self._login(issue.get("user")),

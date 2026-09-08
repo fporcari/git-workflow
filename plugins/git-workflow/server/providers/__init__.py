@@ -1,6 +1,7 @@
 from .github import GitHubProvider
 from .forgejo import ForgejoProvider
 from .fixture import FixtureProvider
+from . import detect
 
 PROVIDERS = {
     "github": GitHubProvider,
@@ -16,6 +17,6 @@ def get_provider(name, host=None):
         cls = PROVIDERS[name]
     except KeyError:
         raise SystemExit("unknown provider %r (available: %s)" % (name, ", ".join(PROVIDERS)))
-    if name == "forgejo" and host:
+    if name == "forgejo" and host and host != detect.forgejo_host():
         return cls(base="https://%s" % host)
     return cls()

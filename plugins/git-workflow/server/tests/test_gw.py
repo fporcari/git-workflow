@@ -79,6 +79,12 @@ class DetectTest(unittest.TestCase):
         self.assertEqual(code, 0, err)
         self.assertEqual(json.loads(out)["host"], "hub.example")
 
+    def test_the_forgejo_base_keeps_the_scheme_and_port_of_forgejo_url(self):
+        with mock.patch.dict(os.environ, {"FORGEJO_URL": "http://localhost:3000", "FORGEJO_TOKEN": "t"}), \
+             mock.patch.object(detect, "origin_url", return_value="http://localhost:3000/acme/widgets.git"):
+            p, repo = prdesk.provider_and_repo(mock.Mock(repo=None, provider=None))
+        self.assertEqual((p.base, repo), ("http://localhost:3000", "acme/widgets"))
+
     def test_the_cli_exits_2_on_an_unknown_host(self):
         with mock.patch.object(detect, "origin_url", return_value="https://gitlab.example.org/a/b.git"):
             code, out, err = run("whoami")
@@ -315,7 +321,7 @@ class ForgejoShapeTest(unittest.TestCase):
             self.assertEqual(p.issue_detail("acme/widgets", 4)["comments"][0]["body"], "on it")
             self.assertEqual(base.diff_paths(p.pr_diff("acme/widgets", 12)), ["server/gw.py"])
 
-    def test_lists_reviews_and_comments_include_later_pages(self):
+    def test_lists_and_reviews_include_later_pages(self):
         def request(path, **kwargs):
             params = kwargs.get("params") or {}
             page = params.get("page", 1)
@@ -323,22 +329,19 @@ class ForgejoShapeTest(unittest.TestCase):
                 return "[]"
             if path.endswith("/reviews"):
                 return json.dumps([REVIEWS_FJ[page - 1]])
-            if path.endswith("/comments"):
-                return json.dumps([dict(COMMENTS[0], body=str(page))])
             if path.endswith("/pulls"):
                 return json.dumps([dict(PULL, user=_user("other" if page == 1 else "alice"))])
             return self.request(path, **kwargs)
 
         p = self.provider()
         with mock.patch.object(ForgejoProvider, "_request", side_effect=request), \
+             mock.patch("providers.forgejo.PAGE", 1), \
              mock.patch("gw.get_provider", return_value=p):
             pr = p.pr_detail("acme/widgets", 12)
-            issue = p.issue_detail("acme/widgets", 4)
             code, out, err = run("--provider", "forgejo", "--repo", "hub.example/acme/widgets",
                                  "pr", "list", "--mine")
         self.assertEqual(pr["decision"], "APPROVED")
         self.assertEqual(len(pr["reviews"]), 2)
-        self.assertEqual([c["body"] for c in issue["comments"]], ["1", "2"])
         self.assertEqual(code, 0, err)
         self.assertEqual([row["author"] for row in json.loads(out)], ["alice"])
 
@@ -351,6 +354,36 @@ class ForgejoShapeTest(unittest.TestCase):
         self.assertEqual(request.get_method(), "GET")
         self.assertEqual(request.full_url, "https://hub.example/api/v1/repos/acme/widgets/issues?limit=10&state=open")
         self.assertIsNone(request.data)
+
+    def test_a_dismissed_approval_is_not_an_approval(self):
+        p = self.provider()
+        dismissed = [dict(REVIEWS_FJ[0], state="APPROVED", dismissed=True)]
+        with mock.patch.object(ForgejoProvider, "_get_all", return_value=dismissed), \
+             mock.patch.object(ForgejoProvider, "_get", return_value=PULL):
+            detail = p.pr_detail("acme/widgets", 12)
+        self.assertEqual([r["state"] for r in detail["reviews"]], ["DISMISSED"])
+        self.assertEqual(detail["decision"], "REVIEW_REQUIRED")
+        self.assertEqual(p._row("acme/widgets", PULL, dismissed)["decision"], None)
+
+    def test_issue_comments_are_read_in_one_call(self):
+        p = self.provider()
+        calls = []
+
+        def request(path, method="GET", params=None, fields=None, accept=None):
+            calls.append((path, params))
+            return self.request(path, method, params, fields, accept)
+
+        with mock.patch.object(ForgejoProvider, "_request", side_effect=request):
+            issue = p.issue_detail("acme/widgets", 4)
+        self.assertEqual(len(issue["comments"]), 1)
+        self.assertEqual([c for c in calls if c[0].endswith("/comments")],
+                         [("/repos/acme/widgets/issues/4/comments", {})])
+
+    def test_a_short_page_ends_the_pagination(self):
+        p = self.provider()
+        with mock.patch.object(ForgejoProvider, "_get", return_value=[PULL]) as get:
+            self.assertEqual(len(p._get_all("/repos/acme/widgets/pulls")), 1)
+        get.assert_called_once()
 
     def test_the_provider_addresses_the_origin_host(self):
         self.assertEqual(self.provider().base, "https://hub.example")
