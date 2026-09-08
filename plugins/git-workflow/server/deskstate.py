@@ -39,6 +39,7 @@ Schema (all keys optional):
 import os
 import tempfile
 import time
+from datetime import datetime
 from pathlib import Path
 
 import safejson
@@ -87,6 +88,26 @@ def state_path(repo):
 
 def load(repo):
     return safejson.read(state_path(repo))
+
+
+def issue_analysis_fresh(record, updated):
+    try:
+        analyzed = datetime.fromisoformat(record.get("at", "").replace("Z", "+00:00"))
+        activity = datetime.fromisoformat(updated.replace("Z", "+00:00"))
+    except (AttributeError, TypeError, ValueError):
+        return False
+    return bool(analyzed.tzinfo and activity.tzinfo and analyzed >= activity)
+
+
+def issue_analysis_reusable(record, updated):
+    required = ("type", "finding", "size", "phase", "problem", "cause",
+                "propose", "verify")
+    return (issue_analysis_fresh(record, updated)
+            and all(isinstance(record.get(key), str) and record[key].strip()
+                    for key in required)
+            and "decision" in record
+            and (record["decision"] is None
+                 or isinstance(record["decision"], str)))
 
 
 DURABLE = ("grid", "chase", "prs", "issues", "runs")

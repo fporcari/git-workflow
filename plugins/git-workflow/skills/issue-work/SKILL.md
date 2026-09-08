@@ -24,9 +24,9 @@ minimal change, SINGLE-PHASE or WORKFLOW, EASY/MEDIUM/HARD, verification
 plan, open decisions. Persist it to the desk state as that skill specifies.
 
 Skip its section 5: this session IS the follow-up, so naming one is noise. And
-skip the reading itself when the desk state already carries a verdict whose `at`
-is newer than the issue's last activity — fresh eyes are the point, a second
-identical read is not. Say which analysis you are standing on.
+skip the reading itself only when the shared reuse contract in `issue-analyze`
+section 6 accepts the cached handover. Say which analysis you are standing on
+and carry its open decisions forward; a recent summary alone is not a plan.
 
 ## 2 · Light: worktree, fix, PR
 
@@ -46,7 +46,8 @@ If SINGLE-PHASE (any size): take it end to end.
 - Open **draft** when a decision is open (posted on the ISSUE, linked from
   the body); ready otherwise. Never claim a verification not performed.
 - Remove the worktree, report the PR link, and update the desk state entry
-  (`issues.<n>.finding` gets the outcome, in Italian).
+  (`issues.<n>.finding` gets the outcome, in Italian; remove `at` so an outcome
+  cannot be reused as an analysis).
 
 ## 3 · Tough: name the phases, do not force it
 

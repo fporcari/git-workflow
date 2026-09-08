@@ -15,6 +15,7 @@ import tempfile
 import threading
 import time
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 import deskstate
@@ -463,10 +464,12 @@ def persist_issue_analysis(repo, result, n):
     def mutate(state):
         record = state.setdefault("issues", {}).setdefault(str(n), {})
         record.update({key: result[key] for key in required})
-        record["at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+        record["at"] = datetime.now(timezone.utc).isoformat()
         for key in ("problem", "cause", "propose", "verify", "decision"):
-            if result.get(key):
+            if key in result:
                 record[key] = result[key]
+            else:
+                record.pop(key, None)
     deskstate.update(repo, mutate)
 
 

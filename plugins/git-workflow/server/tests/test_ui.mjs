@@ -174,6 +174,9 @@ let snapshot;
 try {
   for (let i = 0; i < 60; i++) {
     snapshot = await (await fetch(`${ROOT}/api/desk`)).json();
+    if (snapshot.meta?.provider !== "fixture") {
+      throw new Error("UI tests require the fixture provider; refusing to write to this desk");
+    }
     const bases = new Set(snapshot.queue.rows.map(r => r.base).filter(Boolean));
     const known = Object.keys(snapshot.queue.gates || {});
     if (known.length >= bases.size) break;      // every base's gate has landed

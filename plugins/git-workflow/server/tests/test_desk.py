@@ -967,6 +967,32 @@ class HeadlessAgents(unittest.TestCase):
         self.assertEqual(record["phase"], "SINGLE-PHASE")
         self.assertTrue(record["at"])
 
+    def test_issue_analysis_reuse_requires_the_complete_handover(self):
+        record = {"type": "DEFECT", "finding": "cause", "size": "EASY",
+                  "phase": "SINGLE-PHASE", "at": "2026-09-08T12:00:00Z"}
+        updated = "2026-09-08T11:00:00Z"
+        self.assertFalse(deskstate.issue_analysis_reusable(record, updated))
+        record.update(problem="broken", cause="missing guard", propose="add guard",
+                      verify="run regression test", decision=None)
+        self.assertTrue(deskstate.issue_analysis_reusable(record, updated))
+        for key in ("problem", "cause", "propose", "verify", "decision"):
+            incomplete = dict(record)
+            incomplete.pop(key)
+            self.assertFalse(deskstate.issue_analysis_reusable(incomplete, updated), key)
+
+    def test_issue_analysis_replacement_clears_previous_decisions_and_details(self):
+        repo = REPO + "-issue-replacement"
+        deskstate.save(repo, {"issues": {"42": {"decision": "choose API",
+                                               "verify": "old test", "impact": 1}}})
+        result = {"n": 42, "type": "DEFECT", "finding": "cause",
+                  "size": "EASY", "phase": "SINGLE-PHASE", "decision": None}
+        jobs.persist_issue_analysis(repo, result, 42)
+        record = deskstate.load(repo)["issues"]["42"]
+        self.assertIsNone(record["decision"])
+        self.assertNotIn("verify", record)
+        self.assertEqual(record["impact"], 1)
+        self.assertTrue(record["at"].endswith("+00:00"))
+
 
 class WhereThingsLive(unittest.TestCase):
     """Temp for what the machine can recreate; home for what a model made."""
@@ -1839,6 +1865,29 @@ class IssueCrossCheck(unittest.TestCase):
             "finding": "fresca", "at": row["updated"]}}})
         got = next(r for r in desk.issues()["rows"] if r["n"] == row["n"])
         self.assertFalse(got["analysis_stale"])
+
+    def test_issue_analysis_freshness_uses_full_timezone_aware_timestamps(self):
+        updated = "2026-09-08T11:00:00Z"
+        for at, fresh in (("2026-09-08T10:00:00Z", False),
+                          ("2026-09-08T12:00:00+02:00", False),
+                          ("2026-09-08T13:00:00+02:00", True),
+                          ("2026-09-08T14:00:00+02:00", True),
+                          ("2026-09-08T14:00:00", False),
+                          ("invalid", False), (None, False)):
+            self.assertEqual(deskstate.issue_analysis_fresh({"at": at}, updated),
+                             fresh, at)
+        self.assertFalse(deskstate.issue_analysis_fresh(
+            {"at": "2026-09-08T14:00:00Z"}, None))
+
+    def test_same_day_issue_activity_marks_the_desk_analysis_stale(self):
+        desk = fresh_desk()
+        raw = desk._raw_issues()
+        raw["rows"][0]["updated"] = "2026-09-08T11:00:00Z"
+        n = str(raw["rows"][0]["n"])
+        deskstate.save(REPO, {"issues": {n: {
+            "finding": "old", "at": "2026-09-08T10:00:00Z"}}})
+        with mock.patch.object(desk, "_raw_issues", return_value=raw):
+            self.assertTrue(desk.issues()["rows"][0]["analysis_stale"])
 
     def test_the_cross_check_is_loaded_once_per_snapshot(self):
         desk = fresh_desk()

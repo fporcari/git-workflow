@@ -452,7 +452,7 @@ class Desk:
             at = record.get("at")
             row["analysis_at"] = at
             row["analysis_stale"] = bool(
-                at and row.get("updated") and at[:10] < row["updated"][:10])
+                at and not deskstate.issue_analysis_fresh(record, row.get("updated")))
             row["action"] = issue_handoff(row, self.repo)
         deskstate.annotate_issues(rows, state)
         deskstate.annotate_requests(rows, state)
