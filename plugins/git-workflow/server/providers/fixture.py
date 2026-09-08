@@ -105,7 +105,8 @@ class FixtureProvider(Provider):
     # detail is synthesized from its queue row so every fixture serves gw.
 
     def pulls(self, repo, state="open"):
-        rows = [row for row in self.data["rows"] if row.get("state", "OPEN") == state.upper()]
+        rows = [row for row in self.data["rows"]
+                if state == "all" or row.get("state", "OPEN") == state.upper()]
         return [{"n": r["n"], "title": r["title"], "author": r["author"],
                  "draft": r.get("draft", False), "base": r.get("base"), "head": r.get("head_ref"),
                  "created": r["created"], "updated": r.get("updated"),

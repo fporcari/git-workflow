@@ -15,6 +15,7 @@ Field mapping notes:
 
 import json
 import os
+import socket
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -70,9 +71,15 @@ class ForgejoProvider(Provider):
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode(errors="replace")[:400]
             raise RuntimeError("forgejo %s %s failed: HTTP %s %s" % (method, path, exc.code, detail))
+        except (urllib.error.URLError, socket.timeout, OSError) as exc:
+            raise RuntimeError("forgejo %s %s failed: %s" % (method, path, getattr(exc, "reason", exc)))
 
     def _get(self, path, **params):
-        return json.loads(self._request(path, params=params) or "null")
+        body = self._request(path, params=params)
+        try:
+            return json.loads(body or "null")
+        except json.JSONDecodeError:
+            raise RuntimeError("forgejo GET %s returned no JSON: %s" % (path, body[:200]))
 
     def _get_all(self, path, **params):
         rows, page = [], 1
@@ -166,7 +173,7 @@ class ForgejoProvider(Provider):
                 % (self.base, repo, n))
 
     def issues(self, repo):
-        issues = self._get("/repos/%s/issues" % repo, state="open", type="issues", limit=100)
+        issues = self._get_all("/repos/%s/issues" % repo, state="open", type="issues")
         rows = []
         for issue in issues:
             rows.append({
@@ -181,7 +188,7 @@ class ForgejoProvider(Provider):
                 "url": issue.get("html_url") or "%s/%s/issues/%s" % (self.base, repo, issue["number"]),
             })
         rows.sort(key=lambda r: r["created"], reverse=True)
-        return {"rows": rows, "total": len(rows), "truncated": len(issues) >= 100}
+        return {"rows": rows, "total": len(rows), "truncated": False}
 
     # ---- per-item reads (gw) -------------------------------------------
     #

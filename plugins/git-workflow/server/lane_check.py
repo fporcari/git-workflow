@@ -65,7 +65,7 @@ def check(provider, repo, me, ns=None, refresh=True):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--repo", help="owner/repo (default: origin of the cwd)")
+    parser.add_argument("--repo", help="[host/]owner/repo (default: the origin of the cwd)")
     parser.add_argument("--provider", choices=tuple(PROVIDERS),
                         help="force the service; default: the one the origin's host names")
     parser.add_argument("--me", help="login to check for (default: the authenticated user)")

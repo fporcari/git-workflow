@@ -10,8 +10,10 @@ recorded REST payloads so the same JSON shape is proven on both services.
 import io
 import json
 import os
+import subprocess
 import sys
 import unittest
+import urllib.error
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
@@ -100,6 +102,12 @@ class DetectTest(unittest.TestCase):
             self.assertEqual(detect.resolve("acme/widgets", "gitlab"), ("gitlab", "acme/widgets", "gitlab.example"))
         self.assertEqual((type(p), p.host, repo), (GitLabProvider, "gitlab.example", "acme/widgets"))
 
+    def test_a_bare_repo_without_origin_names_what_is_missing(self):
+        with self.assertRaises(SystemExit) as ctx:
+            detect.resolve("acme/widgets", None, cwd="/")
+        self.assertIn("host in --repo", str(ctx.exception))
+        self.assertNotIn("no --repo given", str(ctx.exception))
+
     def test_the_cli_exits_2_on_an_unknown_host(self):
         with mock.patch.object(detect, "origin_url", return_value="https://gitlab.example.org/a/b.git"):
             code, out, err = run("whoami")
@@ -132,6 +140,8 @@ class FixtureVerbsTest(unittest.TestCase):
     def test_pr_list_and_mine(self):
         self.assertEqual([r["n"] for r in self.verb("pr", "list")], [7, 8])
         self.assertEqual([r["n"] for r in self.verb("pr", "list", "--mine")], [7])
+        self.assertEqual([r["n"] for r in self.verb("pr", "list", "--state", "all")], [7, 8])
+        self.assertEqual(self.verb("pr", "list", "--state", "closed"), [])
 
     def test_pr_view_carries_the_documented_shape(self):
         pr = self.verb("pr", "view", "7")
@@ -283,6 +293,12 @@ class GitHubShapeTest(unittest.TestCase):
             GitHubProvider().api("repos/acme/widgets/issues", method="GET", fields={"state": "open"})
         gh.assert_called_once_with("api", "repos/acme/widgets/issues", "-X", "GET", "-f", "state=open")
 
+    def test_a_gh_timeout_is_a_service_error(self):
+        with mock.patch("providers.github.subprocess.run",
+                        side_effect=subprocess.TimeoutExpired("gh", 90)):
+            with self.assertRaises(RuntimeError):
+                GitHubProvider().whoami()
+
     def test_pr_detail_shape(self):
         with mock.patch("providers.github._gh", side_effect=self.gh):
             pr = GitHubProvider().pr_detail("acme/widgets", 12)
@@ -399,6 +415,23 @@ class ForgejoShapeTest(unittest.TestCase):
         with mock.patch.object(ForgejoProvider, "_get", return_value=[PULL]) as get:
             self.assertEqual(len(p._get_all("/repos/acme/widgets/pulls")), 1)
         get.assert_called_once()
+
+    def test_transport_errors_are_service_errors_not_tracebacks(self):
+        p = self.provider()
+        with mock.patch("urllib.request.urlopen", side_effect=urllib.error.URLError("refused")):
+            with self.assertRaises(RuntimeError) as ctx:
+                p.whoami()
+        self.assertIn("refused", str(ctx.exception))
+        with mock.patch.object(ForgejoProvider, "_request", return_value="<html>"):
+            with self.assertRaises(RuntimeError):
+                p.whoami()
+
+    def test_issues_walk_every_page(self):
+        p = self.provider()
+        pages = {1: [dict(ISSUE, number=n) for n in range(1, 51)], 2: [dict(ISSUE, number=51)]}
+        with mock.patch.object(ForgejoProvider, "_get", side_effect=lambda path, **k: pages[k["page"]]):
+            got = p.issues("acme/widgets")
+        self.assertEqual((got["total"], got["truncated"]), (51, False))
 
     def test_the_provider_addresses_the_origin_host(self):
         self.assertEqual(self.provider().base, "https://hub.example")

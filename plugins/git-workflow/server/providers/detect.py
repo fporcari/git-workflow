@@ -20,11 +20,11 @@ PROVIDERS = {cls.name: cls for cls in (GitHubProvider, ForgejoProvider, FixtureP
 SCP_LIKE = re.compile(r"^(?:[^@/]+@)?(?P<host>[^:/]+):(?P<path>.+)$")
 
 
-def origin_url(cwd=None):
+def origin_url(cwd=None, missing="--repo"):
     out = subprocess.run(("git", "remote", "get-url", "origin"),
                          capture_output=True, text=True, cwd=cwd)
     if out.returncode:
-        raise SystemExit("no --repo given and no git origin in the current directory")
+        raise SystemExit("no %s given and no git origin in the current directory" % missing)
     return out.stdout.strip()
 
 
@@ -64,7 +64,8 @@ def resolve(repo=None, provider=None, cwd=None):
         host, repo = repo.split("/", 1)
         host = host.lower()
     if not repo or (not provider and not host):
-        origin_host, origin_repo = parse_remote(origin_url(cwd))
+        missing = "--repo" if not repo else "host in --repo (host/owner/repo) or --provider"
+        origin_host, origin_repo = parse_remote(origin_url(cwd, missing))
         repo = repo or origin_repo
         host = host or origin_host
     name = provider or provider_for(host)

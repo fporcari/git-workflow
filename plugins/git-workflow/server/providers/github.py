@@ -36,7 +36,12 @@ GQL = Path(__file__).resolve().parents[1] / "gql"
 
 
 def _gh(*args, timeout=90):
-    out = subprocess.run(("gh",) + args, capture_output=True, text=True, timeout=timeout)
+    try:
+        out = subprocess.run(("gh",) + args, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("gh %s timed out after %ss" % (args[0], timeout))
+    except FileNotFoundError:
+        raise RuntimeError("gh is not installed or not in PATH")
     if out.returncode:
         raise RuntimeError("gh %s failed: %s" % (args[0], out.stderr.strip()[:400]))
     return out.stdout
