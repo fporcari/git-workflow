@@ -67,6 +67,18 @@ def decision_from(reviews, requests):
 class Provider:
     name = "base"
 
+    def __init__(self, host=None):
+        """`host` is the git host of the checkout, for services that run on
+        more than one; a provider bound to one instance may ignore it."""
+        self.host = host
+
+    @classmethod
+    def hosts(cls):
+        """The git hosts this provider serves, lowercase. Detection picks the
+        first provider whose list holds the origin's host; [] is never
+        detected, only forced with --provider."""
+        return []
+
     def whoami(self):
         raise NotImplementedError
 

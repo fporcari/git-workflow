@@ -85,6 +85,21 @@ class DetectTest(unittest.TestCase):
             p, repo = prdesk.provider_and_repo(mock.Mock(repo=None, provider=None))
         self.assertEqual((p.base, repo), ("http://localhost:3000", "acme/widgets"))
 
+    def test_a_new_provider_is_one_class_and_one_registry_entry(self):
+        class GitLabProvider(base.Provider):
+            name = "gitlab"
+
+            @classmethod
+            def hosts(cls):
+                return ["gitlab.example"]
+
+        with mock.patch.dict(detect.PROVIDERS, {"gitlab": GitLabProvider}), \
+             mock.patch.object(detect, "origin_url", return_value="git@gitlab.example:acme/widgets.git"):
+            self.assertEqual(detect.resolve(), ("gitlab", "acme/widgets", "gitlab.example"))
+            p, repo = prdesk.provider_and_repo(mock.Mock(repo=None, provider=None))
+            self.assertEqual(detect.resolve("acme/widgets", "gitlab"), ("gitlab", "acme/widgets", "gitlab.example"))
+        self.assertEqual((type(p), p.host, repo), (GitLabProvider, "gitlab.example", "acme/widgets"))
+
     def test_the_cli_exits_2_on_an_unknown_host(self):
         with mock.patch.object(detect, "origin_url", return_value="https://gitlab.example.org/a/b.git"):
             code, out, err = run("whoami")
@@ -303,7 +318,7 @@ class ForgejoShapeTest(unittest.TestCase):
 
     def provider(self):
         with mock.patch.dict(os.environ, {"FORGEJO_TOKEN": "t"}):
-            return ForgejoProvider(base="https://hub.example")
+            return ForgejoProvider(host="hub.example")
 
     def test_pr_detail_has_the_same_shape_as_github(self):
         p = self.provider()
@@ -389,7 +404,7 @@ class ForgejoShapeTest(unittest.TestCase):
         self.assertEqual(self.provider().base, "https://hub.example")
         with mock.patch.dict(os.environ, {"FORGEJO_TOKEN": ""}):
             with self.assertRaises(SystemExit):
-                ForgejoProvider(base="https://hub.example")
+                ForgejoProvider(host="hub.example")
 
 
 if __name__ == "__main__":

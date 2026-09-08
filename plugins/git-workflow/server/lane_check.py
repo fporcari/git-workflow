@@ -30,7 +30,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import verdicts  # noqa: E402
-from prdesk import Desk, provider_and_repo  # noqa: E402
+from prdesk import Desk  # noqa: E402
+from providers import PROVIDERS, provider_and_repo  # noqa: E402
 
 ROW_FIELDS = ("n", "title", "author", "created", "draft", "base", "head",
               "merge", "decision", "req", "unresolved", "threads",
@@ -65,7 +66,7 @@ def check(provider, repo, me, ns=None, refresh=True):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", help="owner/repo (default: origin of the cwd)")
-    parser.add_argument("--provider", choices=("github", "forgejo", "fixture"),
+    parser.add_argument("--provider", choices=tuple(PROVIDERS),
                         help="force the service; default: the one the origin's host names")
     parser.add_argument("--me", help="login to check for (default: the authenticated user)")
     parser.add_argument("--ns", help="comma-separated working set; anything else is ignored")

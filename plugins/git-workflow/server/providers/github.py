@@ -75,6 +75,10 @@ def _graphql(doc, timeout=90, **variables):
 class GitHubProvider(Provider):
     name = "github"
 
+    @classmethod
+    def hosts(cls):
+        return ["github.com"]
+
     def whoami(self):
         return _gh("api", "user", "--jq", ".login").strip()
 

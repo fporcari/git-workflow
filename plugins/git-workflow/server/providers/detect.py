@@ -1,15 +1,21 @@
 """Which service a checkout talks to, read from its `origin` remote.
 
-The host decides the provider: github.com is GitHub, the host of FORGEJO_URL
-is Forgejo, anything else is an error. Never a default — a GitHub read against
-a Forgejo checkout does not fail, it returns an empty queue, and an empty
-queue reads as "nothing to do".
+The host decides the provider: each class in PROVIDERS names the hosts it
+serves (github.com for GitHub, the host of FORGEJO_URL for Forgejo), anything
+else is an error. Never a default — a GitHub read against a Forgejo checkout
+does not fail, it returns an empty queue, and an empty queue reads as
+"nothing to do". A new service is one class here and one entry in PROVIDERS.
 """
 
-import os
 import re
 import subprocess
 from urllib.parse import urlparse
+
+from .fixture import FixtureProvider
+from .forgejo import ForgejoProvider
+from .github import GitHubProvider
+
+PROVIDERS = {cls.name: cls for cls in (GitHubProvider, ForgejoProvider, FixtureProvider)}
 
 SCP_LIKE = re.compile(r"^(?:[^@/]+@)?(?P<host>[^:/]+):(?P<path>.+)$")
 
@@ -38,16 +44,10 @@ def parse_remote(url):
     return host.lower(), repo
 
 
-def forgejo_host():
-    base = os.environ.get("FORGEJO_URL", "")
-    return (urlparse(base).hostname or "").lower() if base else ""
-
-
 def provider_for(host):
-    if host == "github.com":
-        return "github"
-    if host and host == forgejo_host():
-        return "forgejo"
+    for name, cls in PROVIDERS.items():
+        if host and host in cls.hosts():
+            return name
     hint = ("set FORGEJO_URL=https://%s and FORGEJO_TOKEN if it is a Forgejo"
             % host) if host else "no host"
     raise SystemExit("unknown git host %r: %s" % (host, hint))
@@ -68,5 +68,21 @@ def resolve(repo=None, provider=None, cwd=None):
         repo = repo or origin_repo
         host = host or origin_host
     name = provider or provider_for(host)
-    host = host or {"github": "github.com", "forgejo": forgejo_host()}.get(name)
+    if not host and name in PROVIDERS:
+        host = next(iter(PROVIDERS[name].hosts()), None)
     return name, repo, host
+
+
+def get_provider(name, host=None):
+    try:
+        cls = PROVIDERS[name]
+    except KeyError:
+        raise SystemExit("unknown provider %r (available: %s)" % (name, ", ".join(PROVIDERS)))
+    return cls(host=host)
+
+
+def provider_and_repo(args):
+    """The provider and repo a CLI call addresses, from --repo/--provider and
+    the origin. The default is never one service: it is the origin's host."""
+    name, repo, host = resolve(args.repo, args.provider)
+    return get_provider(name, host=host), repo

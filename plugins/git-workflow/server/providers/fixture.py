@@ -20,7 +20,8 @@ FIXTURE_DIR = Path(__file__).resolve().parents[1] / "tests" / "fixtures"
 class FixtureProvider(Provider):
     name = "fixture"
 
-    def __init__(self):
+    def __init__(self, host=None):
+        super().__init__(host)
         path = os.environ.get("DESK_FIXTURE")
         self.path = Path(path) if path else (FIXTURE_DIR / "genropy.json")
         self.data = json.loads(self.path.read_text())

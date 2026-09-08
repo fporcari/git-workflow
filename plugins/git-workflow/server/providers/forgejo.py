@@ -19,6 +19,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import urlparse
 
 from .base import Provider, REVIEW_STATES, closes_from_body, decision_from, verification_result
 
@@ -36,8 +37,17 @@ def _review_state(review):
 class ForgejoProvider(Provider):
     name = "forgejo"
 
-    def __init__(self, base=None):
-        self.base = (base or os.environ.get("FORGEJO_URL", "")).rstrip("/")
+    @classmethod
+    def hosts(cls):
+        host = (urlparse(os.environ.get("FORGEJO_URL", "")).hostname or "").lower()
+        return [host] if host else []
+
+    def __init__(self, host=None):
+        super().__init__(host)
+        url = os.environ.get("FORGEJO_URL", "")
+        if host and host not in self.hosts():
+            url = "https://%s" % host
+        self.base = url.rstrip("/")
         self.token = os.environ.get("FORGEJO_TOKEN", "")
         if not self.base or not self.token:
             raise SystemExit("forgejo provider needs FORGEJO_URL and FORGEJO_TOKEN in the environment")

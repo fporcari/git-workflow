@@ -29,7 +29,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from providers import detect, get_provider  # noqa: E402
+from providers import PROVIDERS, detect, get_provider  # noqa: E402
 from providers.base import diff_paths  # noqa: E402
 
 
@@ -95,7 +95,7 @@ def build_parser():
     parser = argparse.ArgumentParser(prog="gw", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--repo", "-R", help="[host/]owner/repo (default: the origin of the cwd)")
-    parser.add_argument("--provider", choices=("github", "forgejo", "fixture"),
+    parser.add_argument("--provider", choices=tuple(PROVIDERS),
                         help="force the service (tests use fixture)")
     sub = parser.add_subparsers(dest="verb", required=True)
 
@@ -143,7 +143,7 @@ def main(argv=None):
         sys.stderr.write("gw: %s\n" % exc)
         return 2
     try:
-        provider = get_provider(name, host=args.host if name == "forgejo" else None)
+        provider = get_provider(name, host=args.host)
         args.run(provider, repo, args)
     except (RuntimeError, SystemExit, KeyError) as exc:
         sys.stderr.write("gw: %s\n" % (exc if str(exc) else type(exc).__name__))

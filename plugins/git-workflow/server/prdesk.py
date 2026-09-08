@@ -57,25 +57,13 @@ import issuecheck
 import jobs
 import notify
 import verdicts
-from providers import detect, get_provider
+from providers import PROVIDERS, provider_and_repo
 from verdicts import decorate, handoff, issue_handoff, issue_type
 
 STATIC = Path(__file__).resolve().parent / "static"
 
 # one decision group holds four options: a wider batch becomes hard to scan
 MAX_BATCH = 4
-
-
-def detect_repo():
-    return detect.parse_remote(detect.origin_url())[1]
-
-
-def provider_and_repo(args):
-    """The provider the checkout's host names, unless --provider forces one.
-    A GitHub read against a Forgejo checkout returns an empty queue, not an
-    error — so the default is never GitHub, it is the origin's host."""
-    name, repo, host = detect.resolve(args.repo, args.provider)
-    return get_provider(name, host=host), repo
 
 
 # the fields a verdict is a function of, and nothing else: hashing the whole
@@ -902,7 +890,7 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", help="owner/repo (default: origin of the cwd)")
-    parser.add_argument("--provider", choices=("github", "forgejo", "fixture"),
+    parser.add_argument("--provider", choices=tuple(PROVIDERS),
                         help="force the service; default: the one the origin's host names")
     parser.add_argument("--desk", default="pr", choices=("pr", "issue"),
                         help="which desk this server is: pr (default) or issue")
