@@ -80,3 +80,26 @@ nobody wants:
 
 An open decision goes after the block, as a question with the named
 alternatives and their one-line consequence — never folded into `Proposta`.
+
+## 5 · Name the follow-up, and close flat
+
+Read-only means this skill cannot execute its own `Proposta`, so it never ends
+with *"procedo?"* — a question promising something it cannot do. Close flat
+instead, with the ONE follow-up the verdict implies. Never a menu, and never an
+action taken: the follow-up is a line he reads. This skill does not spawn the
+session, does not branch, does not comment.
+
+- **an open decision still standing** → no follow-up: the ball is his. Say so
+  and stop, whatever the size says.
+- **SINGLE-PHASE** → `issue-work <n>`, an agentic session of its own: one
+  worktree, one PR. Or `issue-loop <n>`, when he would rather keep the decision
+  in the chat he is already in.
+- **WORKFLOW** → a fresh chat, because the phases need a context that is not
+  this one. Name `wf:issue <n>` as its entry point **only when a phased-workflow
+  plugin is actually installed** — check softly (a `wf:`-prefixed or
+  `phased-workflow` skill appears among your available skills; never assume it,
+  never require it). Where it is absent, name `issue-work <n>`, which lays the
+  phases out and leaves them on the issue as a comment.
+
+**Skip this section for a caller** (issue-loop, the desk): there the JSON is the
+handover, and what happens next is the caller's decision, not yours.

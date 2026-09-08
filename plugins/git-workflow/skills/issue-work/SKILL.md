@@ -23,6 +23,11 @@ session IS the virgin context). Outcome: type, verified root cause or gap,
 minimal change, SINGLE-PHASE or WORKFLOW, EASY/MEDIUM/HARD, verification
 plan, open decisions. Persist it to the desk state as that skill specifies.
 
+Skip its section 5: this session IS the follow-up, so naming one is noise. And
+skip the reading itself when the desk state already carries a verdict whose `at`
+is newer than the issue's last activity — fresh eyes are the point, a second
+identical read is not. Say which analysis you are standing on.
+
 ## 2 · Light: worktree, fix, PR
 
 If SINGLE-PHASE (any size): take it end to end.

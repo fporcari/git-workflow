@@ -108,6 +108,13 @@ verdict JSON, persisting it to the desk state. Notify:
 An analysis that comes back empty or failed does not sink the batch: propose
 the others and say that one could not be read, with why.
 
+**Reuse a fresh verdict rather than buying it twice.** Before spawning, read the
+issue's entry in the desk state: a verdict whose `at` is newer than the issue's
+own last activity still stands — use it, skip that spawn, and say which
+(`#1145: uso l'analisi di 20 minuti fa`). It is the same freshness test the desk
+applies when it marks an analysis *da aggiornare*. Older than the issue's last
+activity, or absent, means analyze it.
+
 ## Step 2 — Propose, then wait
 
 Same block as `pr-loop`'s Lane B, because it is the same act — **as text,
