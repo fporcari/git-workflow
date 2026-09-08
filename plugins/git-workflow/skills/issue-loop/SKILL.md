@@ -217,15 +217,15 @@ Two things are this loop's own:
   design still open — is **not batchable**: it runs alone, after the parallel
   groups. Unknown means sequential.
 - **the same-issue edge starts earlier.** Two items meeting on one issue would
-  also race on `gh issue edit --add-assignee`, before either has a branch.
+  also race on `gw issue edit --add-assignee`, before either has a branch.
 
 ## Step 4 — Claim it, fix it, open the PR
 
 Assign the issue if it has no assignee **before** starting
-(`gh issue edit <n> --add-assignee @me`), comment "Working on this.", and
-never touch an issue somebody else holds. Base branch: the repo's default
-branch read with `gh repo view --json defaultBranchRef`, never the one the
-harness reports.
+(`gw issue edit <n> --add-assignee @me`), comment "Working on this."
+(`gw issue comment <n> --body "Working on this."`), and never touch an issue
+somebody else holds. Base branch: the repo's default branch,
+`gw repo default-branch`, never the one the harness reports.
 
 Every fix agent runs one worktree of its own, under
 `<PLUGIN_ROOT>/refs/worktree-traps.md` — the shared stash stack, the

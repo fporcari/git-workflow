@@ -143,6 +143,39 @@ class FixtureVerbsTest(unittest.TestCase):
         self.assertEqual([r["n"] for r in self.verb("pr", "list", "--state", "all")], [7, 8])
         self.assertEqual(self.verb("pr", "list", "--state", "closed"), [])
 
+    def test_writes_create_apply_and_read_back(self):
+        made = self.verb("issue", "create", "--title", "Need gw", "--body", "please",
+                         "--label", "bug", "--assignee", "@me")
+        self.assertEqual(made["n"], 4)
+        self.assertTrue(made["url"].endswith("/issues/4"))
+        self.assertEqual(self.verb("label", "ensure", "needs-verification"), {"label": "needs-verification"})
+        pr = self.verb("pr", "create", "--title", "Fix", "--body", "Fixes #3", "--head", "fix/3",
+                       "--label", "needs-verification", "--assignee", "@me", "--reviewer", "bob")
+        self.assertEqual((pr["n"], pr["base"], pr["draft"]), (9, "main", False))
+        self.assertEqual([c["issue"] for c in pr["closes"]], [3])
+        self.assertEqual(pr["req"], ["bob"])
+        self.assertEqual(self.verb("pr", "comment", "7", "--body", "on it")["url"].split("#")[0],
+                         "https://example.test/acme/widgets/issues/7")
+        self.assertEqual(self.verb("collaborators"), ["alice", "bob", "carol"])
+
+    def test_a_reviewer_outside_the_repo_is_refused_before_anything_is_created(self):
+        code, out, err = run(*self.R, "pr", "create", "--title", "t", "--body", "b", "--head", "h",
+                             "--reviewer", "nobody")
+        self.assertEqual((code, out), (1, ""))
+        self.assertIn("not collaborators", err)
+
+    def test_an_unlinked_fixes_fails_after_printing_the_pr(self):
+        code, out, err = run(*self.R, "pr", "create", "--title", "t", "--body", "Fixes #404", "--head", "h")
+        self.assertEqual(code, 1)
+        self.assertEqual(json.loads(out)["closes"], [])
+        self.assertIn("#404", err)
+
+    def test_there_is_no_verb_that_rewrites_a_pr_body(self):
+        with redirect_stderr(io.StringIO()) as err, self.assertRaises(SystemExit) as ctx:
+            gw.main([*self.R, "pr", "edit", "7", "--body", "x"])
+        self.assertEqual(ctx.exception.code, 2)
+        self.assertIn("unrecognized arguments: --body", err.getvalue())
+
     def test_pr_view_carries_the_documented_shape(self):
         pr = self.verb("pr", "view", "7")
         for key in ("n", "title", "body", "state", "draft", "author", "assignees", "labels",
@@ -293,6 +326,33 @@ class GitHubShapeTest(unittest.TestCase):
             GitHubProvider().api("repos/acme/widgets/issues", method="GET", fields={"state": "open"})
         gh.assert_called_once_with("api", "repos/acme/widgets/issues", "-X", "GET", "-f", "state=open")
 
+    def test_writes_go_through_gh_api_with_a_json_body(self):
+        calls = []
+
+        def gh(*args, stdin=None):
+            calls.append((args, json.loads(stdin) if stdin else None))
+            if args[1] == "repos/acme/widgets/labels/needs-verification":
+                raise RuntimeError("gh api failed: Not Found (HTTP 404)")
+            return json.dumps({"number": 13, "html_url": "https://x/acme/widgets/pull/13"})
+
+        with mock.patch("providers.github._gh", side_effect=gh):
+            p = GitHubProvider()
+            self.assertEqual(p.pr_create("acme/widgets", "t", "b", "fix/3", "main", draft=True)["n"], 13)
+            p.add_reviewers("acme/widgets", 13, ["bob"])
+            p.add_labels("acme/widgets", 13, ["needs-verification"])
+            p.add_assignees("acme/widgets", 13, ["alice"], pull=True)
+            p.label_ensure("acme/widgets", "needs-verification", "5319E7", "d")
+            self.assertEqual(p.comment("acme/widgets", 13, "hi")["url"], "https://x/acme/widgets/pull/13")
+        self.assertEqual(calls[0], (("api", "repos/acme/widgets/pulls", "-X", "POST", "--input", "-"),
+                                    {"title": "t", "body": "b", "head": "fix/3", "base": "main", "draft": True}))
+        self.assertEqual(calls[1][0][1:4], ("repos/acme/widgets/pulls/13/requested_reviewers", "-X", "POST"))
+        self.assertEqual(calls[1][1], {"reviewers": ["bob"]})
+        self.assertEqual(calls[2][1], {"labels": ["needs-verification"]})
+        self.assertEqual(calls[3][1], {"assignees": ["alice"]})
+        self.assertEqual(calls[5], (("api", "repos/acme/widgets/labels", "-X", "POST", "--input", "-"),
+                                    {"name": "needs-verification", "color": "5319E7", "description": "d"}))
+        self.assertEqual(calls[6][1], {"body": "hi"})
+
     def test_a_gh_timeout_is_a_service_error(self):
         with mock.patch("providers.github.subprocess.run",
                         side_effect=subprocess.TimeoutExpired("gh", 90)):
@@ -415,6 +475,34 @@ class ForgejoShapeTest(unittest.TestCase):
         with mock.patch.object(ForgejoProvider, "_get", return_value=[PULL]) as get:
             self.assertEqual(len(p._get_all("/repos/acme/widgets/pulls")), 1)
         get.assert_called_once()
+
+    def test_writes_speak_forgejo_ids_prefixes_and_replacing_patches(self):
+        calls = []
+
+        def request(path, method="GET", params=None, fields=None, accept=None):
+            calls.append((method, path, fields))
+            if path.endswith("/labels") and method == "GET":
+                return json.dumps([{"id": 7, "name": "bug"}])
+            if method == "GET":
+                return json.dumps(dict(PULL, assignees=[_user("alice")]))
+            return json.dumps({"number": 13, "html_url": "https://hub.example/acme/widgets/pulls/13"})
+
+        p = self.provider()
+        with mock.patch.object(ForgejoProvider, "_request", side_effect=request):
+            self.assertEqual(p.pr_create("acme/widgets", "t", "b", "fix/3", "main", draft=True)["n"], 13)
+            p.add_labels("acme/widgets", 13, ["bug"])
+            p.add_assignees("acme/widgets", 13, ["bob", "alice"], pull=True)
+            p.label_ensure("acme/widgets", "bug", "5319E7", "d")
+            p.label_ensure("acme/widgets", "new", "5319E7", "d")
+            with self.assertRaises(RuntimeError):
+                p.add_labels("acme/widgets", 13, ["missing"])
+        self.assertEqual(calls[0], ("POST", "/repos/acme/widgets/pulls",
+                                    {"title": "WIP: t", "body": "b", "head": "fix/3", "base": "main"}))
+        self.assertEqual(calls[2], ("POST", "/repos/acme/widgets/issues/13/labels", {"labels": [7]}))
+        self.assertEqual(calls[4], ("PATCH", "/repos/acme/widgets/pulls/13", {"assignees": ["alice", "bob"]}))
+        posts = [c for c in calls if c[0] == "POST" and c[1] == "/repos/acme/widgets/labels"]
+        self.assertEqual(posts, [("POST", "/repos/acme/widgets/labels",
+                                  {"name": "new", "color": "#5319E7", "description": "d"})])
 
     def test_transport_errors_are_service_errors_not_tracebacks(self):
         p = self.provider()

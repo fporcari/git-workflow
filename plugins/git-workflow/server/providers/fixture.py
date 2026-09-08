@@ -12,7 +12,7 @@ import os
 import time
 from pathlib import Path
 
-from .base import Provider
+from .base import Provider, closes_from_body
 
 FIXTURE_DIR = Path(__file__).resolve().parents[1] / "tests" / "fixtures"
 
@@ -153,6 +153,68 @@ class FixtureProvider(Provider):
                 "author": row["author"], "assignees": row.get("assignees") or [],
                 "labels": row.get("labels") or [], "created": row["created"],
                 "updated": row.get("updated"), "url": row.get("url"), "comments": []}
+
+    # ---- writes (gw): applied to the in-memory payload, so a verb that
+    # creates and then reads back sees what it made; nothing is persisted.
+
+    def _next(self, key):
+        return max([row["n"] for row in self.data.get(key) or []] + [0]) + 1
+
+    def _url(self, kind, n):
+        return "%s/%s/%s" % (self.data["rows"][0]["url"].rsplit("/", 2)[0], kind, n)
+
+    def _item(self, n):
+        for row in (self.data.get("rows") or []) + (self.data.get("issues") or []):
+            if row["n"] == n:
+                return row
+        raise RuntimeError("fixture has no item %s" % n)
+
+    def issue_create(self, repo, title, body):
+        n = self._next("issues")
+        self.data.setdefault("issues", []).append({
+            "n": n, "title": title, "author": self.data["me"], "created": "2026-09-09",
+            "updated": "2026-09-09", "labels": [], "assignees": [], "comments": 0,
+            "url": self._url("issues", n)})
+        self.data.setdefault("issue_details", {})[str(n)] = dict(
+            self.data["issues"][-1], body=body, state="open", comments=[])
+        return {"n": n, "url": self._url("issues", n)}
+
+    def pr_create(self, repo, title, body, head, base, draft=False):
+        n = self._next("rows")
+        self.data["rows"].append({
+            "n": n, "title": title, "author": self.data["me"], "created": "2026-09-09",
+            "draft": draft, "base": base, "head_ref": head, "summary": body,
+            "labels": [], "assignees": [], "req": [], "reviews": [], "threads": 0,
+            "closes": [{"issue": c["issue"]} for c in closes_from_body(body)
+                       if any(i["n"] == c["issue"] for i in self.data.get("issues") or [])],
+            "url": self._url("pull", n)})
+        return {"n": n, "url": self._url("pull", n)}
+
+    def add_assignees(self, repo, n, who, pull=False):
+        item = self._item(n)
+        item["assignees"] = item.get("assignees", []) + [w for w in who if w not in item.get("assignees", [])]
+
+    def add_labels(self, repo, n, names):
+        item = self._item(n)
+        item["labels"] = item.get("labels", []) + [x for x in names if x not in item.get("labels", [])]
+
+    def add_reviewers(self, repo, n, who):
+        item = self._item(n)
+        item["req"] = item.get("req", []) + [w for w in who if w not in item.get("req", [])]
+
+    def comment(self, repo, n, body):
+        self._item(n)
+        made = self.data.setdefault("comments", [])
+        made.append({"n": n, "who": self.data["me"], "body": body})
+        return {"url": "%s#comment-%s" % (self._url("issues", n), len(made))}
+
+    def label_ensure(self, repo, name, color, description):
+        labels = self.data.setdefault("labels", [])
+        if name not in labels:
+            labels.append(name)
+
+    def collaborators(self, repo):
+        return self.data.get("collaborators") or [self.data["me"]]
 
     def api(self, endpoint, method="GET", fields=None):
         recorded = self.data.get("api") or {}

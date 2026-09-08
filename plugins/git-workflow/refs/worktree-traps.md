@@ -29,22 +29,24 @@ Hand every fix agent these rules verbatim, because a fresh agent with a
 worktree and a token is one wrong default away from opening a PR on somebody
 else's repo:
 
-> Push to `origin`. Open the PR with `gh pr create --repo <owner>/<repo>
-> --base <base>`. Do NOT fork, do NOT add remotes, do NOT open a PR against
-> any other repo. If a push is rejected for permissions, STOP and report.
+> Push to `origin`. Open the PR with `gw pr create --head <branch>` from the
+> worktree: `gw` reads the service and the repo from the origin, so it never
+> opens a PR anywhere else (GitHub and Forgejo alike). Do NOT fork, do NOT
+> add remotes, do NOT pass `--repo` to point elsewhere. If a push is
+> rejected for permissions, STOP and report.
 
-Base branch = the repo's default branch read with
-`gh repo view --json defaultBranchRef`, never the one the harness reports.
+Base branch = the repo's default branch, `gw repo default-branch` — the
+default of `gw pr create` — never the one the harness reports.
 
 PR discipline, same for every type and size: **draft** when a decision is
 open (posted on the ISSUE, linked from the body), **ready** when complete and
 verified — never claim a verification that was not run. Body sections:
 Problem/Root cause or Motivation, Change, Verification, Related issue with
-`Fixes #<n>` **in the PR body**, then verify `closingIssuesReferences` is not
-empty. `--assignee` the author; `--reviewer` resolved from CODEOWNERS on the
-touched paths and checked against
-`gh api repos/<owner>/<repo>/collaborators` — a login with no access is
-dropped without an error — then confirm `reviewRequests` landed.
+`Fixes #<n>` **in the PR body**: `gw pr create` reads the PR back and exits 1
+when the service linked nothing (`closes` is in its output). `--assignee @me`;
+`--reviewer` resolved from CODEOWNERS on the touched paths — `gw` refuses a
+login that is not in `gw collaborators`, because the services drop such a
+request without an error — and `req` in the output confirms it landed.
 
 **Every PR an agent opens carries the label `needs-verification`.** It opens
 under the user's login, but the hands were not his: the label is what makes
@@ -53,10 +55,14 @@ also when there is nobody else in the repo to ask — instead of as his own.
 Create the label first (idempotent), then pass it:
 
 ```bash
-gh label create needs-verification --repo <owner>/<repo> --force \
-  -c 5319E7 -d "independent verification required before merging"
-gh pr create ... --label needs-verification
+gw label ensure needs-verification --color 5319E7 \
+  --description "independent verification required before merging"
+gw pr create --title "<title>" --body-file <f> --head <branch> [--draft] \
+  --assignee @me [--reviewer <login>] --label needs-verification
 ```
+
+`gw` has no verb that rewrites a PR body: a review is answered with
+`gw pr comment <n> --body-file <f>`, never by editing the description.
 
 Never remove it: it names the review regime, and the merge closes it. The
 proof is the latest verification report by the user on the current head,

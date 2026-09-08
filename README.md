@@ -223,7 +223,7 @@ The server, the verdict engine and the UI speak one normalized row shape
 translate a hosting
 service into it:
 
-- **github** (default) — shells out to the authenticated `gh` CLI, reusing the
+- **github** — shells out to the authenticated `gh` CLI, reusing the
   exact GraphQL documents in `plugins/git-workflow/server/gql/`.
 - **forgejo** — REST against the Forgejo/Gitea API v1; set `FORGEJO_URL` and
   `FORGEJO_TOKEN`. Written against the published API, not yet exercised
@@ -233,8 +233,33 @@ service into it:
 - **fixture** — a recorded payload replayed with no network. What the test
   suite runs on.
 
-Migrating the *skills* to Forgejo is a separate, later step: they currently
-speak `gh` directly. The provider layer is where their data reads will land.
+The provider is read from the checkout's `origin`: github.com is GitHub, the
+host of `FORGEJO_URL` is Forgejo, anything else exits 2 — never a default,
+because a GitHub read against a Forgejo checkout returns an empty queue, and
+an empty queue reads as "nothing to do". A new service is one class with a
+`hosts()` list and one entry in `PROVIDERS` (`server/providers/detect.py`).
+
+## gw — one CLI over every provider
+
+`plugins/git-workflow/bin/gw` (link it into PATH) is what the skills call
+instead of `gh`, so a skill written once runs on GitHub and Forgejo:
+
+```
+gw whoami · repo info · repo default-branch · collaborators
+gw pr list [--state] [--mine] · pr view <n> · pr reviews <n> · pr diff <n> [--name-only]
+gw issue list · issue view <n>
+gw issue create --title T --body-file F [--label L] [--assignee @me]
+gw pr create --title T --body-file F --head BRANCH [--base B] [--draft] [--label L] [--assignee @me] [--reviewer L]
+gw pr edit <n> --add-reviewer L · pr comment <n> --body-file F · issue edit · issue comment
+gw label ensure NAME [--color HEX] [--description D]
+gw api <endpoint> [-X METHOD] [-f k=v]      # {repo} expands to owner/repo
+```
+
+JSON out, the same shape on both services (`server/providers/base.py`). Exit
+1 when the service refuses or the item does not exist, 2 when the origin's
+host is unknown. `pr create` refuses a reviewer who is not a collaborator and
+exits 1 when the body's `Fixes #n` linked nothing. There is no verb that
+rewrites a PR body.
 
 ## Tests
 

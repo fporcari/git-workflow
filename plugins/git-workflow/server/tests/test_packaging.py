@@ -111,6 +111,11 @@ class Packaging(unittest.TestCase):
                       jobs.READ_TOOLS)
         self.assertIn("Bash(gh api -X GET repos/*/contents/*:*)",
                       jobs.READ_TOOLS)
+        self.assertIn("Bash(gw pr view:*)", jobs.READ_TOOLS)
+        self.assertNotIn("Bash(gw api", jobs.READ_TOOLS)
+        for verb in ("gw pr create", "gw pr edit", "gw pr comment", "gw issue create",
+                     "gw issue edit", "gw issue comment", "gw label", "gw api -X POST"):
+            self.assertIn("Bash(%s:*)" % verb, jobs.WRITE_TOOLS, verb)
 
     def test_pr_analysis_has_a_verified_procedural_fast_path(self):
         text = (PLUGIN / "skills" / "pr-analyze" / "SKILL.md").read_text()
@@ -247,10 +252,13 @@ class Packaging(unittest.TestCase):
             "gh api --method PATCH repos/o/r/pulls/1054 -f body=x",
             "gh api repos/o/r/pulls/1054 -f body=x",
             "gh api repos/o/r/pulls/1054 --input body.json",
+            "gw api repos/{repo}/pulls/1054 -X PATCH -f body=x",
             "gh api graphql -f query='mutation{updatePullRequest(input:{pullRequestId:\"x\",body:\"y\"}){clientMutationId}}'",
         )
         passed = (
             "gh pr comment 1054 --body-file /tmp/c.md",
+            "gw pr comment 1054 --body-file /tmp/c.md",
+            "gw pr edit 1054 --add-reviewer cgabriel",
             "gh pr edit 1054 --add-reviewer cgabriel",
             "gh pr edit 1054 --title 'better title'",
             "gh pr view 1054 --json body",

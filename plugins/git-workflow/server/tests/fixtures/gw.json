@@ -1,6 +1,7 @@
 {
  "repo": "acme/widgets",
  "me": "alice",
+ "collaborators": ["alice", "bob", "carol"],
  "default_branch": "main",
  "rows": [
   {"n": 7, "title": "Fix the widget", "created": "2026-09-01", "author": "alice",

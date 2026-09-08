@@ -31,6 +31,10 @@ PR detail:
 Issue detail:
     n, title, body, state, author, assignees, labels, created, updated, url,
     comments [{who, t, body}]
+
+Writes (gw issue create / pr create / edit / comment, label ensure) return
+{n, url} for a new item, {url} for a comment; labels, assignees and reviewers
+are added after creation through the add_* methods, one path on every service.
 """
 
 import re
@@ -181,6 +185,38 @@ class Provider:
         """Raw passthrough to the service's REST API, endpoint relative to
         its API root. For what the verbs do not carry — never for writes
         the verbs exist for."""
+        raise NotImplementedError
+
+    # ---- writes, the gw CLI's verbs -----------------------------------
+
+    def issue_create(self, repo, title, body):
+        """{n, url} of the new issue."""
+        raise NotImplementedError
+
+    def pr_create(self, repo, title, body, head, base, draft=False):
+        """{n, url} of the new pull request from branch `head` into `base`."""
+        raise NotImplementedError
+
+    def add_assignees(self, repo, n, who, pull=False):
+        raise NotImplementedError
+
+    def add_labels(self, repo, n, names):
+        raise NotImplementedError
+
+    def add_reviewers(self, repo, n, who):
+        raise NotImplementedError
+
+    def comment(self, repo, n, body):
+        """{url} of the new comment on issue or pull request `n`."""
+        raise NotImplementedError
+
+    def label_ensure(self, repo, name, color, description):
+        """Create the label unless the repo has it. Idempotent."""
+        raise NotImplementedError
+
+    def collaborators(self, repo):
+        """Logins with access to the repo: a review request to anybody else
+        is dropped by the service without an error."""
         raise NotImplementedError
 
 

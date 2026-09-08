@@ -27,6 +27,7 @@ from .base import (Provider, REVIEW_STATES, brief_row, closes_from_body, decisio
 
 STATE_MAP = {"REQUEST_CHANGES": "CHANGES_REQUESTED", "COMMENT": "COMMENTED"}
 PAGE = 50
+DRAFT_PREFIX = "WIP: "
 
 
 def _review_state(review):
@@ -93,6 +94,10 @@ class ForgejoProvider(Provider):
 
     def _get_text(self, path):
         return self._request(path, accept="text/plain")
+
+    def _send(self, method, path, fields):
+        body = self._request(path, method=method, fields=fields)
+        return json.loads(body) if body.strip() else None
 
     def whoami(self):
         return self._get("/user")["login"]
@@ -217,3 +222,51 @@ class ForgejoProvider(Provider):
     def issue_detail(self, repo, n):
         return issue_row(self._get("/repos/%s/issues/%s" % (repo, n)),
                          self._get("/repos/%s/issues/%s/comments" % (repo, n)) or [])
+
+    # ---- writes (gw) ---------------------------------------------------
+    #
+    # Forgejo takes labels by id, marks a draft with a title prefix instead
+    # of a flag, and replaces the assignee list on PATCH instead of adding.
+
+    def issue_create(self, repo, title, body):
+        issue = self._send("POST", "/repos/%s/issues" % repo, {"title": title, "body": body})
+        return {"n": issue["number"], "url": issue["html_url"]}
+
+    def pr_create(self, repo, title, body, head, base, draft=False):
+        if draft and not title.startswith(DRAFT_PREFIX):
+            title = DRAFT_PREFIX + title
+        pr = self._send("POST", "/repos/%s/pulls" % repo,
+                        {"title": title, "body": body, "head": head, "base": base})
+        return {"n": pr["number"], "url": pr["html_url"]}
+
+    def add_assignees(self, repo, n, who, pull=False):
+        kind = "pulls" if pull else "issues"
+        current = logins(self._get("/repos/%s/%s/%s" % (repo, kind, n)).get("assignees"))
+        self._send("PATCH", "/repos/%s/%s/%s" % (repo, kind, n),
+                   {"assignees": current + [w for w in who if w not in current]})
+
+    def _label_ids(self, repo, names):
+        ids = {label["name"]: label["id"] for label in self._get_all("/repos/%s/labels" % repo)}
+        missing = [name for name in names if name not in ids]
+        if missing:
+            raise RuntimeError("labels not defined in %s: %s" % (repo, ", ".join(missing)))
+        return [ids[name] for name in names]
+
+    def add_labels(self, repo, n, names):
+        self._send("POST", "/repos/%s/issues/%s/labels" % (repo, n),
+                   {"labels": self._label_ids(repo, names)})
+
+    def add_reviewers(self, repo, n, who):
+        self._send("POST", "/repos/%s/pulls/%s/requested_reviewers" % (repo, n), {"reviewers": list(who)})
+
+    def comment(self, repo, n, body):
+        made = self._send("POST", "/repos/%s/issues/%s/comments" % (repo, n), {"body": body})
+        return {"url": made["html_url"]}
+
+    def label_ensure(self, repo, name, color, description):
+        if name not in {label["name"] for label in self._get_all("/repos/%s/labels" % repo)}:
+            self._send("POST", "/repos/%s/labels" % repo,
+                       {"name": name, "color": "#" + color.lstrip("#"), "description": description})
+
+    def collaborators(self, repo):
+        return logins(self._get_all("/repos/%s/collaborators" % repo))

@@ -25,6 +25,9 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 # Broad `gh api` would permit writes, so every provider call stays explicit.
 READ_TOOLS = (
     "Bash(gh api graphql:*),Bash(gh pr diff:*),"
+    "Bash(gw whoami:*),Bash(gw repo:*),Bash(gw pr list:*),Bash(gw pr view:*),"
+    "Bash(gw pr reviews:*),Bash(gw pr diff:*),Bash(gw issue list:*),"
+    "Bash(gw issue view:*),Bash(gw collaborators:*),"
     "Bash(gh api -X GET repos/*/compare/*:*),"
     "Bash(gh api -X GET repos/*/contents/*:*),"
     "Bash(git cat-file:*),Bash(git show:*),Bash(git diff:*),Read,Grep,Glob,"
@@ -52,7 +55,12 @@ WRITE_TOOLS = (
     "Bash(gh api -X POST:*),Bash(gh api -X PATCH:*),Bash(gh api -X PUT:*),"
     "Bash(gh api -X DELETE:*),Bash(gh api --method:*),Bash(gh api -f:*),"
     "Bash(gh api -F:*),Bash(gh api --field:*),Bash(gh api --raw-field:*),"
-    "Bash(gh api --input:*)"
+    "Bash(gh api --input:*),"
+    "Bash(gw pr create:*),Bash(gw pr edit:*),Bash(gw pr comment:*),"
+    "Bash(gw issue create:*),Bash(gw issue edit:*),Bash(gw issue comment:*),"
+    "Bash(gw label:*),Bash(gw api -X POST:*),Bash(gw api -X PATCH:*),"
+    "Bash(gw api -X PUT:*),Bash(gw api -X DELETE:*),Bash(gw api --method:*),"
+    "Bash(gw api -f:*),Bash(gw api --field:*)"
 )
 
 

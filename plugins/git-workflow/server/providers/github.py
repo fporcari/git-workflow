@@ -27,18 +27,20 @@ import json
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from urllib.parse import quote
 
 import gate as gatelib
 
-from .base import (Provider, REVIEW_STATES, brief_row, detail_row, issue_row, review_row,
+from .base import (Provider, REVIEW_STATES, brief_row, detail_row, issue_row, logins, review_row,
                    verification_result)
 
 GQL = Path(__file__).resolve().parents[1] / "gql"
 
 
-def _gh(*args, timeout=90):
+def _gh(*args, timeout=90, stdin=None):
     try:
-        out = subprocess.run(("gh",) + args, capture_output=True, text=True, timeout=timeout)
+        out = subprocess.run(("gh",) + args, capture_output=True, text=True, timeout=timeout,
+                             input=stdin)
     except subprocess.TimeoutExpired:
         raise RuntimeError("gh %s timed out after %ss" % (args[0], timeout))
     except FileNotFoundError:
@@ -288,13 +290,15 @@ class GitHubProvider(Provider):
                   "closingIssuesReferences(first:100,after:$endCursor){"
                   "pageInfo{hasNextPage endCursor} nodes{number}}}}}")
 
-    def _rest(self, endpoint, method="GET", fields=None, paginate=False):
+    def _rest(self, endpoint, method="GET", fields=None, paginate=False, body=None):
         args = ["api", endpoint, "-X", method]
         for key, value in (fields or {}).items():
             args += ["-f", "%s=%s" % (key, value)]
         if paginate:
             args += ["--paginate", "--slurp"]
-        out = _gh(*args)
+        if body is not None:
+            args += ["--input", "-"]
+        out = _gh(*args, **({"stdin": json.dumps(body)} if body is not None else {}))
         data = json.loads(out) if out.strip() else None
         return [item for page in data or [] for item in page] if paginate else data
 
@@ -336,3 +340,38 @@ class GitHubProvider(Provider):
     def issue_detail(self, repo, n):
         return issue_row(self._rest("repos/%s/issues/%s" % (repo, n)),
                          self._rest("repos/%s/issues/%s/comments?per_page=100" % (repo, n), paginate=True))
+
+    # ---- writes (gw) ---------------------------------------------------
+
+    def issue_create(self, repo, title, body):
+        issue = self._rest("repos/%s/issues" % repo, "POST", body={"title": title, "body": body})
+        return {"n": issue["number"], "url": issue["html_url"]}
+
+    def pr_create(self, repo, title, body, head, base, draft=False):
+        pr = self._rest("repos/%s/pulls" % repo, "POST",
+                        body={"title": title, "body": body, "head": head, "base": base, "draft": draft})
+        return {"n": pr["number"], "url": pr["html_url"]}
+
+    def add_assignees(self, repo, n, who, pull=False):
+        self._rest("repos/%s/issues/%s/assignees" % (repo, n), "POST", body={"assignees": list(who)})
+
+    def add_labels(self, repo, n, names):
+        self._rest("repos/%s/issues/%s/labels" % (repo, n), "POST", body={"labels": list(names)})
+
+    def add_reviewers(self, repo, n, who):
+        self._rest("repos/%s/pulls/%s/requested_reviewers" % (repo, n), "POST",
+                   body={"reviewers": list(who)})
+
+    def comment(self, repo, n, body):
+        made = self._rest("repos/%s/issues/%s/comments" % (repo, n), "POST", body={"body": body})
+        return {"url": made["html_url"]}
+
+    def label_ensure(self, repo, name, color, description):
+        try:
+            self._rest("repos/%s/labels/%s" % (repo, quote(name, safe="")))
+        except RuntimeError:
+            self._rest("repos/%s/labels" % repo, "POST",
+                       body={"name": name, "color": color.lstrip("#"), "description": description})
+
+    def collaborators(self, repo):
+        return logins(self._rest("repos/%s/collaborators?per_page=100" % repo, paginate=True))

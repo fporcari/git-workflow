@@ -16,7 +16,23 @@ on any repository the user works in.
     gw pr diff <n> [--name-only]
     gw issue list
     gw issue view <n>
+    gw collaborators             logins a review can be requested from
     gw api <endpoint> [-X METHOD] [-f key=value]...
+
+    gw issue create --title T (--body-file F | --body B) [--label L]... [--assignee L]...
+    gw issue edit <n> [--add-assignee L]... [--add-label L]...
+    gw issue comment <n> (--body-file F | --body B)
+    gw label ensure <name> [--color HEX] [--description D]
+    gw pr create --title T (--body-file F | --body B) --head BRANCH [--base BRANCH]
+                 [--draft] [--label L]... [--assignee L]... [--reviewer L]...
+    gw pr edit <n> [--add-assignee L]... [--add-label L]... [--add-reviewer L]...
+    gw pr comment <n> (--body-file F | --body B)
+
+`@me` as a login is the authenticated user. A reviewer must be a collaborator
+of the repo: the services drop a request to anybody else without an error.
+`pr create` reads the PR back and fails when the body names an issue to close
+that the service did not link. There is no verb that rewrites a PR body: the
+description is the author's record of the change as opened.
 
 Exit codes: 0 ok · 1 the service refused or the item does not exist ·
 2 the checkout's host is not recognized (never a silent empty answer).
@@ -30,7 +46,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from providers import PROVIDERS, detect, get_provider  # noqa: E402
-from providers.base import diff_paths  # noqa: E402
+from providers.base import closes_from_body, diff_paths  # noqa: E402
 
 
 def _out(data):
@@ -85,10 +101,94 @@ def cmd_issue_view(p, repo, args):
     _out(p.issue_detail(repo, args.n))
 
 
+def _body(args):
+    if args.body_file == "-":
+        return sys.stdin.read()
+    if args.body_file:
+        return Path(args.body_file).read_text()
+    return args.body or ""
+
+
+def _logins(p, names):
+    return [p.whoami() if name == "@me" else name for name in names or []]
+
+
+def _check_collaborators(p, repo, who):
+    unknown = sorted(set(who) - set(p.collaborators(repo)))
+    if unknown:
+        raise RuntimeError("not collaborators of %s: %s (the service would drop the request silently)"
+                           % (repo, ", ".join(unknown)))
+
+
+def _apply(p, repo, n, args, pull, check=True):
+    who = _logins(p, getattr(args, "assignee", None) or getattr(args, "add_assignee", None))
+    if who:
+        p.add_assignees(repo, n, who, pull=pull)
+    labels = getattr(args, "label", None) or getattr(args, "add_label", None)
+    if labels:
+        p.add_labels(repo, n, labels)
+    reviewers = _logins(p, getattr(args, "reviewer", None) or getattr(args, "add_reviewer", None))
+    if reviewers:
+        if check:
+            _check_collaborators(p, repo, reviewers)
+        p.add_reviewers(repo, n, reviewers)
+
+
+def cmd_issue_create(p, repo, args):
+    made = p.issue_create(repo, args.title, _body(args))
+    _apply(p, repo, made["n"], args, pull=False)
+    _out(made)
+
+
+def cmd_issue_edit(p, repo, args):
+    _apply(p, repo, args.n, args, pull=False)
+    _out({"n": args.n})
+
+
+def cmd_comment(p, repo, args):
+    _out(p.comment(repo, args.n, _body(args)))
+
+
+def cmd_label_ensure(p, repo, args):
+    p.label_ensure(repo, args.name, args.color, args.description)
+    _out({"label": args.name})
+
+
+def cmd_pr_create(p, repo, args):
+    body = _body(args)
+    base = args.base or p.default_branch(repo)
+    reviewers = _logins(p, args.reviewer)
+    if reviewers:
+        _check_collaborators(p, repo, reviewers)
+    made = p.pr_create(repo, args.title, body, args.head, base, draft=args.draft)
+    _apply(p, repo, made["n"], args, pull=True, check=False)
+    detail = p.pr_detail(repo, made["n"])
+    _out(dict(made, base=base, draft=args.draft, closes=detail["closes"], req=detail["req"]))
+    wanted = [c["issue"] for c in closes_from_body(body)]
+    if wanted and not detail["closes"]:
+        raise RuntimeError("the body names #%s to close but the service linked no issue"
+                           % ", #".join(str(n) for n in wanted))
+
+
+def cmd_pr_edit(p, repo, args):
+    _apply(p, repo, args.n, args, pull=True)
+    _out({"n": args.n})
+
+
+def cmd_collaborators(p, repo, args):
+    _out(p.collaborators(repo))
+
+
 def cmd_api(p, repo, args):
     fields = dict(item.split("=", 1) for item in args.field or [])
     endpoint = args.endpoint.replace("{repo}", repo)
     _out(p.api(endpoint, method=args.method, fields=fields or None))
+
+
+def _body_args(parser):
+    body = parser.add_mutually_exclusive_group(required=True)
+    body.add_argument("--body-file", metavar="FILE", help="- reads stdin")
+    body.add_argument("--body")
 
 
 def build_parser():
@@ -121,11 +221,56 @@ def build_parser():
     diff.add_argument("--name-only", action="store_true")
     diff.set_defaults(run=cmd_pr_diff)
 
+    pcreate = pr.add_parser("create")
+    pcreate.add_argument("--title", required=True)
+    _body_args(pcreate)
+    pcreate.add_argument("--head", required=True, help="the branch to merge")
+    pcreate.add_argument("--base", help="default: the repo's default branch")
+    pcreate.add_argument("--draft", action="store_true")
+    pcreate.add_argument("--label", action="append", metavar="NAME")
+    pcreate.add_argument("--assignee", action="append", metavar="LOGIN")
+    pcreate.add_argument("--reviewer", action="append", metavar="LOGIN")
+    pcreate.set_defaults(run=cmd_pr_create)
+    pedit = pr.add_parser("edit", help="add assignees, labels, reviewers; never the body")
+    pedit.add_argument("n", type=int)
+    pedit.add_argument("--add-assignee", action="append", metavar="LOGIN")
+    pedit.add_argument("--add-label", action="append", metavar="NAME")
+    pedit.add_argument("--add-reviewer", action="append", metavar="LOGIN")
+    pedit.set_defaults(run=cmd_pr_edit)
+    pcomment = pr.add_parser("comment")
+    pcomment.add_argument("n", type=int)
+    _body_args(pcomment)
+    pcomment.set_defaults(run=cmd_comment)
+
     issue = sub.add_parser("issue").add_subparsers(dest="sub", required=True)
     issue.add_parser("list").set_defaults(run=cmd_issue_list)
     iview = issue.add_parser("view")
     iview.add_argument("n", type=int)
     iview.set_defaults(run=cmd_issue_view)
+    icreate = issue.add_parser("create")
+    icreate.add_argument("--title", required=True)
+    _body_args(icreate)
+    icreate.add_argument("--label", action="append", metavar="NAME")
+    icreate.add_argument("--assignee", action="append", metavar="LOGIN")
+    icreate.set_defaults(run=cmd_issue_create)
+    iedit = issue.add_parser("edit")
+    iedit.add_argument("n", type=int)
+    iedit.add_argument("--add-assignee", action="append", metavar="LOGIN")
+    iedit.add_argument("--add-label", action="append", metavar="NAME")
+    iedit.set_defaults(run=cmd_issue_edit)
+    icomment = issue.add_parser("comment")
+    icomment.add_argument("n", type=int)
+    _body_args(icomment)
+    icomment.set_defaults(run=cmd_comment)
+
+    label = sub.add_parser("label").add_subparsers(dest="sub", required=True)
+    ensure = label.add_parser("ensure", help="create the label unless the repo has it")
+    ensure.add_argument("name")
+    ensure.add_argument("--color", default="ededed", metavar="HEX")
+    ensure.add_argument("--description", default="")
+    ensure.set_defaults(run=cmd_label_ensure)
+
+    sub.add_parser("collaborators").set_defaults(run=cmd_collaborators)
 
     api = sub.add_parser("api", help="raw REST call; {repo} expands to owner/repo")
     api.add_argument("endpoint")
