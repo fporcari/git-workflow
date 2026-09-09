@@ -127,7 +127,7 @@ opening the progress view does not attach the primary conversation.
 | skill | what it does |
 |---|---|
 | **`pr-triage`** | Every open PR you are involved in, split into five blocks by the kind of work each needs: mergeable now, trivial action, reviews you owe, people to chase (grouped per person, ready to paste), and the calls only you can make. Each row carries number, date, author, what it is, what is to be done, and whether `pr-loop` would handle it unattended — read from the provider's fields, never by reading diffs. Hands over to `pr-loop`. |
-| **`issue-triage`** | The ten most recent open issues nobody has looked at yet, ranked by impact and classified DEFECT / REQUEST / QUESTION / DOCS, with existing branches and PRs cross-checked. Its most valuable find is finished work sitting on a branch with no PR. The filter and the cross-check are the desk's; what it writes back is per issue — the impact rank, the verified type, the finding, and the date that lets the desk tell a fresh reading from an overtaken one. Takes `batch=N` and `mine`. |
+| **`issue-triage`** | The ten most recent open issues nobody has looked at yet, each with an urgency band and its one-line reason, the issues it is better worked after, and a proposed resolution order that honours those dependencies; classified DEFECT / REQUEST / QUESTION / DOCS, with existing branches and PRs cross-checked. Its most valuable find is finished work sitting on a branch with no PR. The filter and the cross-check are the desk's; what it writes back is per issue — the position in the order, the urgency and why, the `after` list, the verified type, the finding, and the date that lets the desk tell a fresh reading from an overtaken one. `issue-loop` takes that order as its queue and treats `after` as an edge. Takes `batch=N` and `mine`. |
 
 ### Work the queue — the loops
 
@@ -160,7 +160,7 @@ succeeded.
 | skill | what it does |
 |---|---|
 | **`pr-desk`** | The detached PR queue dashboard (default port 8399, a free one when that is taken). Startup, reload and polling use Python/provider JSON only. Explicit triage, analysis, explanation and workflow clicks each start one ephemeral Codex or Claude process. |
-| **`issue-desk`** | The same for the open issues (default port 8398): the cross-check and the shortlist computed without a model on every read, the impact ranking and the verified type from `issue-triage`, an analysis marked *da aggiornare* when its issue has moved since. Buttons for dedicated work sessions, `issue-analyze` and `issue-loop`. |
+| **`issue-desk`** | The same for the open issues (default port 8398): the cross-check and the shortlist computed without a model on every read, the resolution order, urgency and dependencies from `issue-triage` shown on every row, an analysis marked *da aggiornare* when its issue has moved since. Buttons for dedicated work sessions, `issue-analyze` and `issue-loop`. |
 | **`review-desk`** | Launches both detached servers and defines their JSON/job contract. The launching conversation finishes by default while the dashboards remain available; attached chat routing is opt-in. |
 
 `plugins/git-workflow/server/` is the code under all three: a zero-dependency

@@ -1014,9 +1014,12 @@ function renderPrTab(r){
 }
 /* one dot for an analysis on file, an arrow when the issue has moved past it */
 function issueMark(r){
-  if(r.analysis_stale)
-    return '<small class="dot" title="Analisi presente, ma l\'issue si è mossa dopo">↻</small>';
-  return r.skill?'<small class="dot" title="analisi disponibile">●</small>':"";
+  let m=r.analysis_stale
+    ?'<small class="dot" title="Analisi presente, ma l\'issue si è mossa dopo">↻</small>'
+    :(r.skill?'<small class="dot" title="analisi disponibile">●</small>':"");
+  if(r.urgency)m+=`<small class="triageChip" title="${esc((r.skill||{}).why||"urgenza da issue-triage")}">U${r.urgency}</small>`;
+  if((r.after||[]).length)m+=`<small class="triageChip" title="issue-triage la mette dopo queste">dopo ${r.after.map(n=>"#"+n).join(" ")}</small>`;
+  return m;
 }
 function renderIssueTab(r){
   const g=$("detailGrid"),sk=r.skill||{};
@@ -1051,7 +1054,7 @@ function renderIssueTab(r){
   }else{
     g.innerHTML=`
       <article class="wideArticle"><h2>Analisi</h2>
-        ${sk.finding?`<p>${esc(sk.finding)}</p><p class="mono">${esc([r.type,sk.phase,sk.size,r.analysis_at?"del "+r.analysis_at.slice(0,10):null].filter(Boolean).join(" · "))}</p>${r.analysis_stale?`<small class="triageChip" title="L'issue si è mossa dopo questa analisi">↻ analisi da aggiornare</small>`:""}`
+        ${sk.finding?`<p>${esc(sk.finding)}</p>${sk.why?`<div class="signal"><b>urgenza ${esc(sk.urgency||"")}</b><span>${esc(sk.why)}</span></div>`:""}${(sk.after||[]).length?`<div class="signal"><b>dopo</b><span>${sk.after.map(n=>"#"+n).join(" · ")}</span></div>`:""}${r.impact?`<div class="signal"><b>ordine</b><span>${r.impact}ª nella sequenza proposta</span></div>`:""}<p class="mono">${esc([r.type,sk.phase,sk.size,r.analysis_at?"del "+r.analysis_at.slice(0,10):null].filter(Boolean).join(" · "))}</p>${r.analysis_stale?`<small class="triageChip" title="L'issue si è mossa dopo questa analisi">↻ analisi da aggiornare</small>`:""}`
           :`<div class="tabEmpty">Nessuna analisi ancora. <b>▶ Analizza</b> avvia issue-analyze una volta, read-only: verifica la causa nel codice e propone la mossa minima.</div>`}
         ${actBadge(r)}</article>
       <aside><h2>Cosa fa issue-analyze</h2><ul>
@@ -1187,8 +1190,8 @@ function renderSummary(){
   if(DESK==="issue"){
     notes.push("<b>Cross-check e shortlist calcolati dal desk</b> — nessun modello coinvolto.");
     notes.push(ranked
-      ? `<b>Shortlist ordinata per impatto</b>${session?` — ${esc(session)}`:""}.`
-      : "<b>Non ancora ordinata per impatto</b> — l'ordine è per data finché issue-triage non la legge.");
+      ? `<b>Shortlist nell'ordine di risoluzione proposto</b> — urgenza (U1–U4) e dipendenze (dopo #n) su ogni riga${session?` — ${esc(session)}`:""}.`
+      : "<b>Non ancora ordinata</b> — l'ordine è per data finché issue-triage non la legge.");
     const stale=issues.filter(r=>r.analysis_stale).length;
     if(stale)notes.push(`<b>${stale} analisi da aggiornare:</b> l'issue si è mossa dopo che erano state scritte.`);
   }

@@ -35,9 +35,12 @@
           "n": {"type": "integer"},
           "type": {"enum": ["DEFECT", "REQUEST", "QUESTION", "DOCS", "UNCLASSIFIED"]},
           "impact": {"type": "integer", "minimum": 1},
+          "urgency": {"type": "integer", "minimum": 1, "maximum": 4},
+          "why": {"type": "string", "minLength": 1},
+          "after": {"type": "array", "items": {"type": "integer"}},
           "finding": {"type": "string", "minLength": 1}
         },
-        "required": ["n", "type", "impact", "finding"]
+        "required": ["n", "type", "impact", "urgency", "why", "after", "finding"]
       }
     }
   },

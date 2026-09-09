@@ -546,9 +546,14 @@ def persist_triage(repo, result, flow, exported):
     def mutate(state):
         target = state.setdefault("issues", {})
         for n, item in items.items():
-            target.setdefault(str(n), {}).update(
-                type=item["type"], impact=item["impact"],
-                finding=item["finding"], at=now)
+            entry = target.setdefault(str(n), {})
+            entry.update(type=item["type"], impact=item["impact"],
+                         finding=item["finding"], at=now)
+            for key in ("urgency", "why", "after"):
+                if item.get(key) is not None:
+                    entry[key] = item[key]
+                else:
+                    entry.pop(key, None)
     deskstate.update(repo, mutate)
 
 

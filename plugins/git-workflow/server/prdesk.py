@@ -444,6 +444,8 @@ class Desk:
             row["type"] = record.get("type") or issue_type(row["labels"],
                                                            row["title"])
             row["impact"] = record.get("impact")
+            row["urgency"] = record.get("urgency")
+            row["after"] = record.get("after") or []
             # an analysis is dated, and the issue's own last activity says
             # whether it has been overtaken. No fingerprint to copy: the
             # date is a fact the model already knows how to write.

@@ -90,10 +90,14 @@ Skip this entirely when he named the numbers. Otherwise, in order:
    triage first: it is the same data, and refusing to start costs more than
    the seconds those three reads take.
 
-Then order by impact, reading the body and not the label: 1) evidence of real
-damage (traceback, crash, data loss); 2) blocks someone else; 3) everything
-else; 4) DOCS last. That ordering is the only thing here a model is needed
-for — the filtering is not.
+Then order them. When `issue-triage` has written `impact` (its resolution
+order), `urgency` and `after` on the rows, that order is the queue: it
+already honours the dependencies. Otherwise build it yourself, reading the
+body and not the label: urgency bands 1) evidence of real damage
+(traceback, crash, data loss); 2) blocks someone else; 3) everything else;
+4) DOCS last — then move an issue after the ones it presupposes, duplicates
+or shares a cause with. That ordering is the only thing here a model is
+needed for — the filtering is not.
 
 ## Step 1 — Analyze the ones you are about to propose
 
@@ -218,6 +222,11 @@ Two things are this loop's own:
   groups. Unknown means sequential.
 - **the same-issue edge starts earlier.** Two items meeting on one issue would
   also race on `gw issue edit --add-assignee`, before either has a branch.
+- **`after` is an edge too.** An issue that follows another in the approved
+  set joins its component and runs after it, whatever the files say. One
+  that follows an issue outside the set — still open, not approved — is
+  **not batchable now**: name it in the report with the number it waits
+  for, and do not start it.
 
 ## Step 4 — Claim it, fix it, open the PR
 

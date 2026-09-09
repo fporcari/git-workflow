@@ -1091,6 +1091,25 @@ class HeadlessAgents(unittest.TestCase):
         jobs.persist_triage(repo, result, "pr-triage", exported)
         self.assertNotIn("plan", deskstate.load(repo)["prs"]["17"])
 
+    def test_issue_triage_keeps_urgency_reason_and_dependencies(self):
+        repo = REPO + "-issue-triage"
+        exported = {"shortlist": [7, 9]}
+        result = {"flow": "issue-triage", "report": "ok", "prs": [], "issues": [
+            {"n": 7, "type": "DEFECT", "impact": 2, "urgency": 1,
+             "why": "traceback al salvataggio", "after": [9], "finding": "f7"},
+            {"n": 9, "type": "DOCS", "impact": 1, "urgency": 4,
+             "why": "spiega il modello dati che #7 tocca", "after": [], "finding": "f9"}]}
+        jobs.persist_triage(repo, result, "issue-triage", exported)
+        records = deskstate.load(repo)["issues"]
+        self.assertEqual(records["7"]["after"], [9])
+        self.assertEqual(records["7"]["urgency"], 1)
+        self.assertEqual(records["9"]["why"], "spiega il modello dati che #7 tocca")
+        self.assertEqual(records["9"]["impact"], 1)
+        result["issues"][0].pop("after")
+        result["issues"][0].pop("why")
+        jobs.persist_triage(repo, result, "issue-triage", exported)
+        self.assertNotIn("after", deskstate.load(repo)["issues"]["7"])
+
     def test_triage_rejects_an_item_not_in_the_request_file(self):
         with self.assertRaisesRegex(ValueError, "wrong PR triage items"):
             jobs.persist_triage(
@@ -1956,6 +1975,9 @@ class Chase(unittest.TestCase):
 
 
 class IssueCrossCheck(unittest.TestCase):
+    def setUp(self):
+        deskstate.save(REPO, {})
+
     def test_a_branch_matches_on_the_number_not_on_a_prefix(self):
         branches = ["fix/812-empty-grid", "812-something", "feature/1812-other",
                     "fix/81-old", "wip/812_alt"]
@@ -2006,12 +2028,16 @@ class IssueCrossCheck(unittest.TestCase):
         desk = fresh_desk()
         before = [r["n"] for r in desk.issues()["shortlist"]["rows"]]
         last = before[-1]
-        deskstate.save(REPO, {"issues": {str(last): {"impact": 1,
+        deskstate.save(REPO, {"issues": {str(last): {"impact": 1, "urgency": 1,
+                                                     "after": [before[0]],
                                                      "finding": "rompe il salvataggio"}}})
         got = desk.issues()
         after = [r["n"] for r in got["shortlist"]["rows"]]
         self.assertTrue(got["ranked"])
         self.assertEqual(after[0], last)
+        self.assertEqual(got["shortlist"]["rows"][0]["urgency"], 1)
+        self.assertEqual(got["shortlist"]["rows"][0]["after"], [before[0]])
+        self.assertEqual(got["shortlist"]["rows"][1]["after"], [])
         self.assertEqual(sorted(after), sorted(before), "the filter is not the model's")
 
     def test_the_model_type_wins_over_the_label_guess(self):

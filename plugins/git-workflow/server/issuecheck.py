@@ -90,9 +90,10 @@ def _note(row, refs, prs):
 
 def shortlist(issue_rows, limit=10):
     """The batch worth a model's attention: never looked at, nobody on it,
-    no PR. Newest first until a triage has ranked them — the ranking by
-    impact needs the bodies read, so it is the model's, and it arrives as
-    `impact` on the rows this filter chose."""
+    no PR. Newest first until a triage has ranked them — the resolution
+    order needs the bodies read (urgency, and which issue follows which),
+    so it is the model's, and it arrives as `impact` on the rows this
+    filter chose."""
     fresh = [r for r in issue_rows
              if not r["assignees"]
              and not r["cross"]["open_prs"]
@@ -112,6 +113,7 @@ def shortlist_export(issue_rows, limit=10):
             "rows": [{"n": r["n"], "date": r.get("created"), "author": r.get("author"),
                       "type": r.get("type"), "title": r.get("title"),
                       "impact": r.get("impact"),
+                      "urgency": r.get("urgency"), "after": r.get("after") or [],
                       "assignee": ", ".join(r["assignees"]) or None,
                       "note": r["cross"]["note"]}
                      for r in shortlist(issue_rows, limit)]}
