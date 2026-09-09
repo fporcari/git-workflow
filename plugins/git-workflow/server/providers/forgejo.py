@@ -1,8 +1,12 @@
 """Forgejo provider — talks to the Forgejo (Gitea-compatible) REST API v1.
 
-Configuration by environment:
-    FORGEJO_URL    e.g. https://git.example.org
-    FORGEJO_TOKEN  a personal access token (read scope on repos and issues)
+Configuration, like `gh auth login` stores its token: one macOS keychain item
+    security add-generic-password -s FORGEJO_TOKEN -a <host> -w
+whose account is the instance's host and whose password is a personal access
+token (repository and issue read/write, user read). The environment overrides
+or replaces it anywhere:
+    FORGEJO_URL    e.g. https://git.example.org (also sets the host detected)
+    FORGEJO_TOKEN  the token
 
 Field mapping notes:
 - `mergeable` maps to CLEAN/DIRTY; Forgejo has no BLOCKED/UNSTABLE composite,
@@ -15,7 +19,10 @@ Field mapping notes:
 
 import json
 import os
+import re
 import socket
+import subprocess
+import sys
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -26,6 +33,35 @@ from .base import (Provider, REVIEW_STATES, brief_row, closes_from_body, decisio
                    issue_row, logins, review_row, verification_result)
 
 STATE_MAP = {"REQUEST_CHANGES": "CHANGES_REQUESTED", "COMMENT": "COMMENTED"}
+KEYCHAIN_SERVICE = "FORGEJO_TOKEN"
+ACCOUNT = re.compile(r'"acct"<blob>="([^"]+)"')
+
+
+def _keychain(*args):
+    if sys.platform != "darwin":
+        return ""
+    try:
+        out = subprocess.run(("security", "find-generic-password", "-s", KEYCHAIN_SERVICE) + args,
+                             capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return out.stdout if out.returncode == 0 else ""
+
+
+def keychain_host():
+    match = ACCOUNT.search(_keychain())
+    return match.group(1).lower() if match else ""
+
+
+def keychain_token(host):
+    return _keychain("-a", host, "-w").strip()
+
+
+def configured_url():
+    url = os.environ.get("FORGEJO_URL", "")
+    if not url and keychain_host():
+        url = "https://%s" % keychain_host()
+    return url.rstrip("/")
 PAGE = 50
 DRAFT_PREFIX = "WIP: "
 
@@ -42,18 +78,22 @@ class ForgejoProvider(Provider):
 
     @classmethod
     def hosts(cls):
-        host = (urlparse(os.environ.get("FORGEJO_URL", "")).hostname or "").lower()
+        host = (urlparse(configured_url()).hostname or "").lower()
         return [host] if host else []
 
     def __init__(self, host=None):
         super().__init__(host)
-        url = os.environ.get("FORGEJO_URL", "")
+        url = configured_url()
         if host and host not in self.hosts():
             url = "https://%s" % host
         self.base = url.rstrip("/")
         self.token = os.environ.get("FORGEJO_TOKEN", "")
+        if not self.token and self.base:
+            self.token = keychain_token(urlparse(self.base).hostname or "")
         if not self.base or not self.token:
-            raise SystemExit("forgejo provider needs FORGEJO_URL and FORGEJO_TOKEN in the environment")
+            raise SystemExit(
+                "forgejo provider needs a token: FORGEJO_URL and FORGEJO_TOKEN in the environment, "
+                "or a macOS keychain item (security add-generic-password -s FORGEJO_TOKEN -a <host> -w)")
 
     def _request(self, path, method="GET", params=None, fields=None, accept="application/json"):
         url = "%s/api/v1%s" % (self.base, path)
@@ -269,4 +309,6 @@ class ForgejoProvider(Provider):
                        {"name": name, "color": "#" + color.lstrip("#"), "description": description})
 
     def collaborators(self, repo):
-        return logins(self._get_all("/repos/%s/collaborators" % repo))
+        """`/collaborators` lists explicit collaborators only, not the members
+        of the owning organization; `/reviewers` is who can be asked."""
+        return logins(self._get("/repos/%s/reviewers" % repo))

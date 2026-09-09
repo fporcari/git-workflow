@@ -31,6 +31,17 @@ from providers.github import GitHubProvider    # noqa: E402
 FIXTURE = str(ROOT / "tests" / "fixtures" / "gw.json")
 
 
+_NO_KEYCHAIN = mock.patch("providers.forgejo._keychain", return_value="")
+
+
+def setUpModule():
+    _NO_KEYCHAIN.start()
+
+
+def tearDownModule():
+    _NO_KEYCHAIN.stop()
+
+
 def run(*argv, fixture=FIXTURE):
     out, err = io.StringIO(), io.StringIO()
     env = {"DESK_FIXTURE": fixture} if fixture else {}
@@ -520,6 +531,26 @@ class ForgejoShapeTest(unittest.TestCase):
         with mock.patch.object(ForgejoProvider, "_get", side_effect=lambda path, **k: pages[k["page"]]):
             got = p.issues("acme/widgets")
         self.assertEqual((got["total"], got["truncated"]), (51, False))
+
+    def test_the_keychain_item_names_the_host_and_holds_the_token(self):
+        def security(*args):
+            if args == ("-a", "hub.genro.com", "-w"):
+                return "tok\n"
+            return 'keychain: "x"\n    "acct"<blob>="hub.genro.com"\n    "svce"<blob>="FORGEJO_TOKEN"\n'
+
+        with mock.patch.dict(os.environ, {"FORGEJO_URL": "", "FORGEJO_TOKEN": ""}), \
+             mock.patch("providers.forgejo._keychain", side_effect=security):
+            self.assertEqual(ForgejoProvider.hosts(), ["hub.genro.com"])
+            self.assertEqual(detect.provider_for("hub.genro.com"), "forgejo")
+            p = ForgejoProvider()
+            self.assertEqual((p.base, p.token), ("https://hub.genro.com", "tok"))
+            other = ForgejoProvider(host="other.example")
+        self.assertEqual(other.base, "https://other.example")
+
+    def test_the_environment_wins_over_the_keychain(self):
+        with mock.patch.dict(os.environ, {"FORGEJO_URL": "http://f:3000", "FORGEJO_TOKEN": "env"}), \
+             mock.patch("providers.forgejo._keychain", side_effect=AssertionError("asked")):
+            self.assertEqual(ForgejoProvider().token, "env")
 
     def test_the_provider_addresses_the_origin_host(self):
         self.assertEqual(self.provider().base, "https://hub.example")

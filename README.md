@@ -225,11 +225,13 @@ service into it:
 
 - **github** — shells out to the authenticated `gh` CLI, reusing the
   exact GraphQL documents in `plugins/git-workflow/server/gql/`.
-- **forgejo** — REST against the Forgejo/Gitea API v1; set `FORGEJO_URL` and
-  `FORGEJO_TOKEN`. Written against the published API, not yet exercised
-  against a live Forgejo instance: expect to adjust field mappings when the
-  migration starts. Known gap: the API does not expose review-thread
-  resolution, so `unresolved` is always 0 there.
+- **forgejo** — REST against the Forgejo/Gitea API v1. Credentials like
+  `gh auth login`, once for every host and harness: a macOS keychain item
+  `security add-generic-password -s FORGEJO_TOKEN -a <host> -w` (account =
+  the instance's host, password = a token with repository and issue
+  read/write, user read); `FORGEJO_URL` and `FORGEJO_TOKEN` in the
+  environment override it and are the way on other platforms. Known gap: the
+  API does not expose review-thread resolution, so `unresolved` is always 0.
 - **fixture** — a recorded payload replayed with no network. What the test
   suite runs on.
 

@@ -48,8 +48,8 @@ def provider_for(host):
     for name, cls in PROVIDERS.items():
         if host and host in cls.hosts():
             return name
-    hint = ("set FORGEJO_URL=https://%s and FORGEJO_TOKEN if it is a Forgejo"
-            % host) if host else "no host"
+    hint = ("if it is a Forgejo, set FORGEJO_URL=https://%s and FORGEJO_TOKEN, or store the token "
+            "with security add-generic-password -s FORGEJO_TOKEN -a %s -w" % (host, host)) if host else "no host"
     raise SystemExit("unknown git host %r: %s" % (host, hint))
 
 
