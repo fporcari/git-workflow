@@ -41,6 +41,7 @@ Exit codes: 0 ok · 1 the service refused or the item does not exist ·
 import argparse
 import json
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -134,9 +135,20 @@ def _apply(p, repo, n, args, pull, check=True):
         p.add_reviewers(repo, n, reviewers)
 
 
+@contextmanager
+def _created(made):
+    try:
+        yield
+    except (RuntimeError, SystemExit, KeyError, OSError, ValueError) as exc:
+        _out(dict(made, status="partial"))
+        raise RuntimeError("created #%s at %s, but follow-up failed; complete this item instead of creating it again: %s"
+                           % (made["n"], made["url"], exc)) from exc
+
+
 def cmd_issue_create(p, repo, args):
     made = p.issue_create(repo, args.title, _body(args))
-    _apply(p, repo, made["n"], args, pull=False)
+    with _created(made):
+        _apply(p, repo, made["n"], args, pull=False)
     _out(made)
 
 
@@ -161,13 +173,17 @@ def cmd_pr_create(p, repo, args):
     if reviewers:
         _check_collaborators(p, repo, reviewers)
     made = p.pr_create(repo, args.title, body, args.head, base, draft=args.draft)
-    _apply(p, repo, made["n"], args, pull=True, check=False)
-    detail = p.pr_detail(repo, made["n"])
-    _out(dict(made, base=base, draft=args.draft, closes=detail["closes"], req=detail["req"]))
-    wanted = [c["issue"] for c in closes_from_body(body)]
-    if wanted and not detail["closes"]:
-        raise RuntimeError("the body names #%s to close but the service linked no issue"
-                           % ", #".join(str(n) for n in wanted))
+    with _created(made):
+        _apply(p, repo, made["n"], args, pull=True, check=False)
+        detail = p.pr_detail(repo, made["n"])
+        made.update(base=base, draft=args.draft, closes=detail["closes"], req=detail["req"])
+        linked = {c["issue"] for c in detail["closes"]}
+        missing = [c["issue"] for c in closes_from_body(body) if c["issue"] not in linked]
+        if missing:
+            raise RuntimeError("the service did not link issues named in the body: #%s"
+                               % ", #".join(str(n) for n in missing))
+    _out(made)
+
 
 
 def cmd_pr_edit(p, repo, args):

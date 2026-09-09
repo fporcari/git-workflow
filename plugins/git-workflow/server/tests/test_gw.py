@@ -181,6 +181,41 @@ class FixtureVerbsTest(unittest.TestCase):
         self.assertEqual(json.loads(out)["closes"], [])
         self.assertIn("#404", err)
 
+    def test_partial_creation_keeps_the_item_identity(self):
+        for kind, stages in (("pr", ("add_assignees", "add_labels", "add_reviewers", "pr_detail")),
+                             ("issue", ("add_assignees", "add_labels"))):
+            for stage in stages:
+                with self.subTest(kind=kind, stage=stage):
+                    argv = [*self.R, kind, "create", "--title", "t", "--body", "b",
+                            "--assignee", "alice", "--label", "bug"]
+                    if kind == "pr":
+                        argv += ["--head", "fix", "--reviewer", "bob"]
+                    with mock.patch("providers.fixture.FixtureProvider." + stage,
+                                    side_effect=RuntimeError("service unavailable")):
+                        code, out, err = run(*argv)
+                    made = json.loads(out)
+                    self.assertEqual(code, 1)
+                    self.assertEqual(made["status"], "partial")
+                    self.assertEqual(made["n"], 9 if kind == "pr" else 4)
+                    self.assertTrue(made["url"].endswith("/" + str(made["n"])))
+                    self.assertIn(made["url"], err)
+                    self.assertIn("instead of creating it again", err)
+
+    def test_each_issue_named_in_the_body_must_be_linked(self):
+        code, out, err = run(*self.R, "pr", "create", "--title", "t",
+                             "--body", "Fixes #3. Fixes #404", "--head", "fix")
+        self.assertEqual(code, 1)
+        self.assertEqual(json.loads(out)["status"], "partial")
+        self.assertEqual([c["issue"] for c in json.loads(out)["closes"]], [3])
+        self.assertIn("#404", err)
+        self.assertNotIn("#3", err)
+
+    def test_all_linked_issues_succeed_even_when_repeated(self):
+        made = self.verb("pr", "create", "--title", "t", "--head", "fix",
+                         "--body", "Fixes #3. Resolves #3")
+        self.assertEqual([c["issue"] for c in made["closes"]], [3])
+        self.assertNotIn("status", made)
+
     def test_there_is_no_verb_that_rewrites_a_pr_body(self):
         with redirect_stderr(io.StringIO()) as err, self.assertRaises(SystemExit) as ctx:
             gw.main([*self.R, "pr", "edit", "7", "--body", "x"])
