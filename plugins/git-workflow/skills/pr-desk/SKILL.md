@@ -7,22 +7,30 @@ description: Launch the PR desk. The Python server serves provider/cache JSON wi
 
 Read `<PLUGIN_ROOT>/refs/runtime.md` first.
 
-Launch the PR desk using the host procedure from the runtime reference. Select
-the current host as its one-shot backend:
+Launch the PR desk using the host procedure from the runtime reference.
+Select the current host as its one-shot backend and start it as a background
+process whose stderr goes to a log:
 
 ```bash
-python3 <PLUGIN_ROOT>/server/prdesk.py --desk pr --agent <claude|codex>
+python3 <PLUGIN_ROOT>/server/prdesk.py --desk pr --agent <claude|codex> \
+    >> "${TMPDIR:-/tmp}/git-workflow-pr-desk.log" 2>&1 &
 ```
 
-Claude browser-preview configuration:
+The URL is the last `pr desk on http://127.0.0.1:<port>` line the log
+prints within a couple of seconds — read it, never assume 8399. The
+default port is 8399, but a desk that finds it taken by another repo or by
+the sibling desk moves to a free port the OS picks, and one that finds ITS OWN
+twin there (same repo, same desk) prints the twin's URL and exits instead of
+starting a second server. Do not pass `--port`: it is strict and fails on a
+busy port. The server exits by itself after an hour without a request and
+with no job running (`--idle-exit 0` disables), so a desk left behind never
+squats the port of the next one.
 
-```json
-{"name": "pr-desk", "runtimeExecutable": "python3",
- "runtimeArgs": ["<PLUGIN_ROOT>/server/prdesk.py", "--desk", "pr", "--agent", "claude"],
- "port": 8399}
-```
+Open that URL with `navigate` (or `preview_start` with `url`) on Claude Code,
+with the browser panel on Codex. There is no fixed-port launch configuration:
+the port is known only once the server has bound it.
 
-Open the printed localhost URL. The launching chat stays **attached by
+The launching chat stays **attached by
 default**: the desk is the remote, this conversation is where the work
 happens. Every click except triage arrives here as the command it stands for
 (`/pr-loop 1099 1055 batch=4`, `/pr-analyze 1099`, `/issue-analyze 7`) and is

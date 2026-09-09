@@ -11,6 +11,7 @@ import inspect
 import json
 import multiprocessing
 import os
+import socket
 import subprocess
 import sys
 import tempfile
@@ -2931,3 +2932,88 @@ class LaneCheck(unittest.TestCase):
         self.assertEqual(out.returncode, 0, out.stderr)
         got = json.loads(out.stdout)
         self.assertEqual(sorted(r["n"] for r in got["rows"]), [1128, 1145])
+
+
+class Ports(unittest.TestCase):
+    """Two desks never fight over a number: the default when free, the
+    running twin's URL when it is ours, a port the OS picks otherwise."""
+
+    def setUp(self):
+        self.servers = []
+        self.bound = []
+        self.patch = mock.patch.dict(prdesk.DEFAULT_PORTS, {"pr": 0, "issue": 0})
+        self.patch.start()
+
+    def tearDown(self):
+        self.patch.stop()
+        for server in self.servers:
+            server.shutdown()
+            server.server_close()
+        for server in self.bound:
+            server.server_close()
+
+    def _serving(self, kind, repo):
+        provider = get_provider("fixture")
+        desk = prdesk.Desk(provider, repo, provider.whoami(), str(ROOT),
+                           chat=False, kind=kind)
+        handler = type("H", (prdesk.Handler,), {"desk": desk})
+        server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.servers.append(server)
+        return server.server_address[1]
+
+    def test_the_default_port_is_taken_when_free(self):
+        server, running = prdesk.open_server("pr", REPO)
+        self.bound.append(server)
+        self.assertIsNone(running)
+        self.assertGreater(server.server_address[1], 0)
+
+    def test_a_twin_on_the_default_port_is_reused_not_doubled(self):
+        prdesk.DEFAULT_PORTS["pr"] = self._serving("pr", REPO)
+        server, running = prdesk.open_server("pr", REPO)
+        self.assertIsNone(server)
+        self.assertEqual(running, "http://127.0.0.1:%s" % prdesk.DEFAULT_PORTS["pr"])
+
+    def test_another_repo_on_the_default_port_moves_us_elsewhere(self):
+        busy = self._serving("pr", "acme/widgets")
+        prdesk.DEFAULT_PORTS["pr"] = busy
+        server, running = prdesk.open_server("pr", REPO)
+        self.bound.append(server)
+        self.assertIsNone(running)
+        self.assertNotEqual(server.server_address[1], busy)
+
+    def test_the_sibling_desk_on_the_default_port_moves_us_elsewhere(self):
+        busy = self._serving("issue", REPO)
+        prdesk.DEFAULT_PORTS["pr"] = busy
+        server, running = prdesk.open_server("pr", REPO)
+        self.bound.append(server)
+        self.assertIsNone(running)
+        self.assertNotEqual(server.server_address[1], busy)
+
+    def test_a_stranger_on_the_default_port_moves_us_elsewhere(self):
+        squatter = socket.socket()
+        squatter.bind(("127.0.0.1", 0))
+        squatter.listen(1)
+        self.addCleanup(squatter.close)
+        prdesk.DEFAULT_PORTS["pr"] = squatter.getsockname()[1]
+        server, running = prdesk.open_server("pr", REPO)
+        self.bound.append(server)
+        self.assertIsNone(running)
+        self.assertNotEqual(server.server_address[1], prdesk.DEFAULT_PORTS["pr"])
+
+    def test_an_explicit_port_is_strict(self):
+        busy = self._serving("pr", REPO)
+        with self.assertRaises(OSError):
+            prdesk.open_server("pr", REPO, wanted=busy)
+
+    def test_a_request_refreshes_the_idle_clock(self):
+        port = self._serving("pr", REPO)
+        before = time.monotonic()
+        urlopen("http://127.0.0.1:%s/api/meta" % port, timeout=2).read()
+        self.assertGreaterEqual(prdesk.Handler.last_request, before)
+
+    def test_idle_exit_needs_silence_and_no_job(self):
+        self.assertTrue(prdesk.idle_expired(0, 3600, 3600, []))
+        self.assertFalse(prdesk.idle_expired(0, 3599, 3600, []))
+        self.assertFalse(prdesk.idle_expired(0, 7200, 3600, [{"id": "j"}]))
+        self.assertFalse(prdesk.idle_expired(0, 7200, 0, []))

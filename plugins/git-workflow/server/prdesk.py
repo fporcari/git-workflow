@@ -33,7 +33,15 @@ Speed shape (the desk used to be slow for structural reasons, not slow code):
     old field-only verdict said `A1 → merge it` there and was wrong.
 
     python3 prdesk.py [--repo owner/repo] [--provider github|forgejo|fixture]
-                      [--port 8399] [--me login] [--agent auto|codex|claude]
+                      [--port N] [--me login] [--agent auto|codex|claude]
+
+Ports: without --port the desk takes its default (8399 pr, 8398 issue). When
+that port already serves the SAME repo and desk the new process prints that
+server's URL and exits instead of starting a twin; when it serves anything
+else the OS picks a free port. The last line on stderr is always
+`<kind> desk on http://127.0.0.1:<port>` with the port actually bound, so the
+launcher opens what it reads there, never a number it assumed. A desk nobody
+has asked anything for an hour, with no job running, exits by itself.
 """
 
 import argparse
@@ -49,6 +57,7 @@ from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
+from urllib.request import urlopen
 
 import cache
 import deskstate
@@ -557,17 +566,56 @@ class Desk:
         return path
 
 
+DEFAULT_PORTS = {"pr": 8399, "issue": 8398}
+IDLE_EXIT = 3600
+
+
 def stop_server(server):
     jobs.shutdown()
     server.shutdown()
 
 
+def running_desk(port):
+    try:
+        with urlopen("http://127.0.0.1:%s/api/meta" % port, timeout=1) as resp:
+            return json.load(resp)
+    except (OSError, ValueError):
+        return None
+
+
+def open_server(kind, repo, wanted=0, handler=None):
+    """Returns (server, None) with a bound socket, or (None, url) when the
+    default port already serves this very desk and the caller should open
+    that URL instead. An explicit port is the caller's word: strict."""
+    handler = handler or Handler
+    if wanted:
+        return ThreadingHTTPServer(("127.0.0.1", wanted), handler), None
+    default = DEFAULT_PORTS[kind]
+    try:
+        return ThreadingHTTPServer(("127.0.0.1", default), handler), None
+    except OSError:
+        pass
+    meta = running_desk(default)
+    if meta and meta.get("repo") == repo and meta.get("desk") == kind:
+        return None, "http://127.0.0.1:%s" % default
+    return ThreadingHTTPServer(("127.0.0.1", 0), handler), None
+
+
+def idle_expired(last_request, now, limit, active_jobs):
+    return bool(limit) and now - last_request >= limit and not active_jobs
+
+
 class Handler(BaseHTTPRequestHandler):
     desk = None
     protocol_version = "HTTP/1.1"      # keep-alive: the UI polls every few seconds
+    last_request = time.monotonic()
 
     def log_message(self, fmt, *args):
         pass
+
+    def parse_request(self):
+        Handler.last_request = time.monotonic()
+        return super().parse_request()
 
     def _send(self, code, body, ctype="application/json; charset=utf-8", etag=None):
         payload = body if isinstance(body, bytes) else json.dumps(body).encode()
@@ -895,7 +943,11 @@ def main():
     parser.add_argument("--desk", default="pr", choices=("pr", "issue"),
                         help="which desk this server is: pr (default) or issue")
     parser.add_argument("--port", type=int, default=0,
-                        help="default: 8399 for the pr desk, 8398 for the issue desk")
+                        help="strict port; default: 8399 (pr) or 8398 (issue) when "
+                             "free, else a free one the OS picks")
+    parser.add_argument("--idle-exit", type=int, default=IDLE_EXIT, metavar="SECONDS",
+                        help="exit after this long without a request and with no "
+                             "job running (default 3600; 0 disables)")
     parser.add_argument("--me", help="login to triage for (default: the authenticated user)")
     parser.add_argument("--chat", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--agent", default="auto", choices=("auto", "claude", "codex"),
@@ -912,7 +964,12 @@ def main():
 
     provider, repo = provider_and_repo(args)
     me = args.me or provider.whoami()
-    port = args.port or (8399 if args.desk == "pr" else 8398)
+    server, running = open_server(args.desk, repo, args.port)
+    if running:
+        sys.stderr.write("%s desk already running for %s\n%s desk on %s\n"
+                         % (args.desk, repo, args.desk, running))
+        return
+    port = server.server_address[1]
     swept = deskstate.sweep_legacy()
     jobs.reconcile(repo)
     if not args.keep_state:
@@ -922,7 +979,7 @@ def main():
     desk = Desk(provider, repo, me, str(Path.cwd()), chat=False,
                 kind=args.desk, agent=args.agent)
     Handler.desk = desk
-    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    Handler.last_request = time.monotonic()
     stopping = threading.Event()
 
     def request_stop(*_):
@@ -931,8 +988,17 @@ def main():
             threading.Thread(target=stop_server,
                              args=(server,), daemon=True).start()
 
+    def idle_watch():
+        while not stopping.wait(60):
+            if idle_expired(Handler.last_request, time.monotonic(),
+                            args.idle_exit, jobs.active(repo)):
+                sys.stderr.write("%s desk idle for %d min with no job running, "
+                                 "exiting\n" % (args.desk, args.idle_exit // 60))
+                request_stop()
+
     signal.signal(signal.SIGTERM, request_stop)
     signal.signal(signal.SIGINT, request_stop)
+    threading.Thread(target=idle_watch, daemon=True).start()
     if not args.no_prefetch:
         desk.prefetch()
     sys.stderr.write("%s desk on http://127.0.0.1:%s  repo=%s me=%s provider=%s "

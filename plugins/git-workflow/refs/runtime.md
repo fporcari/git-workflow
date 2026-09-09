@@ -28,10 +28,16 @@ python3 <PLUGIN_ROOT>/server/prdesk.py --desk pr --agent codex
 python3 <PLUGIN_ROOT>/server/prdesk.py --desk issue --agent claude
 ```
 
-- Claude Code: use its browser-preview launch configuration when available.
+Start it in the background with stderr on a log and open the URL of the
+`<kind> desk on http://127.0.0.1:<port>` line it prints — the port is chosen
+at bind time (default when free, otherwise one the OS picks, or the running
+twin's URL), so no launch configuration may hard-code it.
+
+- Claude Code: `navigate` (or `preview_start` with `url`) on that URL. Not
+  the `launch.json` browser-preview recipe: it needs a port known in advance.
 - Codex: start the process in a persistent terminal session, then open the
-  localhost URL with the Codex browser panel/tool when available. Otherwise
-  give the URL to the user.
+  URL with the Codex browser panel/tool when available. Otherwise give the
+  URL to the user.
 
 Use `--agent claude` from Claude Code and `--agent codex` from Codex.
 `--agent auto` is the compatibility fallback for a manual launch.

@@ -159,8 +159,8 @@ succeeded.
 
 | skill | what it does |
 |---|---|
-| **`pr-desk`** | The detached PR queue dashboard (port 8399). Startup, reload and polling use Python/provider JSON only. Explicit triage, analysis, explanation and workflow clicks each start one ephemeral Codex or Claude process. |
-| **`issue-desk`** | The same for the open issues (port 8398): the cross-check and the shortlist computed without a model on every read, the impact ranking and the verified type from `issue-triage`, an analysis marked *da aggiornare* when its issue has moved since. Buttons for dedicated work sessions, `issue-analyze` and `issue-loop`. |
+| **`pr-desk`** | The detached PR queue dashboard (default port 8399, a free one when that is taken). Startup, reload and polling use Python/provider JSON only. Explicit triage, analysis, explanation and workflow clicks each start one ephemeral Codex or Claude process. |
+| **`issue-desk`** | The same for the open issues (default port 8398): the cross-check and the shortlist computed without a model on every read, the impact ranking and the verified type from `issue-triage`, an analysis marked *da aggiornare* when its issue has moved since. Buttons for dedicated work sessions, `issue-analyze` and `issue-loop`. |
 | **`review-desk`** | Launches both detached servers and defines their JSON/job contract. The launching conversation finishes by default while the dashboards remain available; attached chat routing is opt-in. |
 
 `plugins/git-workflow/server/` is the code under all three: a zero-dependency
@@ -173,15 +173,21 @@ The skills launch it; you can also run it by hand:
 
 ```bash
 python3 plugins/git-workflow/server/prdesk.py        # repo from the cwd's origin
-python3 plugins/git-workflow/server/prdesk.py --repo owner/repo --desk issue --port 8398
+python3 plugins/git-workflow/server/prdesk.py --repo owner/repo --desk issue
 ```
 
-Open http://127.0.0.1:8399. Tabs: Queue (needs a move from you), Mergeable,
+Open the URL of the `desk on http://127.0.0.1:<port>` line it prints: 8399
+for PRs and 8398 for issues when free, a free port the OS picks when another
+repo or the sibling desk holds it, and the running server's URL when the same
+desk of the same repo is already up (then the new process just exits). An
+explicit `--port` is strict. A desk idle for an hour with no job running exits
+on its own (`--idle-exit`). Tabs: Queue (needs a move from you), Mergeable,
 Waiting, All PRs, Issues. Clicking a row opens the detail panel: state of
 play, next move with the `pr-loop` autorun class, reviews, linked issues.
 
 Options: `--repo`, `--provider github|forgejo|fixture`, `--me`, `--port`,
-`--agent auto|claude|codex`, `--keep-state`, `--keep-cache`, `--no-prefetch`.
+`--idle-exit`, `--agent auto|claude|codex`, `--keep-state`, `--keep-cache`,
+`--no-prefetch`.
 
 **It does not triage at startup.** It fetches the provider itself and paints
 in seconds. Reload performs the same pure fetch. Pressing the triage button

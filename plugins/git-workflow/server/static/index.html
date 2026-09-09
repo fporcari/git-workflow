@@ -1266,7 +1266,7 @@ $("btnStop").onclick=async()=>{
 };
 
 if(typeof location!=="undefined"&&location.protocol==="file:"){
-  document.body.innerHTML='<div style="padding:40px;font:14px system-ui"><b>Apri il desk dal server locale.</b><br><code>http://127.0.0.1:8399/</code><br>Il file HTML diretto non avvia polling né animazioni.</div>';
+  document.body.innerHTML='<div style="padding:40px;font:14px system-ui"><b>Apri il desk dal server locale.</b><br>Usa la riga <code>desk on http://127.0.0.1:…</code> che il server stampa quando parte.<br>Il file HTML diretto non avvia polling né animazioni.</div>';
 }else{
   render();
   loadDesk(false);

@@ -10,16 +10,23 @@ current host's one-shot backend and how to open localhost.
 
 ## Launch
 
-Run both servers as ordinary background processes:
+Run both servers as ordinary background processes, each with its stderr in
+a log:
 
 ```sh
-python3 <PLUGIN_ROOT>/server/prdesk.py --desk pr --agent <claude|codex>
-python3 <PLUGIN_ROOT>/server/prdesk.py --desk issue --agent <claude|codex>
+python3 <PLUGIN_ROOT>/server/prdesk.py --desk pr --agent <claude|codex> \
+    >> "${TMPDIR:-/tmp}/git-workflow-pr-desk.log" 2>&1 &
+python3 <PLUGIN_ROOT>/server/prdesk.py --desk issue --agent <claude|codex> \
+    >> "${TMPDIR:-/tmp}/git-workflow-issue-desk.log" 2>&1 &
 ```
 
-The default ports are 8399 for PRs and 8398 for issues. Both desks share the
-same repository state. Open the printed URLs, then stay attached as the
-pr-desk and issue-desk skills describe: ONE `chatdesk.py listen` monitor
+The default ports are 8399 for PRs and 8398 for issues, but the URL to open
+is the `<kind> desk on http://127.0.0.1:<port>` line each log prints: a
+default taken by another repo moves the desk to a free port, a default taken
+by the same desk of the same repo is reused (the process prints that URL and
+exits). Never pass `--port` from a skill. Both desks share the same
+repository state. Open the printed URLs, then stay attached as the pr-desk
+and issue-desk skills describe: ONE `chatdesk.py listen` monitor
 covers both desks of a repository. Only a launch the user asked to be
 detached lets the conversation finish here.
 
