@@ -33,8 +33,13 @@ Start it in the background with stderr on a log and open the URL of the
 at bind time (default when free, otherwise one the OS picks, or the running
 twin's URL), so no launch configuration may hard-code it.
 
-- Claude Code: `navigate` (or `preview_start` with `url`) on that URL. Not
-  the `launch.json` browser-preview recipe: it needs a port known in advance.
+- Claude Code: open it in the Browser pane beside the chat with
+  `mcp__Claude_Browser__preview_start`, `url` set to the printed URL
+  (`mcp__Claude_Browser__navigate` does the same once the pane is open). The
+  pane IS the desk; a pasted link is not it. The page is local, served on
+  127.0.0.1 by the process just started: no login, nothing to state or ask
+  first — open it. Not the `launch.json` browser-preview recipe: it needs a
+  port known in advance.
 - Codex: start the process in a persistent terminal session, then open the
   URL with the Codex browser panel/tool when available. Otherwise give the
   URL to the user.

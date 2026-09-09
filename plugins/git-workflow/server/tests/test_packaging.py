@@ -75,6 +75,17 @@ class Packaging(unittest.TestCase):
             for tool in ("Agent", "mcp__ccd_session_mgmt__set_session_title"):
                 self.assertIn(tool, allowed, "%s in %s" % (tool, name))
 
+    def test_the_desk_opens_in_the_browser_pane_not_as_a_link(self):
+        """The port is known only at bind time, so no launch.json recipe can
+        open the pane; the tool that does must be named in full, and the
+        skills must say the pane is the deliverable."""
+        runtime = (PLUGIN / "refs" / "runtime.md").read_text()
+        self.assertIn("mcp__Claude_Browser__preview_start", runtime)
+        for name in ("pr-desk", "issue-desk", "review-desk"):
+            text = (PLUGIN / "skills" / name / "SKILL.md").read_text()
+            self.assertIn("Browser pane", text, name)
+            self.assertIn("link", text, name)
+
     def test_the_desks_title_their_chat_and_mark_it_closed(self):
         """A desk chat is found again by its title — kind, repo, date and
         time — and read as spent once the desk is gone."""

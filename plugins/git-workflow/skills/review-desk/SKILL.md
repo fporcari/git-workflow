@@ -25,10 +25,13 @@ is the `<kind> desk on http://127.0.0.1:<port>` line each log prints: a
 default taken by another repo moves the desk to a free port, a default taken
 by the same desk of the same repo is reused (the process prints that URL and
 exits). Never pass `--port` from a skill. Both desks share the same
-repository state. Open the printed URLs, then stay attached as the pr-desk
-and issue-desk skills describe: ONE `chatdesk.py listen` monitor
-covers both desks of a repository. Only a launch the user asked to be
-detached lets the conversation finish here.
+repository state. Open the printed URLs in the Browser pane beside the chat
+(`preview_start` with `url` on Claude Code, the tool `runtime.md` → *Desks*
+names; local pages of processes you just started, nothing to ask first — a
+link alone is not the deliverable), then stay attached as the pr-desk and
+issue-desk skills describe: ONE `chatdesk.py listen` monitor covers both
+desks of a repository. Only a launch the user asked to be detached lets the
+conversation finish here.
 
 Title this chat when the host has a title tool (`runtime.md` → *Session
 metadata*): `Review desk · <owner/repo> · <YYYY-MM-DD HH:MM>`, date and time

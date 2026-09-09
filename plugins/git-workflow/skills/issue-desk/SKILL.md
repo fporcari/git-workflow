@@ -26,9 +26,12 @@ busy port. The server exits by itself after an hour without a request and
 with no job running (`--idle-exit 0` disables), so a desk left behind never
 squats the port of the next one.
 
-Open that URL with `navigate` (or `preview_start` with `url`) on Claude Code,
-with the browser panel on Codex. There is no fixed-port launch configuration:
-the port is known only once the server has bound it.
+Open that URL in the Browser pane beside the chat on Claude Code —
+`preview_start` with `url`, the tool `runtime.md` → *Desks* names; a link
+alone is not the deliverable. The page is local, served by the process you
+just started: no login, nothing to ask first. Codex: the browser panel. There
+is no fixed-port launch configuration: the port is known only once the server
+has bound it.
 
 Then title this chat, when the host has a title tool (`runtime.md` →
 *Session metadata*): `Issue desk · <owner/repo> · <YYYY-MM-DD HH:MM>`, date
