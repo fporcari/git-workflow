@@ -260,8 +260,8 @@ answers it.
 
 ```bash
 gh api repos/<owner/repo>/pulls/<n>/reviews --jq '.[]|{id,user:.user.login,state}'   # for the permalink id
-gh pr comment <n> --body-file <f>
-gh pr edit <n> --add-reviewer <login>
+gw pr comment <n> --body-file <f>
+gw pr edit <n> --add-reviewer <login>
 ```
 
 **Weigh the dismissal cost first and say it in the comment.** With

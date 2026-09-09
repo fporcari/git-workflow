@@ -32,7 +32,7 @@ and carry its open decisions forward; a recent summary alone is not a plan.
 
 If SINGLE-PHASE (any size): take it end to end.
 
-- **Claim first**: `gh issue edit <n> --add-assignee @me` when unassigned;
+- **Claim first**: `gw issue edit <n> --add-assignee @me` when unassigned;
   never touch an issue somebody else holds — report and stop instead.
 - Work in the session's existing isolated worktree when the host already made
   one. Otherwise create a worktree (`git worktree add <scratch>/wt-<n>
@@ -41,9 +41,9 @@ If SINGLE-PHASE (any size): take it end to end.
 - The traps and the PR discipline are in
   `<PLUGIN_ROOT>/refs/worktree-traps.md` — verbatim rules: no
   forks/remotes, PYTHONPATH into the worktree, no git stash, narrowest check
-  now, `Fixes #<n>` verified in `closingIssuesReferences`, `--assignee` the
-  author, `--reviewer` from CODEOWNERS and confirmed, `--label
-  needs-verification` on every PR (the label is created first).
+  now, the PR opened with `gw pr create` (`Fixes #<n>` verified by the tool,
+  `--assignee @me`, `--reviewer` from CODEOWNERS and checked against the
+  collaborators, `--label needs-verification` after `gw label ensure`).
 - Open **draft** when a decision is open (posted on the ISSUE, linked from
   the body); ready otherwise. Never claim a verification not performed.
 - Remove the worktree, report the PR link, and update the desk state entry

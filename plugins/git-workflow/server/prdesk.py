@@ -42,7 +42,6 @@ import hashlib
 import json
 import secrets
 import signal
-import subprocess
 import sys
 import threading
 import time
@@ -58,23 +57,13 @@ import issuecheck
 import jobs
 import notify
 import verdicts
-from providers import get_provider
+from providers import PROVIDERS, provider_and_repo
 from verdicts import decorate, handoff, issue_handoff, issue_type
 
 STATIC = Path(__file__).resolve().parent / "static"
 
 # one decision group holds four options: a wider batch becomes hard to scan
 MAX_BATCH = 4
-
-
-def detect_repo():
-    out = subprocess.run(("git", "remote", "get-url", "origin"),
-                         capture_output=True, text=True)
-    if out.returncode:
-        raise SystemExit("no --repo given and no git origin in the current directory")
-    url = out.stdout.strip()
-    tail = url.split(":")[-1] if url.startswith("git@") else urlparse(url).path.lstrip("/")
-    return tail.removesuffix(".git")
 
 
 # the fields a verdict is a function of, and nothing else: hashing the whole
@@ -900,9 +889,9 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--repo", help="owner/repo (default: origin of the cwd)")
-    parser.add_argument("--provider", default="github",
-                        choices=("github", "forgejo", "fixture"))
+    parser.add_argument("--repo", help="[host/]owner/repo (default: the origin of the cwd)")
+    parser.add_argument("--provider", choices=tuple(PROVIDERS),
+                        help="force the service; default: the one the origin's host names")
     parser.add_argument("--desk", default="pr", choices=("pr", "issue"),
                         help="which desk this server is: pr (default) or issue")
     parser.add_argument("--port", type=int, default=0,
@@ -921,8 +910,7 @@ def main():
                              "of reading the provider again (offline work)")
     args = parser.parse_args()
 
-    provider = get_provider(args.provider)
-    repo = args.repo or detect_repo()
+    provider, repo = provider_and_repo(args)
     me = args.me or provider.whoami()
     port = args.port or (8399 if args.desk == "pr" else 8398)
     swept = deskstate.sweep_legacy()

@@ -17,11 +17,71 @@ provider whose merge state is a separate phase — see mergestates() below:
 Issue row:
     n, title, created, author, labels [names], assignees [logins],
     comments (int), url
+
+The `gw` CLI adds per-item reads, same shape on every service:
+
+PR detail:
+    n, title, body, state (open|closed|merged), draft, author, assignees,
+    labels, created, updated, base {ref, sha}, head {ref, sha},
+    merge (CLEAN|DIRTY|BLOCKED|UNSTABLE|BEHIND|UNKNOWN),
+    decision (derived from the reviews, see decision_from),
+    req [logins], reviews [{who, state, on, commit, has_text}],
+    closes [{issue, source}] (source: provider|body), comments (int), url
+
+Issue detail:
+    n, title, body, state, author, assignees, labels, created, updated, url,
+    comments [{who, t, body}]
+
+Writes (gw issue create / pr create / edit / comment, label ensure) return
+{n, url} for a new item, {url} for a comment; labels, assignees and reviewers
+are added after creation through the add_* methods, one path on every service.
 """
+
+import re
+
+CLOSES = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s*#(\d+)", re.I)
+REVIEW_STATES = ("APPROVED", "CHANGES_REQUESTED", "COMMENTED", "DISMISSED")
+
+
+def closes_from_body(body):
+    """The issues a PR body says it closes — what a service without a
+    linked-issues API (Forgejo) resolves at merge time from these keywords."""
+    seen = []
+    for number in CLOSES.findall(body or ""):
+        if int(number) not in seen:
+            seen.append(int(number))
+    return [{"issue": n, "source": "body"} for n in seen]
+
+
+def decision_from(reviews, requests):
+    """One rule for every service: the latest review of each person counts,
+    a standing CHANGES_REQUESTED blocks, otherwise any APPROVED approves,
+    otherwise a pending request or a mere comment leaves the review required."""
+    latest = {}
+    for review in reviews:
+        if review.get("state") in ("APPROVED", "CHANGES_REQUESTED"):
+            latest[review.get("who")] = review["state"]
+    if "CHANGES_REQUESTED" in latest.values():
+        return "CHANGES_REQUESTED"
+    if "APPROVED" in latest.values():
+        return "APPROVED"
+    return "REVIEW_REQUIRED" if (reviews or requests) else None
 
 
 class Provider:
     name = "base"
+
+    def __init__(self, host=None):
+        """`host` is the git host of the checkout, for services that run on
+        more than one; a provider bound to one instance may ignore it."""
+        self.host = host
+
+    @classmethod
+    def hosts(cls):
+        """The git hosts this provider serves, lowercase. Detection picks the
+        first provider whose list holds the origin's host; [] is never
+        detected, only forced with --provider."""
+        return []
 
     def whoami(self):
         raise NotImplementedError
@@ -94,6 +154,143 @@ class Provider:
         are assigned to him — two cheap searches that decide what a model
         has to read. `complete` is False when a page cap cut them short."""
         return {"commented": [], "assigned": [], "complete": True}
+
+    # ---- per-item reads, the gw CLI's verbs ---------------------------
+
+    def pulls(self, repo, state="open"):
+        """Every PR in `state`, newest first, as brief rows:
+        n, title, author, draft, base, head, created, updated, labels,
+        assignees, req, url."""
+        raise NotImplementedError
+
+    def pr_detail(self, repo, n):
+        """One PR, the shape documented at the top of this file."""
+        raise NotImplementedError
+
+    def pr_reviews(self, repo, n):
+        """[{who, state, on, commit, has_text}], oldest first. `commit` is
+        the head the review was given on: an approval on another commit is
+        not an approval of this one."""
+        raise NotImplementedError
+
+    def pr_diff(self, repo, n):
+        """The unified diff as text."""
+        raise NotImplementedError
+
+    def issue_detail(self, repo, n):
+        """One issue with its comments, the shape documented at the top."""
+        raise NotImplementedError
+
+    def api(self, endpoint, method="GET", fields=None):
+        """Raw passthrough to the service's REST API, endpoint relative to
+        its API root. For what the verbs do not carry — never for writes
+        the verbs exist for."""
+        raise NotImplementedError
+
+    # ---- writes, the gw CLI's verbs -----------------------------------
+
+    def issue_create(self, repo, title, body):
+        """{n, url} of the new issue."""
+        raise NotImplementedError
+
+    def pr_create(self, repo, title, body, head, base, draft=False):
+        """{n, url} of the new pull request from branch `head` into `base`."""
+        raise NotImplementedError
+
+    def add_assignees(self, repo, n, who, pull=False):
+        raise NotImplementedError
+
+    def add_labels(self, repo, n, names):
+        raise NotImplementedError
+
+    def add_reviewers(self, repo, n, who):
+        raise NotImplementedError
+
+    def comment(self, repo, n, body):
+        """{url} of the new comment on issue or pull request `n`."""
+        raise NotImplementedError
+
+    def label_ensure(self, repo, name, color, description):
+        """Create the label unless the repo has it. Idempotent."""
+        raise NotImplementedError
+
+    def collaborators(self, repo):
+        """Logins with access to the repo: a review request to anybody else
+        is dropped by the service without an error."""
+        raise NotImplementedError
+
+
+def login(user):
+    return (user or {}).get("login")
+
+
+def logins(users):
+    return [u["login"] for u in users or [] if u]
+
+
+def review_row(review, state):
+    """A review in the REST shape GitHub and Forgejo share, with `state`
+    already normalized by the provider."""
+    return {"who": login(review.get("user")), "state": state,
+            "on": (review.get("submitted_at") or "")[:10],
+            "commit": review.get("commit_id"),
+            "has_text": bool((review.get("body") or "").strip())}
+
+
+def brief_row(pr):
+    return {
+        "n": pr["number"], "title": pr["title"],
+        "author": login(pr.get("user")), "draft": bool(pr.get("draft")),
+        "base": (pr.get("base") or {}).get("ref"),
+        "head": (pr.get("head") or {}).get("ref"),
+        "created": (pr.get("created_at") or "")[:10],
+        "updated": pr.get("updated_at"),
+        "labels": [label["name"] for label in pr.get("labels") or []],
+        "assignees": logins(pr.get("assignees")),
+        "req": logins(pr.get("requested_reviewers")),
+        "url": pr.get("html_url"),
+    }
+
+
+def detail_row(pr, reviews, merge, closes):
+    """The PR detail documented above; the provider supplies what differs
+    between services: the merge state and where `closes` comes from."""
+    brief = brief_row(pr)
+    return dict(brief, **{
+        "body": pr.get("body") or "",
+        "state": "merged" if pr.get("merged") else pr.get("state"),
+        "base": {"ref": pr["base"]["ref"], "sha": pr["base"]["sha"]},
+        "head": {"ref": pr["head"]["ref"], "sha": pr["head"]["sha"]},
+        "merge": merge,
+        "decision": decision_from(reviews, brief["req"]),
+        "reviews": reviews,
+        "closes": closes,
+        "comments": (pr.get("comments") or 0) + (pr.get("review_comments") or 0),
+    })
+
+
+def issue_row(issue, comments):
+    return {
+        "n": issue["number"], "title": issue["title"], "body": issue.get("body") or "",
+        "state": issue.get("state"), "author": login(issue.get("user")),
+        "assignees": logins(issue.get("assignees")),
+        "labels": [label["name"] for label in issue.get("labels") or []],
+        "created": issue.get("created_at"), "updated": issue.get("updated_at"),
+        "url": issue.get("html_url"),
+        "comments": [{"who": login(c.get("user")), "t": c.get("created_at"),
+                      "body": c.get("body") or ""} for c in comments],
+    }
+
+
+def diff_paths(diff):
+    """The files a unified diff touches, in order, once each."""
+    paths = []
+    for line in (diff or "").splitlines():
+        if line.startswith("diff --git "):
+            path = line.split(" b/", 1)[-1]
+            if path not in paths:
+                paths.append(path)
+    return paths
 
 
 def verification_result(body):

@@ -46,7 +46,20 @@ def _flag(tok):
 def rewrites_body(segment):
     while segment and "=" in segment[0] and not segment[0].startswith("-"):
         segment = segment[1:]                       # leading VAR=value
-    if len(segment) < 3 or segment[0] != "gh":
+    if len(segment) < 3 or segment[0] not in ("gh", "gw"):
+        return False
+    while segment[0] == "gw" and len(segment) > 1:
+        option = segment[1]
+        if option in ("--repo", "-R", "--provider"):
+            segment = segment[:1] + segment[3:]
+        elif option.startswith(("--repo=", "--provider=", "-R")):
+            segment = segment[:1] + segment[2:]
+        elif option == "--":
+            segment = segment[:1] + segment[2:]
+            break
+        else:
+            break
+    if len(segment) < 3:
         return False
     if segment[1] == "pr" and segment[2] == "edit":
         return any(_flag(tok) in BODY_FLAGS for tok in segment[3:])

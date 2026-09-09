@@ -1,16 +1,4 @@
-from .github import GitHubProvider
-from .forgejo import ForgejoProvider
-from .fixture import FixtureProvider
+from . import detect
+from .detect import PROVIDERS, get_provider, provider_and_repo
 
-PROVIDERS = {
-    "github": GitHubProvider,
-    "forgejo": ForgejoProvider,
-    "fixture": FixtureProvider,
-}
-
-
-def get_provider(name):
-    try:
-        return PROVIDERS[name]()
-    except KeyError:
-        raise SystemExit("unknown provider %r (available: %s)" % (name, ", ".join(PROVIDERS)))
+__all__ = ["PROVIDERS", "detect", "get_provider", "provider_and_repo"]

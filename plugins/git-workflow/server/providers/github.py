@@ -27,16 +27,24 @@ import json
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from urllib.parse import quote
 
 import gate as gatelib
 
-from .base import Provider, verification_result
+from .base import (Provider, REVIEW_STATES, brief_row, detail_row, issue_row, logins, review_row,
+                   verification_result)
 
 GQL = Path(__file__).resolve().parents[1] / "gql"
 
 
-def _gh(*args, timeout=90):
-    out = subprocess.run(("gh",) + args, capture_output=True, text=True, timeout=timeout)
+def _gh(*args, timeout=90, stdin=None):
+    try:
+        out = subprocess.run(("gh",) + args, capture_output=True, text=True, timeout=timeout,
+                             input=stdin)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("gh %s timed out after %ss" % (args[0], timeout))
+    except FileNotFoundError:
+        raise RuntimeError("gh is not installed or not in PATH")
     if out.returncode:
         raise RuntimeError("gh %s failed: %s" % (args[0], out.stderr.strip()[:400]))
     return out.stdout
@@ -74,6 +82,10 @@ def _graphql(doc, timeout=90, **variables):
 
 class GitHubProvider(Provider):
     name = "github"
+
+    @classmethod
+    def hosts(cls):
+        return ["github.com"]
 
     def whoami(self):
         return _gh("api", "user", "--jq", ".login").strip()
@@ -265,3 +277,101 @@ class GitHubProvider(Provider):
             })
         rows.sort(key=lambda r: r["created"], reverse=True)
         return {"rows": rows, "total": total, "truncated": more}
+
+    # ---- per-item reads (gw) -------------------------------------------
+    #
+    # REST for the item itself: `requested_reviewers`, `labels`,
+    # `mergeable_state` and the reviews' `commit_id` are all there, and the
+    # same endpoints exist on Forgejo with the same names. GraphQL only for
+    # what REST does not have — the linked issues.
+
+    CLOSES_GQL = ("query($owner:String!,$name:String!,$number:Int!,$endCursor:String){"
+                  "repository(owner:$owner,name:$name){pullRequest(number:$number){"
+                  "closingIssuesReferences(first:100,after:$endCursor){"
+                  "pageInfo{hasNextPage endCursor} nodes{number}}}}}")
+
+    def _rest(self, endpoint, method="GET", fields=None, paginate=False, body=None):
+        args = ["api", endpoint, "-X", method]
+        for key, value in (fields or {}).items():
+            args += ["-f", "%s=%s" % (key, value)]
+        if paginate:
+            args += ["--paginate", "--slurp"]
+        if body is not None:
+            args += ["--input", "-"]
+        out = _gh(*args, **({"stdin": json.dumps(body)} if body is not None else {}))
+        data = json.loads(out) if out.strip() else None
+        return [item for page in data or [] for item in page] if paginate else data
+
+    def api(self, endpoint, method="GET", fields=None):
+        return self._rest(endpoint, method, fields)
+
+    @staticmethod
+    def _merge(pr):
+        if pr.get("merged"):
+            return "MERGED"
+        state = (pr.get("mergeable_state") or "unknown").upper()
+        return state if state in ("CLEAN", "DIRTY", "BLOCKED", "UNSTABLE", "BEHIND") else "UNKNOWN"
+
+    def pulls(self, repo, state="open"):
+        pulls = self._rest("repos/%s/pulls?state=%s&per_page=100&sort=created&direction=desc"
+                           % (repo, state), paginate=True)
+        return [brief_row(pr) for pr in pulls]
+
+    def pr_reviews(self, repo, n):
+        reviews = self._rest("repos/%s/pulls/%s/reviews?per_page=100" % (repo, n), paginate=True)
+        return [review_row(r, r.get("state", "")) for r in reviews if r.get("state") in REVIEW_STATES]
+
+    def _closes(self, repo, n):
+        owner, name = repo.split("/", 1)
+        raw = _gh("api", "graphql", "-f", "query=%s" % self.CLOSES_GQL,
+                  "-f", "owner=%s" % owner, "-f", "name=%s" % name, "-F", "number=%s" % n,
+                  "--paginate", "--slurp")
+        return [{"issue": node["number"], "source": "provider"}
+                for page in json.loads(raw)
+                for node in page["data"]["repository"]["pullRequest"]["closingIssuesReferences"]["nodes"]]
+
+    def pr_detail(self, repo, n):
+        pr = self._rest("repos/%s/pulls/%s" % (repo, n))
+        return detail_row(pr, self.pr_reviews(repo, n), self._merge(pr), self._closes(repo, n))
+
+    def pr_diff(self, repo, n):
+        return _gh("pr", "diff", str(n), "--repo", repo)
+
+    def issue_detail(self, repo, n):
+        return issue_row(self._rest("repos/%s/issues/%s" % (repo, n)),
+                         self._rest("repos/%s/issues/%s/comments?per_page=100" % (repo, n), paginate=True))
+
+    # ---- writes (gw) ---------------------------------------------------
+
+    def issue_create(self, repo, title, body):
+        issue = self._rest("repos/%s/issues" % repo, "POST", body={"title": title, "body": body})
+        return {"n": issue["number"], "url": issue["html_url"]}
+
+    def pr_create(self, repo, title, body, head, base, draft=False):
+        pr = self._rest("repos/%s/pulls" % repo, "POST",
+                        body={"title": title, "body": body, "head": head, "base": base, "draft": draft})
+        return {"n": pr["number"], "url": pr["html_url"]}
+
+    def add_assignees(self, repo, n, who, pull=False):
+        self._rest("repos/%s/issues/%s/assignees" % (repo, n), "POST", body={"assignees": list(who)})
+
+    def add_labels(self, repo, n, names):
+        self._rest("repos/%s/issues/%s/labels" % (repo, n), "POST", body={"labels": list(names)})
+
+    def add_reviewers(self, repo, n, who):
+        self._rest("repos/%s/pulls/%s/requested_reviewers" % (repo, n), "POST",
+                   body={"reviewers": list(who)})
+
+    def comment(self, repo, n, body):
+        made = self._rest("repos/%s/issues/%s/comments" % (repo, n), "POST", body={"body": body})
+        return {"url": made["html_url"]}
+
+    def label_ensure(self, repo, name, color, description):
+        try:
+            self._rest("repos/%s/labels/%s" % (repo, quote(name, safe="")))
+        except RuntimeError:
+            self._rest("repos/%s/labels" % repo, "POST",
+                       body={"name": name, "color": color.lstrip("#"), "description": description})
+
+    def collaborators(self, repo):
+        return logins(self._rest("repos/%s/collaborators?per_page=100" % repo, paginate=True))
