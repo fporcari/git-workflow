@@ -30,6 +30,13 @@ Open that URL with `navigate` (or `preview_start` with `url`) on Claude Code,
 with the browser panel on Codex. There is no fixed-port launch configuration:
 the port is known only once the server has bound it.
 
+Then title this chat, when the host has a title tool (`runtime.md` →
+*Session metadata*): `Issue desk · <owner/repo> · <YYYY-MM-DD HH:MM>`, date
+and time from `date '+%F %H:%M'`, never from memory. When the desk closes —
+the monitor ends with `■ desk chiuso`, or the user says stop — set the same
+title again with ` · closed` appended: the session list then tells an open
+desk from a spent one.
+
 The launching chat stays **attached by
 default**: the desk is the remote, this conversation is where the work
 happens. Every click except triage arrives here as the command it stands for
@@ -53,7 +60,10 @@ keep their own profiles.
   click then comes back as a notification; follow "Attached chat" in
   `../review-desk/SKILL.md` to execute and publish it. One monitor per
   repository: both desks share the state file, so a second desk on the same
-  repo from the same chat reuses the running monitor.
+  repo from the same chat reuses the running monitor. The monitor ends by
+  itself once the last desk of the repository is gone (⏻, idle exit, kill),
+  with a `■ desk chiuso` notification: retitle the chat ` · closed` and arm
+  nothing else.
 - **Codex** (no monitor): follow the `wait` loop in the same section.
 - **Detached (opt-in)**: only when the user says to open the desk and leave
   ("apri e basta", "detached"). Arm nothing; every button starts its own

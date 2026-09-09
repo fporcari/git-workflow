@@ -8,15 +8,18 @@ the buttons enqueue, and the pair of commands here is its whole contract:
         The attached chat's ear, for hosts with a background monitor (Claude
         Code's Monitor tool): heartbeat forever, claim each click as it comes
         and print it as TWO lines — the command it stands for, then the
-        record as JSON. Never exits on its own; killed with the monitor, it
-        detaches on the way out. Because it keeps heartbeating while the
-        chat works, later clicks queue behind the conversation instead of
-        slipping to a one-shot agent.
+        record as JSON. Ends by itself only when the last desk of the repo
+        is gone (stop button, idle exit, kill), with a `■ desk chiuso` line
+        and a {"closed": true} record — the chat's cue to mark its title
+        closed; killed with the monitor, it detaches on the way out. Because
+        it keeps heartbeating while the chat works, later clicks queue
+        behind the conversation instead of slipping to a one-shot agent.
 
     python3 chatdesk.py wait --repo owner/repo [--timeout 540]
         The same ear for hosts without a monitor: heartbeat until a click
         arrives, claim it, print it as JSON and exit. Prints {"idle": true}
-        on timeout. While a chat waits here, the server routes every
+        on timeout and {"closed": true} once no desk of the repo is running
+        any more. While a chat waits here, the server routes every
         non-triage button to the chat instead of starting a one-shot agent.
 
     python3 chatdesk.py result --repo owner/repo --request analyze:1145 out.json
@@ -73,6 +76,10 @@ def command_for(record):
     return "/%s %s" % (kind, n if n is not None else "")
 
 
+def closed_record(repo):
+    return {"closed": True, "repo": repo}
+
+
 def listen(repo, session, timeout=None, out=sys.stdout):
     deadline = time.time() + timeout if timeout else None
     last_beat = 0
@@ -93,6 +100,11 @@ def listen(repo, session, timeout=None, out=sys.stdout):
                 out.write(json.dumps(record, ensure_ascii=False) + "\n")
                 out.flush()
                 continue
+            if deskstate.desks_closed(repo):
+                out.write("■ desk chiuso · %s\n" % repo)
+                out.write(json.dumps(closed_record(repo)) + "\n")
+                out.flush()
+                return
             if deadline and now >= deadline:
                 return
             time.sleep(LISTEN_POLL)
@@ -107,6 +119,8 @@ def wait(repo, timeout, session):
         record = deskstate.claim_request(repo)
         if record:
             return record
+        if deskstate.desks_closed(repo):
+            return closed_record(repo)
         if time.time() >= deadline:
             return None
         time.sleep(min(HEARTBEAT_EVERY, max(0.1, deadline - time.time())))

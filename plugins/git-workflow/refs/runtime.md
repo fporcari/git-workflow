@@ -141,4 +141,10 @@ Set a session/task title only when the host exposes a title tool.
   skill does not name is a tool the model never looks for.
 - Codex: the host's own thread/task title tool, when one is exposed.
 
+The desks title the launching chat so it can be found again in the session
+list: `PR desk · <owner/repo> · <YYYY-MM-DD HH:MM>` (`Issue desk`, `Review
+desk`) on opening, date and time from `date '+%F %H:%M'`, and the same title
+with ` · closed` appended once the last desk of the repository is gone. The
+triages title theirs by date only.
+
 Missing title support never blocks the workflow.

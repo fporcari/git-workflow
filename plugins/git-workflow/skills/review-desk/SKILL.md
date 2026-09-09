@@ -30,6 +30,11 @@ and issue-desk skills describe: ONE `chatdesk.py listen` monitor
 covers both desks of a repository. Only a launch the user asked to be
 detached lets the conversation finish here.
 
+Title this chat when the host has a title tool (`runtime.md` → *Session
+metadata*): `Review desk · <owner/repo> · <YYYY-MM-DD HH:MM>`, date and time
+from `date '+%F %H:%M'`; once both desks are gone, the same title with
+` · closed` appended.
+
 ## Runtime contract
 
 Normal page loads and the 30-second refresh perform no model call. Python
@@ -115,12 +120,16 @@ The attached chat's ear, after opening the desk URL:
   keeps talking here, and each click arrives as a notification of two lines —
   the command it stands for and the request record as JSON. Never re-arm a
   monitor that is already running; stop it with TaskStop when the user says
-  stop, which detaches on the way out.
+  stop, which detaches on the way out. The monitor ends by itself when the
+  last desk of the repository is gone (⏻ button, idle exit, kill): the
+  notification reads `■ desk chiuso` — retitle the chat ` · closed`, arm
+  nothing else.
 - **Codex**: the blocking form,
   `python3 <PLUGIN_ROOT>/server/chatdesk.py wait --repo <owner/repo> --timeout 540`,
   with the host command timeout above the wait timeout. `{"idle": true}` →
   run it again; tell the user once that you are listening, do not narrate
-  every idle cycle.
+  every idle cycle. `{"closed": true}` → the desks are gone: retitle the
+  chat ` · closed` and stop.
 
 On a request, first echo its command line as the desk composed it — the
 reader sees `▶ /pr-loop 1099 1055 batch=4`, not a request key — then execute
@@ -156,8 +165,8 @@ it in this conversation, by `kind`:
   as many times as it takes, and the row shows the latest outcome.
 - When the user says stop: TaskStop the monitor (Claude Code) or run
   `python3 <PLUGIN_ROOT>/server/chatdesk.py detach --repo <owner/repo>`
-  (Codex). A missed detach costs only the heartbeat TTL before the buttons
-  fall back to one-shot agents.
+  (Codex), then retitle the chat ` · closed`. A missed detach costs only the
+  heartbeat TTL before the buttons fall back to one-shot agents.
 
 Autonomy in attached mode is exactly the desk's: a click carries the same
 authorization it would have given the one-shot agent — analysis is read-only,

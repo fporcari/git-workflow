@@ -2763,6 +2763,122 @@ class ListeningChat(unittest.TestCase):
                           "the monitor's death must detach the chat")
 
 
+class DeskClosing(unittest.TestCase):
+    """The chat's ear tells a closed desk from a silent one: the server
+    registers itself before it prints its URL, marks its stop on the way
+    out, and the listener ends with a closing line once no desk of the
+    repository is running."""
+
+    R = "desk-tests/closing"
+
+    def setUp(self):
+        self.addCleanup(safejson.remove, deskstate.state_path(self.R))
+
+    def _cli(self, *args, **kw):
+        return subprocess.run(
+            (sys.executable, str(ROOT / "chatdesk.py")) + args,
+            capture_output=True, text=True,
+            env=dict(os.environ, HOME=_HOME), **kw)
+
+    def test_a_registered_desk_is_live_until_it_says_it_stopped(self):
+        deskstate.register_desk(self.R, "pr", 8399)
+        self.assertEqual(deskstate.live_desks(self.R), ["pr"])
+        self.assertFalse(deskstate.desks_closed(self.R))
+        deskstate.desk_stopped(self.R, "pr")
+        self.assertEqual(deskstate.live_desks(self.R), [])
+        self.assertTrue(deskstate.desks_closed(self.R))
+
+    def test_nothing_registered_is_not_a_closed_desk(self):
+        self.assertFalse(deskstate.desks_closed(self.R))
+
+    def test_a_killed_server_reads_as_stopped_by_its_pid(self):
+        child = subprocess.Popen([sys.executable, "-c", "pass"])
+        child.wait()
+        deskstate.update(self.R, lambda state: state.setdefault("desks", {})
+                         .update(pr={"pid": child.pid, "port": 8399}))
+        self.assertEqual(deskstate.live_desks(self.R), [])
+        self.assertTrue(deskstate.desks_closed(self.R))
+
+    def test_the_registration_survives_the_sibling_desk_reset(self):
+        deskstate.register_desk(self.R, "pr", 8399)
+        deskstate.reset(self.R)
+        self.assertEqual(deskstate.live_desks(self.R), ["pr"])
+
+    def test_listen_ends_with_the_closing_line_when_the_last_desk_stops(self):
+        deskstate.register_desk(self.R, "pr", 8399)
+        proc = subprocess.Popen(
+            (sys.executable, str(ROOT / "chatdesk.py"), "listen",
+             "--repo", self.R),
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            env=dict(os.environ, HOME=_HOME))
+        try:
+            for _ in range(50):
+                if deskstate.chat_listening(self.R):
+                    break
+                time.sleep(0.1)
+            self.assertTrue(deskstate.chat_listening(self.R))
+            deskstate.desk_stopped(self.R, "pr")
+            out, err = proc.communicate(timeout=10)
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.communicate()
+        self.assertEqual(proc.returncode, 0, err)
+        lines = out.splitlines()
+        self.assertEqual(len(lines), 2, out)
+        self.assertEqual(lines[0], "■ desk chiuso · %s" % self.R)
+        self.assertEqual(json.loads(lines[1]),
+                         {"closed": True, "repo": self.R})
+        self.assertIsNone(deskstate.load(self.R).get("chat"),
+                          "a closed ear is a detached chat")
+
+    def test_listen_stays_while_the_sibling_desk_is_up(self):
+        deskstate.register_desk(self.R, "pr", 8399)
+        deskstate.register_desk(self.R, "issue", 8398)
+        deskstate.desk_stopped(self.R, "issue")
+        out = self._cli("listen", "--repo", self.R, "--timeout", "2")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(out.stdout, "")
+
+    def test_wait_reports_the_closed_desk_instead_of_idle(self):
+        deskstate.register_desk(self.R, "pr", 8399)
+        deskstate.desk_stopped(self.R, "pr")
+        out = self._cli("wait", "--repo", self.R, "--timeout", "1")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(json.loads(out.stdout),
+                         {"closed": True, "repo": self.R})
+
+    def test_the_server_registers_before_its_url_and_marks_its_stop(self):
+        env = dict(os.environ, HOME=_HOME,
+                   GIT_WORKFLOW_STATE_DIR=str(deskstate.STATE_DIR))
+        proc = subprocess.Popen(
+            (sys.executable, str(ROOT / "prdesk.py"), "--provider", "fixture",
+             "--repo", self.R, "--desk", "issue", "--no-prefetch"),
+            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
+            env=env)
+        try:
+            deadline = time.time() + 20
+            line = ""
+            while time.time() < deadline and "desk on http" not in line:
+                line = proc.stderr.readline()
+                if not line and proc.poll() is not None:
+                    break
+            self.assertIn("issue desk on http://127.0.0.1:", line)
+            mark = deskstate.load(self.R)["desks"]["issue"]
+            self.assertEqual(mark["pid"], proc.pid)
+            self.assertIn(":%s " % mark["port"], line)
+            self.assertEqual(deskstate.live_desks(self.R), ["issue"])
+            proc.terminate()
+            proc.communicate(timeout=15)
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.communicate()
+        self.assertEqual(proc.returncode, 0)
+        self.assertTrue(deskstate.load(self.R)["desks"]["issue"].get("stopped"))
+        self.assertTrue(deskstate.desks_closed(self.R))
+
+
 class SummaryFromData(unittest.TestCase):
     """What a PR is FOR: the author already wrote it. Asking a model to
     paraphrase 52 titles was the expensive way to learn it."""

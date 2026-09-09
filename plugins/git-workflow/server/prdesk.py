@@ -1003,6 +1003,7 @@ def main():
     threading.Thread(target=idle_watch, daemon=True).start()
     if not args.no_prefetch:
         desk.prefetch()
+    deskstate.register_desk(repo, args.desk, port)
     sys.stderr.write("%s desk on http://127.0.0.1:%s  repo=%s me=%s provider=%s "
                      "cache=%s\n"
                      % (args.desk, port, repo, me, provider.name, cache_action))
@@ -1015,6 +1016,7 @@ def main():
     finally:
         jobs.shutdown()
         server.server_close()
+        deskstate.desk_stopped(repo, args.desk)
 
 
 if __name__ == "__main__":

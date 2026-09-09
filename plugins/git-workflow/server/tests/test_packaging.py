@@ -75,6 +75,15 @@ class Packaging(unittest.TestCase):
             for tool in ("Agent", "mcp__ccd_session_mgmt__set_session_title"):
                 self.assertIn(tool, allowed, "%s in %s" % (tool, name))
 
+    def test_the_desks_title_their_chat_and_mark_it_closed(self):
+        """A desk chat is found again by its title — kind, repo, date and
+        time — and read as spent once the desk is gone."""
+        for name in ("pr-desk", "issue-desk", "review-desk"):
+            text = (PLUGIN / "skills" / name / "SKILL.md").read_text()
+            self.assertIn("<YYYY-MM-DD HH:MM>", text, name)
+            self.assertIn("` · closed`", text, name)
+            self.assertIn("desk chiuso", text, name)
+
     def test_analysis_schema_is_valid_json(self):
         schema = json.loads(
             (PLUGIN / "server" / "schemas" / "pr-analysis.json").read_text())

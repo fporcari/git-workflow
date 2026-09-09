@@ -110,7 +110,7 @@ def issue_analysis_reusable(record, updated):
                  or isinstance(record["decision"], str)))
 
 
-DURABLE = ("grid", "chase", "prs", "issues", "runs")
+DURABLE = ("grid", "chase", "prs", "issues", "runs", "desks")
 
 
 def reset(repo):
@@ -249,6 +249,52 @@ def chat_listening(repo, state=None):
     if time.time() - mark.get("epoch", 0) <= CHAT_STALE:
         return dict(mark)
     return None
+
+
+def register_desk(repo, kind, port):
+    """The server says it is up. Durable on purpose: the sibling desk's boot
+    resets the ephemera, and the chat's ear must still see this one."""
+    def mutate(state):
+        desks = state.setdefault("desks", {})
+        desks[kind] = {"pid": os.getpid(), "port": port,
+                       "since": time.strftime("%Y-%m-%d %H:%M")}
+        return dict(desks[kind])
+    return update(repo, mutate)
+
+
+def desk_stopped(repo, kind):
+    def mutate(state):
+        mark = (state.get("desks") or {}).get(kind)
+        if mark and mark.get("pid") == os.getpid():
+            mark["stopped"] = time.strftime("%Y-%m-%d %H:%M")
+    update(repo, mutate)
+
+
+def _alive(pid):
+    try:
+        os.kill(int(pid), 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except (OSError, TypeError, ValueError):
+        return False
+    return True
+
+
+def live_desks(repo, state=None):
+    """The desk kinds whose server is running: registered, not stopped, and
+    the pid still there (a killed server never gets to say it stopped).
+    Checked by pid and not over HTTP: a probe would refresh the idle clock."""
+    state = state if state is not None else load(repo)
+    return sorted(kind for kind, mark in (state.get("desks") or {}).items()
+                  if not mark.get("stopped") and _alive(mark.get("pid")))
+
+
+def desks_closed(repo, state=None):
+    """Desks were registered and none is running: the chat's ear can close."""
+    state = state if state is not None else load(repo)
+    return bool(state.get("desks")) and not live_desks(repo, state)
 
 
 def reclaim_request(repo, key):

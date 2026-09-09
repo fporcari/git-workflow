@@ -118,7 +118,11 @@ provider/cache JSON itself and paints in seconds. Opening or polling it spends
 no model tokens; an explicit action button starts one ephemeral Codex or
 Claude process and records its progress and result in a job JSON. While it
 runs, the desk shows elapsed time, current phase and sanitized tool activity;
-opening the progress view does not attach the primary conversation.
+opening the progress view does not attach the primary conversation. The
+launching chat is titled `PR desk · owner/repo · 2026-09-09 14:32` when the
+desk opens and gets a ` · closed` suffix once the desk is gone — the server
+registers itself at boot, and the chat's listener ends by itself when the last
+desk of the repository has stopped — so the session list tells the two apart.
 
 ## What is in the box
 
