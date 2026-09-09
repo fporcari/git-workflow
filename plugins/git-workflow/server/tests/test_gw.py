@@ -547,6 +547,12 @@ class ForgejoShapeTest(unittest.TestCase):
             other = ForgejoProvider(host="other.example")
         self.assertEqual(other.base, "https://other.example")
 
+    def test_a_draft_that_is_not_mergeable_is_unknown_not_dirty(self):
+        merge = ForgejoProvider._merge
+        self.assertEqual(merge({"mergeable": False, "draft": True}), "UNKNOWN")
+        self.assertEqual(merge({"mergeable": False, "draft": False}), "DIRTY")
+        self.assertEqual(merge({"mergeable": True, "draft": True}), "CLEAN")
+
     def test_the_environment_wins_over_the_keychain(self):
         with mock.patch.dict(os.environ, {"FORGEJO_URL": "http://f:3000", "FORGEJO_TOKEN": "env"}), \
              mock.patch("providers.forgejo._keychain", side_effect=AssertionError("asked")):

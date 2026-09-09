@@ -235,10 +235,14 @@ class ForgejoProvider(Provider):
 
     @staticmethod
     def _merge(pr):
+        """`mergeable` is false on every WIP pull request, conflicts or not,
+        so a draft's merge state is unknown until it leaves draft."""
         if pr.get("merged"):
             return "MERGED"
         mergeable = pr.get("mergeable")
-        return "CLEAN" if mergeable else ("DIRTY" if mergeable is False else "UNKNOWN")
+        if mergeable:
+            return "CLEAN"
+        return "DIRTY" if mergeable is False and not pr.get("draft") else "UNKNOWN"
 
     def pulls(self, repo, state="open"):
         pulls = self._get_all("/repos/%s/pulls" % repo, state=state, sort="recentupdate")
