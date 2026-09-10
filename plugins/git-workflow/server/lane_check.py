@@ -35,7 +35,7 @@ from providers import PROVIDERS, provider_and_repo  # noqa: E402
 
 ROW_FIELDS = ("n", "title", "author", "created", "draft", "base", "head",
               "merge", "decision", "req", "unresolved", "threads",
-              "assignees", "incomplete", "conflict_kind", "gate",
+              "assignees", "incomplete", "conflict_kind", "verified_sha", "gate",
               "todo", "state", "autorun", "waiting_on", "triage_key",
               "model_keys")
 

@@ -333,6 +333,9 @@ class Desk:
             row["conflict_kind"] = (
                 note.get("conflict_kind")
                 if note.get("conflict_key") == conflict_key else None)
+            # the verification proof: the engine compares it with the head,
+            # so a push past the tested SHA asks for the run again
+            row["verified_sha"] = note.get("verified_sha")
         bases = sorted({row.get("base") for row in rows if row.get("base")})
         gates = (self._all_gates(bases, refresh) if complete_gates
                  else self._gates(bases, refresh)) or {}

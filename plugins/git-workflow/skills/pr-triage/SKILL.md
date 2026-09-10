@@ -166,20 +166,21 @@ gh pr diff <n> --name-only | sed 's|/[^/]*$||' | sort -u
   with `reviews` also empty it is **unreviewed** → `get a reviewer`.
 - **An approval counts only on the current head.** With `dismiss_stale_reviews`, a
   `DISMISSED` entry counts for nothing.
-- **The `needs-verification` label is his move until proven otherwise.** An
-  agent opened that PR under his login, so it is a subordinate's work: `verify
-  it` — a fresh reading and a run — comes before any merge, before waiting on a
-  reviewer, and even when an approval is already in. The proof is a
-  successful verification report by him on the **current head**, following
-  the `pr-loop` verification protocol; a push voids it like an approval.
-  The latest report must end with `Verification result: PASS`; `FAIL`,
-  `BLOCKED` and ordinary comments never unlock the gate. Verified, with nobody else asked and nobody else reviewing, the
-  row is `verified - merge at your call`: the repo has no one to get, and the
-  merge is his decision, never an `A1`. Verified with reviewers in play, the
-  ordinary rules resume — a human approval on top of the report makes it an
-  `A1` like any other. Only `DIRTY` comes before the label: a branch about to
-  be realigned is not worth verifying yet. A bodiless `COMMENTED` (an inline
-  reply) is not a report.
+- **The `needs-verification` label is his move, but only where nobody else
+  reads the PR.** An agent opened it under his login, so it is a subordinate's
+  work: with no requested reviewer and no review by another person, `verify
+  it` — a fresh reading and a run — comes before any merge. With somebody else
+  in play the human review IS the verification: the label regime does not
+  fire at all and the row follows the ordinary rules, waiting on that person
+  like any other. The proof is the tested SHA recorded by the verifying pass
+  (`prs.<n>.verified_sha`, `pr-loop`'s protocol), equal to the **current
+  head**: a push voids it like an approval. A PR verified under the old
+  regime is proved instead by his `COMMENTED` report on the current head
+  ending in `Verification result: PASS`; `FAIL`, `BLOCKED`, ordinary comments
+  and a bodiless inline reply never unlock the gate. Verified, the row is
+  `verified - merge at your call`: the repo has no one to get, and the merge
+  is his decision, never an `A1`. Only `DIRTY` comes before the label: a
+  branch about to be realigned is not worth verifying yet.
 - **An approval with a body is read, not trusted.** Reviewers pick the wrong
   button: "approve, but rename X first" is a change request. The engine cannot
   tell that from "LGTM", so any approval carrying text drops the PR to `asks`
@@ -305,8 +306,8 @@ Closed set. Anything else is `needs a look - <the one unclear thing>` with `asks
 | `review it` | he is a requested reviewer | `asks` |
 | `re-review it` | he left `CHANGES_REQUESTED` and the author has answered since | `asks` |
 | `get a reviewer` | `reviews` empty and no useful standing request | `asks` |
-| `verify it` | his PR carries `needs-verification` and no successful verification report of his sits on the current head | `asks` |
-| `verified - merge at your call` | same label, his report on the head, nobody else asked or reviewing | `asks` |
+| `verify it` | his PR carries `needs-verification`, nobody else is asked or reviewing, and no tested SHA of his matches the current head | `asks` |
+| `verified - merge at your call` | same label, the tested SHA on the head, nobody else asked or reviewing | `asks` |
 | `resolve the threads` | `unresolved > 0` with conversation resolution on | `asks` |
 | `mark ready` | `isDraft`, work looks complete | `yours` |
 | `finish it` | `isDraft`, work genuinely unfinished | `yours` |

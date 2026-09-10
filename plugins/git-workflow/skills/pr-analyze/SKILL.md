@@ -121,10 +121,12 @@ Produce four distinct facts:
   threads, requested reviewers, checks and how long it has been waiting;
 - `propose`: one concrete next action, with the review state or message it
   entails. If it is not the user's action to take, say whose action it is.
-- `plan`, **only** when the PR carries the `needs-verification` label and no
-  successful verification report by the user sits on the current head
-  (the latest report must end with `Verification result: PASS`, as specified
-  in `pr-loop`): the numbered steps
+- `plan`, **only** when the PR carries the `needs-verification` label, nobody
+  else is going to read it (no requested reviewer, no review by another
+  person — where there is one, that review is the verification), and no
+  tested SHA of the user's matches the current head (`prs.<n>.verified_sha`,
+  or under the old regime a report of his ending in
+  `Verification result: PASS`, as specified in `pr-loop`): the numbered steps
   a fresh agent will run to verify it — the narrowest test that exercises the
   changed mechanism, the suite, the claim in the body to check against the
   code, the page or command to try by hand with the expected outcome. Each

@@ -203,6 +203,10 @@ class Provider:
     def add_labels(self, repo, n, names):
         raise NotImplementedError
 
+    def remove_label(self, repo, n, name):
+        """Drop one label. Silent when the item does not carry it."""
+        raise NotImplementedError
+
     def add_reviewers(self, repo, n, who):
         raise NotImplementedError
 

@@ -334,15 +334,14 @@ class Verdicts(unittest.TestCase):
         self.assertEqual(verdicts.block_of({"todo": todo, "state": state,
                                             "autorun": autorun}), "Review da fare")
 
-    def test_only_a_successful_report_unlocks_an_approved_pr(self):
+    def test_only_a_successful_report_unlocks_an_old_style_pr(self):
         for body in ("All tests failed.", "Thanks, I will check later.",
                      "Verification result: FAIL", "Verification result: BLOCKED",
                      "Verification result: PASS\nActually, a test failed."):
             report = {"who": "me", "state": "COMMENTED", "commit": "h2",
                       "has_text": True,
                       "verification": github_provider.verification_result(body)}
-            row = self.labelled(decision="APPROVED", reviews=[report, {
-                "who": "reviewer", "state": "APPROVED", "commit": "h2"}])
+            row = self.labelled(reviews=[report])
             self.assertEqual(verdicts.verdict(row, "me")[0], "verify it", body)
 
     def test_a_later_failed_report_invalidates_a_pass_on_the_same_head(self):
@@ -357,10 +356,26 @@ class Verdicts(unittest.TestCase):
                             reviews=[{"who": "reviewer", "state": "APPROVED"}])
         self.assertNotEqual(verdicts.verdict(row, "me")[2], "A1")
 
-    def test_an_approval_does_not_skip_the_verification(self):
-        row = self.labelled(decision="APPROVED",
-                            reviews=[{"who": "x", "state": "APPROVED", "commit": "h2"}])
+    def test_the_recorded_sha_on_the_head_is_the_proof(self):
+        row = self.labelled(verified_sha="h2")
+        self.assertTrue(verdicts.verified(row, "me"))
+        self.assertIn("merge at your call", verdicts.verdict(row, "me")[0])
+
+    def test_a_push_past_the_recorded_sha_asks_for_the_run_again(self):
+        row = self.labelled(verified_sha="h1")
+        self.assertFalse(verdicts.verified(row, "me"))
         self.assertEqual(verdicts.verdict(row, "me")[0], "verify it")
+
+    def test_a_reviewer_in_play_is_the_verification(self):
+        """Nobody signs his own work where somebody else reads the PR: the
+        label regime does not fire and the row follows the ordinary rules."""
+        asked = self.labelled(req=["x"])
+        todo, state, _ = verdicts.verdict(asked, "me")
+        self.assertEqual(state, "waiting")
+        self.assertIn("x", todo)
+        reviewed = self.labelled(decision="APPROVED",
+                                 reviews=[{"who": "x", "state": "APPROVED"}])
+        self.assertEqual(verdicts.verdict(reviewed, "me")[2], "A1")
 
     def test_a_report_on_an_older_head_is_not_a_verification(self):
         row = self.labelled(reviews=[{"who": "me", "state": "COMMENTED", "commit": "h1"}])
@@ -381,11 +396,11 @@ class Verdicts(unittest.TestCase):
         row = self.labelled(merge="DIRTY", conflict_kind="mechanical")
         self.assertEqual(verdicts.verdict(row, "me")[2], "A3")
 
-    def test_the_verification_comes_before_answering_a_reviewer(self):
+    def test_a_review_to_answer_is_answered_not_verified(self):
         row = self.labelled(decision="CHANGES_REQUESTED",
                             reviews=[{"who": "x", "state": "CHANGES_REQUESTED"}],
                             last={"who": "x", "ch": "changes_requested", "t": "2026-01-01"})
-        self.assertEqual(verdicts.verdict(row, "me")[0], "verify it")
+        self.assertEqual(verdicts.verdict(row, "me")[0], "answer the review")
 
     def test_verified_but_not_clean_is_not_a_merge_call(self):
         report = {"who": "me", "state": "COMMENTED", "commit": "h2", "has_text": True, "verification": "PASS"}
@@ -404,6 +419,12 @@ class Verdicts(unittest.TestCase):
         self.assertEqual((state, autorun), ("decision", "asks"))
         self.assertIn("merge at your call", todo)
 
+    def test_an_old_style_report_still_counts_as_verified(self):
+        row = self.labelled(reviews=[{"who": "me", "state": "COMMENTED",
+                                      "commit": "h2", "has_text": True,
+                                      "verification": "PASS"}])
+        self.assertTrue(verdicts.verified(row, "me"))
+
     def test_verified_and_approved_follows_the_normal_road(self):
         row = self.labelled(decision="APPROVED",
                             reviews=[{"who": "me", "state": "COMMENTED", "commit": "h2",
@@ -419,6 +440,16 @@ class Verdicts(unittest.TestCase):
         todo, state, _ = verdicts.verdict(row, "me")
         self.assertEqual(state, "waiting")
         self.assertIn("x", todo)
+
+    def test_the_desk_carries_the_recorded_sha_onto_the_row(self):
+        """The proof lives in the state file, so the engine only sees it if
+        the queue puts it on the row."""
+        desk = fresh_desk()
+        n = next(r["n"] for r in desk.provider.data["rows"] if r["author"] == desk.me)
+        deskstate.save(REPO, {"prs": {str(n): {"verified_sha": "tested"}}})
+        served = next(r for r in desk.queue()["rows"] if r["n"] == n)
+        self.assertEqual(served["verified_sha"], "tested")
+        deskstate.save(REPO, {})
 
     def test_the_label_is_a_verdict_input(self):
         plain = self.labelled(labels=[])

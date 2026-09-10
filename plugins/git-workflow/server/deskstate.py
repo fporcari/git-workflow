@@ -28,7 +28,8 @@ Schema (all keys optional):
   "prs":    {"1152": {"what": "...", "what_key": "...",
                       "analysis": "...", "analysis_key": "...", "draft": "...",
                       "next": "...", "plan": ["..."], "conflict_kind": "mechanical",
-                      "conflict_key": "..."}},
+                      "conflict_key": "...", "verified_sha": "...",
+                      "verified_at": "..."}},
   "issues": {"1156": {"type": "DEFECT", "finding": "...", "size": "EASY",
                       "phase": "SINGLE-PHASE"}},
   "grid":   {"generated": "...", "blocks": [{"id": "...", "rows": []}]},
@@ -494,6 +495,24 @@ def add_order(repo, n, propose, draft, instruction):
         orders[str(n)] = {"propose": propose, "draft": draft,
                           "instruction": instruction, "status": "pending"}
         return orders[str(n)]
+    return update(repo, mutate)
+
+
+def record_verified(repo, n, sha):
+    """The verification pass passed on THIS commit.
+
+    It lives here and not in a review on the service: on a repo where nobody
+    else reads the PR, a published report is the user signing his own work.
+    The SHA is what keeps the proof pinned — the engine compares it with the
+    head, so a push past it leaves the new code unverified and asks for the
+    run again, exactly as a push voids an approval.
+    """
+    def mutate(state):
+        note = state.setdefault("prs", {}).setdefault(str(n), {})
+        note["verified_sha"] = sha
+        note["verified_at"] = datetime.now().astimezone().isoformat(
+            timespec="seconds")
+        return dict(note)
     return update(repo, mutate)
 
 
