@@ -300,6 +300,13 @@ class ForgejoProvider(Provider):
         self._send("POST", "/repos/%s/issues/%s/labels" % (repo, n),
                    {"labels": self._label_ids(repo, names)})
 
+    def remove_label(self, repo, n, name):
+        ids = {label["name"]: label["id"]
+               for label in self._get_all("/repos/%s/labels" % repo)}
+        if name in ids:
+            self._send("DELETE", "/repos/%s/issues/%s/labels/%s"
+                       % (repo, n, ids[name]), None)
+
     def add_reviewers(self, repo, n, who):
         self._send("POST", "/repos/%s/pulls/%s/requested_reviewers" % (repo, n), {"reviewers": list(who)})
 

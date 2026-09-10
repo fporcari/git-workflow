@@ -64,11 +64,27 @@ gw pr create --title "<title>" --body-file <f> --head <branch> [--draft] \
 `gw` has no verb that rewrites a PR body: a review is answered with
 `gw pr comment <n> --body-file <f>`, never by editing the description.
 
-Never remove it: it names the review regime, and the merge closes it. The
-proof is the latest verification report by the user on the current head,
-posted as a `COMMENTED` review with `commit_id` set to the tested SHA. Its final
-line must be `Verification result: PASS`; `FAIL` and `BLOCKED` keep the gate
-closed. An ordinary comment is not a verification report.
+The label names the review regime, and it applies only where nobody else is
+going to read the PR — no requested reviewer, no review by another person.
+With somebody else in play that human review IS the verification: the label
+regime does not fire, and no report of the user's is published on top of it.
+
+The verifying pass closes it by REMOVING the label and recording the tested
+SHA, in one verb:
+
+```bash
+gw pr verified <n> --sha "$(git rev-parse HEAD)"
+```
+
+The SHA (`prs.<n>.verified_sha` in the desk state) is what keeps the proof
+pinned: the verdict engine compares it with the head, so a push past it asks
+for the run again, exactly as it voids an approval. `FAIL` and `BLOCKED`
+leave the label where it is. A report is published on GitHub only when the
+user explicitly asks for one — on a repo he works alone in, posting a review
+under the login that authored the PR is signing his own work.
+
+PRs verified under the old regime still count: a `COMMENTED` review of his on
+the current head whose final line is `Verification result: PASS`.
 
 ## Serving the instance from a worktree
 

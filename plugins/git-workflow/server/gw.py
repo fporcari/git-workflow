@@ -27,6 +27,13 @@ on any repository the user works in.
                  [--draft] [--label L]... [--assignee L]... [--reviewer L]...
     gw pr edit <n> [--add-assignee L]... [--add-label L]... [--add-reviewer L]...
     gw pr comment <n> (--body-file F | --body B)
+    gw pr verified <n> --sha SHA [--label NAME]
+
+`gw pr verified` closes a verification pass: it removes the
+`needs-verification` label and records the tested SHA in the desk state
+(`prs.<n>.verified_sha`). No report is published — on a repo where nobody
+else reads the PR that would be the user reviewing himself — and the SHA is
+what keeps the proof pinned: a push past it leaves the code unverified again.
 
 `@me` as a login is the authenticated user. A reviewer must be a collaborator
 of the repo: the services drop a request to anybody else without an error.
@@ -46,6 +53,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import deskstate  # noqa: E402
 from providers import PROVIDERS, detect, get_provider  # noqa: E402
 from providers.base import closes_from_body, diff_paths  # noqa: E402
 
@@ -191,6 +199,12 @@ def cmd_pr_edit(p, repo, args):
     _out({"n": args.n})
 
 
+def cmd_pr_verified(p, repo, args):
+    p.remove_label(repo, args.n, args.label)
+    note = deskstate.record_verified(repo, args.n, args.sha)
+    _out({"n": args.n, "label": args.label, "verified_sha": note["verified_sha"]})
+
+
 def cmd_collaborators(p, repo, args):
     _out(p.collaborators(repo))
 
@@ -257,6 +271,12 @@ def build_parser():
     pcomment.add_argument("n", type=int)
     _body_args(pcomment)
     pcomment.set_defaults(run=cmd_comment)
+
+    pverified = pr.add_parser("verified", help="close a verification pass: drop the label, record the tested SHA")
+    pverified.add_argument("n", type=int)
+    pverified.add_argument("--sha", required=True, help="the commit the plan was run on")
+    pverified.add_argument("--label", default="needs-verification")
+    pverified.set_defaults(run=cmd_pr_verified)
 
     issue = sub.add_parser("issue").add_subparsers(dest="sub", required=True)
     issue.add_parser("list").set_defaults(run=cmd_issue_list)

@@ -11,6 +11,7 @@ import io
 import json
 import os
 import subprocess
+import tempfile
 import sys
 import unittest
 import urllib.error
@@ -168,6 +169,16 @@ class FixtureVerbsTest(unittest.TestCase):
         self.assertEqual(self.verb("pr", "comment", "7", "--body", "on it")["url"].split("#")[0],
                          "https://example.test/acme/widgets/issues/7")
         self.assertEqual(self.verb("collaborators"), ["alice", "bob", "carol"])
+
+    def test_verified_drops_the_label_and_records_the_tested_sha(self):
+        import deskstate
+        with tempfile.TemporaryDirectory() as state_dir:
+            with mock.patch.object(deskstate, "STATE_DIR", Path(state_dir)):
+                done = self.verb("pr", "verified", "7", "--sha", "h7")
+                note = deskstate.load("acme/widgets")["prs"]["7"]
+        self.assertEqual(done["verified_sha"], "h7")
+        self.assertEqual(note["verified_sha"], "h7")
+        self.assertTrue(note["verified_at"])
 
     def test_a_reviewer_outside_the_repo_is_refused_before_anything_is_created(self):
         code, out, err = run(*self.R, "pr", "create", "--title", "t", "--body", "b", "--head", "h",

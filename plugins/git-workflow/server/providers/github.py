@@ -358,6 +358,14 @@ class GitHubProvider(Provider):
     def add_labels(self, repo, n, names):
         self._rest("repos/%s/issues/%s/labels" % (repo, n), "POST", body={"labels": list(names)})
 
+    def remove_label(self, repo, n, name):
+        try:
+            self._rest("repos/%s/issues/%s/labels/%s"
+                       % (repo, n, quote(name, safe="")), "DELETE")
+        except RuntimeError as exc:
+            if "404" not in str(exc):
+                raise
+
     def add_reviewers(self, repo, n, who):
         self._rest("repos/%s/pulls/%s/requested_reviewers" % (repo, n), "POST",
                    body={"reviewers": list(who)})

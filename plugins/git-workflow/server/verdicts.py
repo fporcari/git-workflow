@@ -53,18 +53,35 @@ VERIFY_LABEL = "needs-verification"
 
 
 def verified(row, me):
-    """The latest verification report by the user on THIS head decides, and
-    only a PASS opens the gate: a push voids it like an approval, a later
-    FAIL on the same head voids an earlier PASS, a review without the
-    protocol's closing line is not a report."""
+    """The tested SHA decides, and it is pinned to a head: a push voids the
+    verification like it voids an approval.
+
+    The proof is the desk's own `prs.<n>.verified_sha`, written by the pass
+    that removed the label — on a repo where nobody else reads the PR, a
+    report published as a review would be the user signing his own work.
+    The review-scanning branch stays for the PRs verified under the old
+    regime: only a PASS on the current head opens the gate, a later FAIL on
+    that head voids an earlier PASS, and a review without the protocol's
+    closing line is not a report.
+    """
     head = row.get("head")
     if not head:
         return False
+    if row.get("verified_sha") == head:
+        return True
     for review in reversed(row.get("reviews") or []):
         if (review.get("who") == me and review.get("state") == "COMMENTED"
                 and review.get("commit") == head and review.get("verification")):
             return review["verification"] == "PASS"
     return False
+
+
+def others_in_play(row, me):
+    """Somebody other than the user is going to read this PR: a standing
+    review request, or a review already submitted by another person."""
+    if any(who != me for who in row.get("req") or []):
+        return True
+    return any(review.get("who") != me for review in row.get("reviews") or [])
 
 
 def verdict(row, me, gate=None):
@@ -103,26 +120,29 @@ def verdict(row, me, gate=None):
             if row.get("conflict_kind") == "mechanical" and not row.get("incomplete"):
                 return ("realign with the base", "attention", "A3")
             return ("inspect the conflict before realigning", "attention", "asks")
-        if VERIFY_LABEL in (row.get("labels") or []):
+        if VERIFY_LABEL in (row.get("labels") or []) and not others_in_play(
+                row, me):
             # the label says this PR was written under his login by somebody
-            # else's hands: a fresh reading and a run come before any merge,
-            # and a repo with nobody else to ask ends on his own decision
+            # else's hands, and nobody else is going to read it: a fresh
+            # reading and a run come before any merge, and it ends on his own
+            # decision. With somebody else in play that human review IS the
+            # verification, so the label regime does not fire at all and the
+            # row follows the ordinary rules below.
             if not verified(row, me):
                 return ("verify it", "attention", "asks")
-            if not req and not any(r.get("who") != me for r in reviews):
-                landing = _landing(gate)
-                if landing:
-                    return landing
-                if merge != "CLEAN":
-                    return ("verified but %s - check before merging" % merge,
-                            "decision", "asks")
-                if row.get("incomplete"):
-                    return ("provider result incomplete - inspect before merging",
-                            "decision", "asks")
-                if row.get("assignees") != [me]:
-                    return ("assign the PR to its author before merging",
-                            "attention", "asks")
-                return ("verified - merge at your call", "decision", "asks")
+            landing = _landing(gate)
+            if landing:
+                return landing
+            if merge != "CLEAN":
+                return ("verified but %s - check before merging" % merge,
+                        "decision", "asks")
+            if row.get("incomplete"):
+                return ("provider result incomplete - inspect before merging",
+                        "decision", "asks")
+            if row.get("assignees") != [me]:
+                return ("assign the PR to its author before merging",
+                        "attention", "asks")
+            return ("verified - merge at your call", "decision", "asks")
         answered = last_who in (me, None)
         if decision == "CHANGES_REQUESTED" and not answered:
             return ("answer the review", "attention", "asks")

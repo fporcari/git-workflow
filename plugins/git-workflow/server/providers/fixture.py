@@ -198,6 +198,10 @@ class FixtureProvider(Provider):
         item = self._item(n)
         item["labels"] = item.get("labels", []) + [x for x in names if x not in item.get("labels", [])]
 
+    def remove_label(self, repo, n, name):
+        item = self._item(n)
+        item["labels"] = [x for x in item.get("labels") or [] if x != name]
+
     def add_reviewers(self, repo, n, who):
         item = self._item(n)
         item["req"] = item.get("req", []) + [w for w in who if w not in item.get("req", [])]

@@ -202,9 +202,11 @@ All of these, checked fresh, or it is not an A1:
    unattended;
 4. every approval on the **current head**;
 5. `mergeStateStatus == "CLEAN"` on a **protected** base;
-6. no `needs-verification` label without a successful verification report of
-   his on the current head (the protocol below); a later failed or blocked
-   report invalidates an earlier pass on that head.
+6. no `needs-verification` label still on the PR: the verifying pass removes
+   it and records the tested SHA (the protocol below), and only a SHA equal
+   to the current head proves it — a push past it leaves the code unverified.
+   A PR verified under the old regime is proved instead by his successful
+   report on the current head, which a later failed or blocked one voids.
 
 Squash when the branch carries fixups or merge commits, delete the branch, then
 verify the linked issues actually closed.
@@ -474,22 +476,28 @@ working in its own worktree on the PR head:
    `Verification result: PASS` only when every step passed and the PR is fit
    to merge; otherwise use `Verification result: FAIL` or
    `Verification result: BLOCKED`. These lines carry no author/tool attribution;
-3. publish the report through `gh api --method POST
-   repos/<owner>/<repo>/pulls/<n>/reviews --input <review.json>`. The JSON file
-   contains `{"commit_id": "<tested SHA>", "event": "COMMENT", "body": "<report>"}`.
-   Always set `commit_id` explicitly to the tested SHA, even if the PR moved
-   during the run. Never use `gh pr review` here: it does not pin the tested
-   commit. Re-read the current head after posting; a different head still
-   needs verification;
-4. never remove the label, approve or merge in the verification session.
-   Only the latest verification report on the current head with result `PASS`
-   unlocks the next verdict. `FAIL` or `BLOCKED` leaves verification outstanding:
-   report the findings and let the user decide the next action.
+3. the report goes to the conversation and to the desk (`prs.<n>` in the
+   state file), never to `pulls/<n>/reviews`: the regime only fires where
+   nobody else reads the PR, so a review posted under the login that authored
+   it would be the user signing his own work. Publish it on the service only
+   when he explicitly asks for one;
+4. on `PASS`, close the pass by removing the label and recording the tested
+   SHA, in one verb:
 
-With a successful report and nobody else asked, the proposal is the merge in
-its own Lane B turn, quoting the report's conclusion. With reviewers in play,
-normal review requirements still apply. A failed step is a finding, not a fix.
-An ordinary text review, or a report on a different SHA, never proves a pass.
+   ```bash
+   gw pr verified <n> --sha <tested SHA>
+   ```
+
+   Always pass the tested SHA explicitly, even if the PR moved during the
+   run: the engine compares it with the head, so a push past it asks for the
+   run again. Re-read the current head after recording; a different head
+   still needs verification. Approving and merging stay forbidden in a
+   verification session. `FAIL` or `BLOCKED` leaves the label where it is and
+   verification outstanding: report the findings and let the user decide.
+
+With the SHA recorded on the current head, the proposal is the merge in its
+own Lane B turn, quoting the report's conclusion. A failed step is a finding,
+not a fix. A recorded SHA the head has moved past never proves a pass.
 
 `propose` must be a single concrete action, not a menu: *approve with a note
 about X*, *request changes on the CI failure*, *answer the reviewer that the
