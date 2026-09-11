@@ -125,8 +125,15 @@ runs, the desk shows elapsed time, current phase and sanitized tool activity;
 opening the progress view does not attach the primary conversation. The
 launching chat is titled `PR desk · owner/repo · 2026-09-09 14:32` when the
 desk opens and gets a ` · closed` suffix once the desk is gone — the server
-registers itself at boot, and the chat's listener ends by itself when the last
-desk of the repository has stopped — so the session list tells the two apart.
+registers itself at boot, and the chat's listener ends by itself when the selected
+desk has stopped (both for review-desk) — so the session list tells the two apart.
+
+Attached clicks carry the originating desk, owning session and a unique
+request ID. PR and issue desks can belong to different chats; a second chat
+cannot silently take over a live desk. Each chat executes one click at a time,
+and late results cannot overwrite a newer request. Opening the sibling desk
+preserves in-progress work. After updating, restart existing desks and chat
+listeners to use the new routing protocol.
 
 ## What is in the box
 

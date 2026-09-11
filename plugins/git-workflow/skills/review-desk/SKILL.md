@@ -29,8 +29,8 @@ repository state. Open the printed URLs in the Browser pane beside the chat
 (`preview_start` with `url` on Claude Code, the tool `runtime.md` → *Desks*
 names; local pages of processes you just started, nothing to ask first — a
 link alone is not the deliverable), then stay attached as the pr-desk and
-issue-desk skills describe: ONE `chatdesk.py listen` monitor covers both
-desks of a repository. Only a launch the user asked to be detached lets the
+issue-desk skills describe: ONE `chatdesk.py listen` monitor with `--desk both` covers both
+desks for this session. Only a launch the user asked to be detached lets the
 conversation finish here.
 
 Title this chat when the host has a title tool (`runtime.md` → *Session
@@ -88,7 +88,7 @@ buttons do depends on whether a chat is attached at click time:
 - **No chat attached** (heartbeat stale): every button behaves as above — one
   ephemeral one-shot process per click, report card included.
 - **A chat is attached**: analyze, explain, order and run clicks are enqueued
-  as `requests` records with `via: "chat"` instead of starting a process. The
+  as `requests` records with `via: "chat-session"`, `desk`, `session` and a unique `id` instead of starting a process. The
   attached chat claims them, executes the named skill IN the conversation —
   where the user reads the output — then publishes the result and closes the
   request so the desk row shows the outcome too. **Triage is the exception:**
@@ -117,18 +117,34 @@ closes the request as failed without involving the chat.
 
 The attached chat's ear, after opening the desk URL:
 
+Use the host's current conversation ID as `<session-id>`. If unavailable,
+generate one UUID once (`python3 -c 'import uuid; print(uuid.uuid4())'`) and
+keep that literal for this conversation. Pass it to every listen, wait,
+result, fail and detach command. Never use an empty value, the repository
+name or a reused example ID. Set `<desk>` to `pr`, `issue`, or `both` for
+review-desk. One live session owns each desk; a conflicting attachment exits
+with the owner's ID. Report that conflict; do not detach another chat or
+promise its clicks will arrive here. A duplicate listener for the same
+session also exits instead of racing. When adding the sibling desk in this
+chat, stop this chat's listener and restart with the same ID and `--desk both`.
+
+Requests are pinned at enqueue time and claimed one at a time. Keep the
+returned `id` as `<request-id>` for result/fail: the key alone is reusable
+and does not identify a particular click. Older listeners cannot claim this
+protocol; restart desks and listeners after updating the plugin.
+
 - **Claude Code**: one persistent `Monitor` on
-  `python3 <PLUGIN_ROOT>/server/chatdesk.py listen --repo <owner/repo>`
+  `python3 <PLUGIN_ROOT>/server/chatdesk.py listen --repo <owner/repo> --session <session-id> --desk <desk>`
   (see the pr-desk skill for the call). It does not occupy the turn: the user
   keeps talking here, and each click arrives as a notification of two lines —
   the command it stands for and the request record as JSON. Never re-arm a
   monitor that is already running; stop it with TaskStop when the user says
   stop, which detaches on the way out. The monitor ends by itself when the
-  last desk of the repository is gone (⏻ button, idle exit, kill): the
+  selected desk is gone (both for `--desk both`) (⏻ button, idle exit, kill): the
   notification reads `■ desk chiuso` — retitle the chat ` · closed`, arm
   nothing else.
 - **Codex**: the blocking form,
-  `python3 <PLUGIN_ROOT>/server/chatdesk.py wait --repo <owner/repo> --timeout 540`,
+  `python3 <PLUGIN_ROOT>/server/chatdesk.py wait --repo <owner/repo> --session <session-id> --desk <desk> --timeout 540`,
   with the host command timeout above the wait timeout. `{"idle": true}` →
   run it again; tell the user once that you are listening, do not narrate
   every idle cycle. `{"closed": true}` → the desks are gone: retitle the
@@ -153,21 +169,21 @@ it in this conversation, by `kind`:
 
   ```sh
   python3 <PLUGIN_ROOT>/server/chatdesk.py result --repo <owner/repo> \
-      --request <key> result.json
+      --session <session-id> --request <key> --request-id <request-id> result.json
   ```
 
   `result.json` is the same structured JSON the one-shot agent would have
   returned for that kind (pr-analysis, pr-explanation, issue-analysis or
   operation-result schema); an operation's `status` (`done`, `needs-input`,
   `failed`) is what the row shows. On a failure close the request with
-  `python3 <PLUGIN_ROOT>/server/chatdesk.py fail --repo <owner/repo> --request <key> "why"`.
+  `python3 <PLUGIN_ROOT>/server/chatdesk.py fail --repo <owner/repo> --session <session-id> --request <key> --request-id <request-id> "why"`.
   Both commands heartbeat on the way out, so go straight back to `wait`.
 - An order or run that stops on `needs-input` asks its question HERE, in the
-  conversation, and publishes the same request key again once the user has
-  answered and the operation is finished: `chatdesk.py result` closes a key
-  as many times as it takes, and the row shows the latest outcome.
+  conversation, and publishes the same request key and ID again once the user has
+  answered and the operation is finished: only a `needs-input` result may be resumed. A replaced or expired request
+  is rejected before any result is persisted.
 - When the user says stop: TaskStop the monitor (Claude Code) or run
-  `python3 <PLUGIN_ROOT>/server/chatdesk.py detach --repo <owner/repo>`
+  `python3 <PLUGIN_ROOT>/server/chatdesk.py detach --repo <owner/repo> --session <session-id>`
   (Codex), then retitle the chat ` · closed`. A missed detach costs only the
   heartbeat TTL before the buttons fall back to one-shot agents.
 

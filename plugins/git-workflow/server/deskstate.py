@@ -40,6 +40,7 @@ Schema (all keys optional):
 import os
 import tempfile
 import time
+import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -127,11 +128,15 @@ def reset(repo):
     to a loop that ended in needs-input. `--keep-state`
     keeps everything, ephemera included."""
     path = state_path(repo)
-    kept = {key: value for key, value in safejson.read(path).items()
-            if key in DURABLE}
-    safejson.archive(path, path.with_suffix(".json.prev"))
-    if kept:
-        save(repo, kept)
+    def mutate(state):
+        if live_desks(repo, state) or any(
+                chat_attached(repo, state, desk) for desk in ("pr", "issue")):
+            return
+        safejson.write(path.with_suffix(".json.prev"), state, indent=1)
+        for key in list(state):
+            if key not in DURABLE:
+                del state[key]
+    update(repo, mutate)
 
 
 LEGACY_SUFFIXES = ("__cache.json", "__inbox.jsonl", "__watcher.alive",
@@ -169,6 +174,10 @@ def update(repo, mutate):
     return safejson.update(state_path(repo), mutate, indent=1)
 
 
+def apply(repo, mutate, state=None):
+    return mutate(state) if state is not None else update(repo, mutate)
+
+
 REQUEST_STALE = 1800
 WORKING_STALE = 900          # a run that stopped saying anything
 CHAT_STALE = 45              # heartbeat older than this = no chat attached
@@ -204,51 +213,54 @@ def effective(record):
     return record
 
 
-def chat_heartbeat(repo, session=""):
-    """The attached chat says it is alive and waiting for desk requests."""
+def _chat_busy(state, session):
+    mark = (state.get("chats") or {}).get(session) or {}
+    busy = mark.get("busy") or {}
+    record = (state.get("requests") or {}).get(busy.get("key")) or {}
+    return (record.get("session") == session and record.get("id") == busy.get("id")
+            and record.get("status") == "taken" and not expired(record))
+
+
+def chat_heartbeat(repo, session, desk="pr"):
+    if not session or desk not in ("pr", "issue", "both"):
+        raise ValueError("a session and desk are required")
+    desks = ["pr", "issue"] if desk == "both" else [desk]
     def mutate(state):
-        mark = state.setdefault("chat", {})
-        mark.update(session=session or mark.get("session", ""),
+        chats = state.setdefault("chats", {})
+        owned = set((chats.get(session) or {}).get("desks", [])) | set(desks)
+        for other, mark in chats.items():
+            if other == session or not owned.intersection(mark.get("desks", [])):
+                continue
+            if (time.time() - mark.get("epoch", 0) <= CHAT_STALE
+                    or _chat_busy(state, other)):
+                raise ValueError("desk already attached to session %s" % other)
+        mark = chats.setdefault(session, {})
+        mark.update(session=session, desks=sorted(owned),
                     epoch=time.time(), at=time.strftime("%H:%M:%S"))
         return dict(mark)
     return update(repo, mutate)
 
 
-def chat_detach(repo):
-    update(repo, lambda state: state.pop("chat", None))
+def chat_detach(repo, session):
+    update(repo, lambda state: (state.get("chats") or {}).pop(session, None))
 
 
-def chat_attached(repo, state=None):
-    """The chat mark, or None. Alive on a fresh heartbeat, and also while a
-    claimed request is still open: the chat stops heartbeating the moment it
-    starts working, and treating that silence as a dead chat would route the
-    next click to a one-shot agent behind the user's back."""
+def chat_attached(repo, state=None, desk="pr"):
     state = state if state is not None else load(repo)
-    mark = state.get("chat")
-    if not mark:
-        return None
-    if time.time() - mark.get("epoch", 0) <= CHAT_STALE:
-        return dict(mark)
-    busy = mark.get("busy") or {}
-    record = (state.get("requests") or {}).get(busy.get("key") or "")
-    if record and record.get("status") == "taken" and not expired(record):
-        return dict(mark)
+    for session, mark in (state.get("chats") or {}).items():
+        if desk in mark.get("desks", []) and (
+                time.time() - mark.get("epoch", 0) <= CHAT_STALE
+                or _chat_busy(state, session)):
+            return dict(mark)
     return None
 
 
-def chat_listening(repo, state=None):
-    """The chat that is heartbeating RIGHT NOW, or None.
-
-    `chat_attached` deliberately also covers the minutes a claimed request
-    takes: right for the chip, wrong for routing. A chat that died mid-request
-    keeps a `taken` record nobody expires, and every later click would be
-    enqueued for a conversation that will never read it — the desk goes silent
-    with no job to show. Only a fresh heartbeat may take a NEW click.
-    """
+def chat_listening(repo, state=None, desk="pr"):
     state = state if state is not None else load(repo)
-    mark = state.get("chat") or {}
-    if time.time() - mark.get("epoch", 0) <= CHAT_STALE:
-        return dict(mark)
+    for mark in (state.get("chats") or {}).values():
+        if (desk in mark.get("desks", [])
+                and time.time() - mark.get("epoch", 0) <= CHAT_STALE):
+            return dict(mark)
     return None
 
 
@@ -292,10 +304,12 @@ def live_desks(repo, state=None):
                   if not mark.get("stopped") and _alive(mark.get("pid")))
 
 
-def desks_closed(repo, state=None):
+def desks_closed(repo, state=None, desk="both"):
     """Desks were registered and none is running: the chat's ear can close."""
     state = state if state is not None else load(repo)
-    return bool(state.get("desks")) and not live_desks(repo, state)
+    kinds = {"pr", "issue"} if desk == "both" else {desk}
+    return bool(kinds.intersection(state.get("desks") or {})) and not (
+        kinds.intersection(live_desks(repo, state)))
 
 
 def reclaim_request(repo, key):
@@ -303,32 +317,35 @@ def reclaim_request(repo, key):
     def mutate(state):
         record = (state.get("requests") or {}).get(key)
         if (record and record.get("status") == "queued"
-                and time.time() - record.get("epoch", 0) > CHAT_CLAIM_GRACE):
+                and time.time() - record.get("epoch", 0) > CHAT_CLAIM_GRACE
+                and not _chat_busy(state, record.get("session"))):
             record["status"] = "stale"
             return True
         return False
     return update(repo, mutate)
 
 
-def claim_request(repo):
-    """Hand the oldest queued chat request to the waiting chat, exactly once.
-
-    The claim flips the record to `taken` so a second wait loop (or a reload
-    of the first) cannot execute the same click twice, and marks the chat
-    busy so the attachment survives the minutes the work takes."""
+def claim_request(repo, session, desk="pr"):
     def mutate(state):
+        mark = (state.get("chats") or {}).get(session) or {}
+        desks = set(mark.get("desks", []))
+        if desk != "both":
+            desks &= {desk}
+        if not desks or _chat_busy(state, session):
+            return None
         ledger = state.get("requests") or {}
         queued = [(key, record) for key, record in ledger.items()
                   if record.get("status") == "queued"
-                  and record.get("via") == "chat"]
+                  and record.get("via") == "chat-session"
+                  and record.get("session") == session
+                  and record.get("desk") in desks and not expired(record)]
         if not queued:
             return None
         key, record = min(queued, key=lambda item: item[1].get("epoch", 0))
         taken_epoch = time.time()
         record.update(status="taken", taken_at=time.strftime("%H:%M:%S"),
                       taken_epoch=taken_epoch)
-        state.setdefault("chat", {})["busy"] = {"key": key,
-                                                "epoch": taken_epoch}
+        mark["busy"] = {"key": key, "id": record["id"], "epoch": taken_epoch}
         return dict(record, key=key)
     return update(repo, mutate)
 
@@ -404,7 +421,7 @@ def working(repo, state=None):
 
 
 def request(repo, key, kind, n=None, label="", via="agent", payload=None,
-            status="queued"):
+            status="queued", desk="pr", session=None):
     """Record a button press, and refuse a second one while the first is out.
 
     The ledger lives on the SERVER, not in the page: a click enqueues work
@@ -426,20 +443,27 @@ def request(repo, key, kind, n=None, label="", via="agent", payload=None,
             if not expired(existing):
                 return existing, False
             existing["status"] = "stale"
-        record = {"kind": kind, "n": n, "label": label, "status": status,
-                  "via": via, "payload": payload or {},
+        target = session
+        if via == "chat":
+            target = target or (chat_listening(repo, state, desk) or {}).get("session")
+            if not target:
+                return None, False
+        record = {"id": uuid.uuid4().hex, "desk": desk, "session": target,
+                  "kind": kind, "n": n, "label": label, "status": status,
+                  "via": "chat-session" if via == "chat" else via, "payload": payload or {},
                   "at": time.strftime("%H:%M:%S"), "epoch": time.time()}
         ledger[key] = record
         return record, True
     return update(repo, mutate)
 
 
-def ready_request(repo, key, payload):
+def ready_request(repo, key, payload, request_id=None):
     """The payload a click was waiting for is in: the chat may claim it now.
     The clock restarts here, so the claim grace counts from readiness."""
     def mutate(state):
         record = (state.get("requests") or {}).get(key)
-        if not record or record.get("status") != "preparing":
+        if (not record or record.get("status") != "preparing"
+                or (request_id is not None and record.get("id") != request_id)):
             return None
         record.update(status="queued", payload=payload or {},
                       epoch=time.time())
@@ -447,26 +471,28 @@ def ready_request(repo, key, payload):
     return update(repo, mutate)
 
 
-def close_request(repo, key, status="done", report=""):
+def close_request(repo, key, status="done", report="", state=None, request_id=None):
     """The chat says how it went — this is what the desk shows in place of
     the lock."""
     def mutate(state):
         ledger = state.setdefault("requests", {})
         record = ledger.get(key) or {"kind": key.split(":")[0], "status": "queued"}
+        if request_id is not None and record.get("id") != request_id:
+            return None
         record.update(status=status, report=report,
                       closed_at=time.strftime("%H:%M:%S"))
         ledger[key] = record
         return record
-    return update(repo, mutate)
+    return apply(repo, mutate, state)
 
 
-def request_provider_refresh(repo):
+def request_provider_refresh(repo, state=None):
     """Tell every open desk tab to force one fresh provider snapshot."""
     def mutate(state):
         state["provider_refresh"] = {
             "token": str(time.time_ns()), "at": time.strftime("%H:%M:%S")}
         return state["provider_refresh"]
-    return update(repo, mutate)
+    return apply(repo, mutate, state)
 
 
 def request_key(kind, n):

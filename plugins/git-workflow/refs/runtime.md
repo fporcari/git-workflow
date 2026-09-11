@@ -98,7 +98,9 @@ cache, rows and job JSON files by itself, and it never starts a model merely
 because the desk is open or polling. The launching conversation stays
 ATTACHED by default: on Claude Code through one persistent `Monitor` running
 `chatdesk.py listen`, on Codex through the blocking `chatdesk.py wait` loop.
-While that heartbeat is fresh the server routes every non-triage click to the
+Each listener passes a stable conversation `--session` and an explicit
+`--desk pr|issue|both`; one live conversation owns each desk. While that
+heartbeat is fresh the server routes each non-triage click to its owning
 conversation, which executes it there (see "Attached chat" in the review-desk
 skill). With no chat attached — a detached launch, or a session that ended —
 analyze, explain and workflow buttons each start one ephemeral CLI process,
@@ -149,7 +151,7 @@ Set a session/task title only when the host exposes a title tool.
 The desks title the launching chat so it can be found again in the session
 list: `PR desk · <owner/repo> · <YYYY-MM-DD HH:MM>` (`Issue desk`, `Review
 desk`) on opening, date and time from `date '+%F %H:%M'`, and the same title
-with ` · closed` appended once the last desk of the repository is gone. The
+with ` · closed` appended once the selected desk is gone (both for review-desk). The
 triages title theirs by date only.
 
 Missing title support never blocks the workflow.
