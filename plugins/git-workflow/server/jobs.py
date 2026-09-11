@@ -428,7 +428,7 @@ def parse_result(agent, stdout, output_path=None, expected_n=None):
     return result
 
 
-def persist(repo, result, analysis_keys=None):
+def persist(repo, result, analysis_keys=None, state=None):
     def mutate(state):
         record = {"author": result["author"],
                   "problem": result["problem"],
@@ -456,10 +456,10 @@ def persist(repo, result, analysis_keys=None):
         if not result.get("plan"):
             target.pop("plan", None)
         target.update(record)
-    deskstate.update(repo, mutate)
+    deskstate.apply(repo, mutate, state)
 
 
-def persist_explanation(repo, result, n, what_key):
+def persist_explanation(repo, result, n, what_key, state=None):
     if (not isinstance(result, dict) or result.get("n") != n
             or not isinstance(result.get("what"), str)):
         raise ValueError("agent returned an invalid PR explanation")
@@ -469,10 +469,10 @@ def persist_explanation(repo, result, n, what_key):
     def mutate(state):
         record = state.setdefault("prs", {}).setdefault(str(n), {})
         record.update(what=what, what_key=what_key)
-    deskstate.update(repo, mutate)
+    deskstate.apply(repo, mutate, state)
 
 
-def persist_issue_analysis(repo, result, n):
+def persist_issue_analysis(repo, result, n, state=None):
     if not isinstance(result, dict) or result.get("n") != n:
         raise ValueError("agent returned analysis for the wrong issue")
     required = ("type", "finding", "size", "phase")
@@ -487,7 +487,7 @@ def persist_issue_analysis(repo, result, n):
                 record[key] = result[key]
             else:
                 record.pop(key, None)
-    deskstate.update(repo, mutate)
+    deskstate.apply(repo, mutate, state)
 
 
 def persist_triage(repo, result, flow, exported):
@@ -569,12 +569,12 @@ def parse_operation(agent, stdout, output_path=None):
     return result
 
 
-def persist_operation(repo, result, n=None, flow=None):
+def persist_operation(repo, result, n=None, flow=None, state=None):
     if n is not None:
         def mutate(state):
             order = state.setdefault("orders", {}).setdefault(str(n), {})
             order.update(status=result["status"], report=result["report"])
-        deskstate.update(repo, mutate)
+        deskstate.apply(repo, mutate, state)
     # the loop's own report outlives its job file: the page has nowhere else
     # to read what a finished run decided, and terminal records get pruned
     label = "order:%s" % n if n is not None else (flow or "run")
@@ -582,13 +582,13 @@ def persist_operation(repo, result, n=None, flow=None):
         state.setdefault("runs", {})[label] = {
             "status": result["status"], "report": result["report"],
             "at": time.strftime("%Y-%m-%dT%H:%M:%S")}
-    deskstate.update(repo, keep)
+    deskstate.apply(repo, keep, state)
     # the server's word on the flow is the last one: a skill that closed the
     # ledger itself on the way out cannot leave "done" over a needs-input
     key = "order:%s" % n if n is not None else "run:%s" % (flow or "run")
-    deskstate.close_request(repo, key, result["status"], result["report"])
+    deskstate.close_request(repo, key, result["status"], result["report"], state=state)
     if result["provider_changed"]:
-        deskstate.request_provider_refresh(repo)
+        deskstate.request_provider_refresh(repo, state=state)
 
 
 def _run(job_id, key, agent, repo, prompt, tools, timeout, cwd, schema,

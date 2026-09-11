@@ -2351,10 +2351,12 @@ class AttachedChat(unittest.TestCase):
         cls.server.server_close()
 
     def setUp(self):
+        self.addCleanup(deskstate.chat_detach, REPO, "test-chat")
         state = deskstate.load(REPO)
-        for key in ("requests", "chat"):
+        for key in ("requests", "chat", "chats"):
             state.pop(key, None)
         deskstate.save(REPO, state)
+        deskstate.chat_heartbeat(REPO, "test-chat")
 
     def post(self, path, body=None):
         req = Request("http://127.0.0.1:%s%s" % (self.port, path),
@@ -2366,7 +2368,7 @@ class AttachedChat(unittest.TestCase):
 
     def _expire_heartbeat(self):
         state = deskstate.load(REPO)
-        state["chat"]["epoch"] -= deskstate.CHAT_STALE + 5
+        state["chats"]["test-chat"]["epoch"] -= deskstate.CHAT_STALE + 5
         deskstate.save(REPO, state)
 
     def _settled(self, key):
@@ -2379,15 +2381,15 @@ class AttachedChat(unittest.TestCase):
         return record
 
     def test_the_heartbeat_expires(self):
-        deskstate.chat_heartbeat(REPO)
+        deskstate.chat_heartbeat(REPO, "test-chat")
         self.assertTrue(deskstate.chat_attached(REPO))
         self._expire_heartbeat()
         self.assertIsNone(deskstate.chat_attached(REPO))
 
     def test_a_claimed_request_keeps_the_chat_attached_while_it_works(self):
-        deskstate.chat_heartbeat(REPO)
-        deskstate.request(REPO, "analyze:7", "analyze", 7, via="chat")
-        record = deskstate.claim_request(REPO)
+        deskstate.chat_heartbeat(REPO, "test-chat")
+        deskstate.request(REPO, "analyze:7", "analyze", 7, via="chat", session="test-chat")
+        record = deskstate.claim_request(REPO, "test-chat")
         self.assertEqual(record["key"], "analyze:7")
         self.assertEqual(record["status"], "taken")
         self._expire_heartbeat()
@@ -2397,25 +2399,25 @@ class AttachedChat(unittest.TestCase):
         self.assertIsNone(deskstate.chat_attached(REPO))
 
     def test_a_taken_request_uses_the_busy_ttl_from_its_claim(self):
-        deskstate.chat_heartbeat(REPO)
-        deskstate.request(REPO, "analyze:8", "analyze", 8, via="chat")
-        deskstate.claim_request(REPO)
+        deskstate.chat_heartbeat(REPO, "test-chat")
+        deskstate.request(REPO, "analyze:8", "analyze", 8, via="chat", session="test-chat")
+        deskstate.claim_request(REPO, "test-chat")
         state = deskstate.load(REPO)
         state["requests"]["analyze:8"]["epoch"] -= deskstate.REQUEST_STALE + 5
         deskstate.save(REPO, state)
         record, created = deskstate.request(
-            REPO, "analyze:8", "analyze", 8, via="chat")
+            REPO, "analyze:8", "analyze", 8, via="chat", session="test-chat")
         self.assertFalse(created)
         self.assertEqual(record["status"], "taken")
 
     def test_non_triage_buttons_route_to_the_attached_chat(self):
-        deskstate.chat_heartbeat(REPO)
+        deskstate.chat_heartbeat(REPO, "test-chat")
         with mock.patch.object(jobs, "analyze_pr") as analyze:
             status, payload = self.post("/api/pr/1145/analyze")
         analyze.assert_not_called()
         self.assertEqual((status, payload["via"]), (202, "chat"))
         record = self._settled("analyze:1145")
-        self.assertEqual((record["via"], record["status"]), ("chat", "queued"))
+        self.assertEqual((record["via"], record["status"]), ("chat-session", "queued"))
         with mock.patch.object(jobs, "operation") as operation:
             status, payload = self.post(
                 "/api/run", {"flow": "pr-loop", "ns": [1145], "batch": 2})
@@ -2426,14 +2428,14 @@ class AttachedChat(unittest.TestCase):
             {"flow": "pr-loop", "ns": [1145], "batch": 2})
 
     def test_a_second_press_reuses_the_queued_request(self):
-        deskstate.chat_heartbeat(REPO)
+        deskstate.chat_heartbeat(REPO, "test-chat")
         with mock.patch.object(jobs, "analyze_issue"):
             self.post("/api/issue/1166/analyze")
             status, payload = self.post("/api/issue/1166/analyze")
         self.assertEqual((status, payload["created"]), (202, False))
 
     def test_triage_never_routes_to_the_chat(self):
-        deskstate.chat_heartbeat(REPO)
+        deskstate.chat_heartbeat(REPO, "test-chat")
         with mock.patch.object(jobs, "triage", return_value="triage-job") as triage:
             status, payload = self.post("/api/triage", {"flow": "pr-triage"})
         self.assertEqual(status, 202)
@@ -2442,7 +2444,7 @@ class AttachedChat(unittest.TestCase):
         triage.assert_called_once()
 
     def test_a_stale_heartbeat_falls_back_to_the_one_shot_job(self):
-        deskstate.chat_heartbeat(REPO)
+        deskstate.chat_heartbeat(REPO, "test-chat")
         self._expire_heartbeat()
         with mock.patch.object(jobs, "analyze_pr", return_value="job-1"):
             status, payload = self.post("/api/pr/1145/analyze")
@@ -2452,9 +2454,9 @@ class AttachedChat(unittest.TestCase):
         """A `taken` record nothing expires kept the chat "attached" for an
         hour: every later click was enqueued for a conversation that had
         ended, so no job ever started and the desk showed nothing."""
-        deskstate.chat_heartbeat(REPO)
-        deskstate.request(REPO, "analyze:7", "analyze", 7, via="chat")
-        deskstate.claim_request(REPO)
+        deskstate.chat_heartbeat(REPO, "test-chat")
+        deskstate.request(REPO, "analyze:7", "analyze", 7, via="chat", session="test-chat")
+        deskstate.claim_request(REPO, "test-chat")
         self._expire_heartbeat()
         self.assertTrue(deskstate.chat_attached(REPO), "the chip still says so")
         with mock.patch.object(jobs, "analyze_pr", return_value="job-9"):
@@ -2462,7 +2464,7 @@ class AttachedChat(unittest.TestCase):
         self.assertEqual((status, payload["job"]), (202, "job-9"))
 
     def test_a_click_the_chat_never_took_goes_back_to_a_one_shot_job(self):
-        deskstate.chat_heartbeat(REPO)
+        deskstate.chat_heartbeat(REPO, "test-chat")
         with mock.patch.object(jobs, "analyze_pr") as analyze:
             self.assertEqual(self.post("/api/pr/1145/analyze")[1]["via"], "chat")
         analyze.assert_not_called()
@@ -2479,13 +2481,18 @@ class AttachedChat(unittest.TestCase):
             deskstate.load(REPO)["requests"]["analyze:1145"]["status"], "stale")
 
     def test_a_listening_chat_still_takes_the_click(self):
-        deskstate.chat_heartbeat(REPO)
+        deskstate.chat_heartbeat(REPO, "test-chat")
         with mock.patch.object(jobs, "analyze_pr") as analyze:
             status, payload = self.post("/api/pr/1145/analyze")
         analyze.assert_not_called()
         self.assertEqual((status, payload["via"]), (202, "chat"))
 
     def _cli(self, *args, **kw):
+        if args[0] in ("result", "fail"):
+            key = args[args.index("--request") + 1]
+            record = deskstate.load(REPO)["requests"][key]
+            args += ("--request-id", record["id"])
+        args += ("--session", "test-chat")
         return subprocess.run(
             (sys.executable, str(ROOT / "chatdesk.py")) + args,
             capture_output=True, text=True,
@@ -2493,7 +2500,7 @@ class AttachedChat(unittest.TestCase):
 
     def test_wait_claims_the_click_and_result_publishes_it(self):
         deskstate.request(REPO, "issue-analyze:1166", "issue-analyze", 1166,
-                          via="chat")
+                          via="chat", session="test-chat")
         out = self._cli("wait", "--repo", REPO, "--timeout", "1")
         self.assertEqual(out.returncode, 0, out.stderr)
         record = json.loads(out.stdout)
@@ -2521,8 +2528,8 @@ class AttachedChat(unittest.TestCase):
 
     def test_an_invalid_result_fails_the_request_instead_of_publishing(self):
         deskstate.request(REPO, "issue-analyze:1167", "issue-analyze", 1167,
-                          via="chat")
-        deskstate.claim_request(REPO)
+                          via="chat", session="test-chat")
+        deskstate.claim_request(REPO, "test-chat")
         with tempfile.NamedTemporaryFile("w", suffix=".json",
                                          delete=False) as handle:
             json.dump({"n": 1167, "type": "DEFECT"}, handle)
@@ -2536,8 +2543,8 @@ class AttachedChat(unittest.TestCase):
 
     def test_a_non_object_result_fails_the_request(self):
         deskstate.request(REPO, "issue-analyze:1168", "issue-analyze", 1168,
-                          via="chat")
-        deskstate.claim_request(REPO)
+                          via="chat", session="test-chat")
+        deskstate.claim_request(REPO, "test-chat")
         with tempfile.NamedTemporaryFile("w", suffix=".json",
                                          delete=False) as handle:
             json.dump([], handle)
@@ -2551,8 +2558,8 @@ class AttachedChat(unittest.TestCase):
     def test_an_operation_result_lands_in_orders_and_runs(self):
         deskstate.add_order(REPO, 1145, "merge", "", "vai")
         deskstate.request(REPO, "order:1145", "order", 1145,
-                          via="chat", payload={"flow": "order", "n": 1145})
-        deskstate.claim_request(REPO)
+                          via="chat", session="test-chat", payload={"flow": "order", "n": 1145})
+        deskstate.claim_request(REPO, "test-chat")
         result = {"status": "done", "report": "merged e branch cancellato",
                   "provider_changed": True}
         with tempfile.NamedTemporaryFile("w", suffix=".json",
@@ -2568,13 +2575,13 @@ class AttachedChat(unittest.TestCase):
         self.assertIn("provider_refresh", state)
 
     def test_detach_hands_the_buttons_back_to_the_agents(self):
-        deskstate.chat_heartbeat(REPO)
+        deskstate.chat_heartbeat(REPO, "test-chat")
         out = self._cli("detach", "--repo", REPO)
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertIsNone(deskstate.chat_attached(REPO))
 
     def test_live_state_tells_the_page_a_chat_is_attached(self):
-        deskstate.chat_heartbeat(REPO)
+        deskstate.chat_heartbeat(REPO, "test-chat")
         self.assertTrue(self.desk.live_state()["chat"]["attached"])
         self._expire_heartbeat()
         self.assertFalse(self.desk.live_state()["chat"]["attached"])
@@ -2582,16 +2589,16 @@ class AttachedChat(unittest.TestCase):
     def _age_taken(self, key, seconds):
         state = deskstate.load(REPO)
         state["requests"][key]["taken_epoch"] -= seconds
-        state["chat"]["busy"]["epoch"] -= seconds
+        state["chats"]["test-chat"]["busy"]["epoch"] -= seconds
         deskstate.save(REPO, state)
 
     def test_a_taken_analysis_outlives_its_job_budget_and_goes_stale(self):
         """The dead chat's own row stayed locked for an hour: no job, no
         progress, a span nobody could press. A chat silent for longer than
         the one-shot job it replaces is presumed dead."""
-        deskstate.chat_heartbeat(REPO)
-        deskstate.request(REPO, "analyze:7", "analyze", 7, via="chat")
-        deskstate.claim_request(REPO)
+        deskstate.chat_heartbeat(REPO, "test-chat")
+        deskstate.request(REPO, "analyze:7", "analyze", 7, via="chat", session="test-chat")
+        deskstate.claim_request(REPO, "test-chat")
         self._expire_heartbeat()
         self._age_taken("analyze:7", deskstate.ANALYZE_TIMEOUT + 5)
         rows = [{"n": 7}]
@@ -2602,9 +2609,9 @@ class AttachedChat(unittest.TestCase):
         self.assertTrue(created, "the button must accept a new press")
 
     def test_a_taken_operation_keeps_the_longer_budget(self):
-        deskstate.chat_heartbeat(REPO)
-        deskstate.request(REPO, "run:pr-loop", "run", None, via="chat")
-        deskstate.claim_request(REPO)
+        deskstate.chat_heartbeat(REPO, "test-chat")
+        deskstate.request(REPO, "run:pr-loop", "run", None, via="chat", session="test-chat")
+        deskstate.claim_request(REPO, "test-chat")
         self._expire_heartbeat()
         self._age_taken("run:pr-loop", deskstate.ANALYZE_TIMEOUT + 5)
         self.assertTrue(deskstate.chat_attached(REPO))
@@ -2615,10 +2622,10 @@ class AttachedChat(unittest.TestCase):
                          "stale")
 
     def test_a_failed_operation_is_closed_as_failed(self):
-        deskstate.chat_heartbeat(REPO)
-        deskstate.request(REPO, "run:pr-loop", "run", None, via="chat",
+        deskstate.chat_heartbeat(REPO, "test-chat")
+        deskstate.request(REPO, "run:pr-loop", "run", None, via="chat", session="test-chat",
                           payload={"flow": "pr-loop"})
-        deskstate.claim_request(REPO)
+        deskstate.claim_request(REPO, "test-chat")
         with tempfile.NamedTemporaryFile("w", suffix=".json",
                                          delete=False) as handle:
             json.dump({"status": "failed", "report": "gate A1 non passato",
@@ -2632,10 +2639,10 @@ class AttachedChat(unittest.TestCase):
     def test_publishing_a_result_keeps_the_chat_listening(self):
         """Between `result` and the next `wait` the model takes seconds; a
         click in that gap must not slip to a one-shot agent."""
-        deskstate.chat_heartbeat(REPO)
-        deskstate.request(REPO, "order:1145", "order", 1145, via="chat",
+        deskstate.chat_heartbeat(REPO, "test-chat")
+        deskstate.request(REPO, "order:1145", "order", 1145, via="chat", session="test-chat",
                           payload={"flow": "order", "n": 1145})
-        deskstate.claim_request(REPO)
+        deskstate.claim_request(REPO, "test-chat")
         self._expire_heartbeat()
         self.assertIsNone(deskstate.chat_listening(REPO))
         with tempfile.NamedTemporaryFile("w", suffix=".json",
@@ -2648,9 +2655,9 @@ class AttachedChat(unittest.TestCase):
         self.assertTrue(deskstate.chat_listening(REPO))
 
     def test_fail_closes_the_request_and_keeps_the_chat_listening(self):
-        deskstate.chat_heartbeat(REPO)
-        deskstate.request(REPO, "analyze:7", "analyze", 7, via="chat")
-        deskstate.claim_request(REPO)
+        deskstate.chat_heartbeat(REPO, "test-chat")
+        deskstate.request(REPO, "analyze:7", "analyze", 7, via="chat", session="test-chat")
+        deskstate.claim_request(REPO, "test-chat")
         self._expire_heartbeat()
         out = self._cli("fail", "--repo", REPO, "--request", "analyze:7",
                         "diff non leggibile")
@@ -2661,23 +2668,23 @@ class AttachedChat(unittest.TestCase):
         self.assertTrue(deskstate.chat_listening(REPO))
 
     def test_a_result_releases_only_its_own_working_marker(self):
-        deskstate.chat_heartbeat(REPO)
+        deskstate.chat_heartbeat(REPO, "test-chat")
         deskstate.set_working(REPO, 9, "one-shot su un'altra riga")
-        deskstate.request(REPO, "analyze:7", "analyze", 7, via="chat")
-        deskstate.claim_request(REPO)
+        deskstate.request(REPO, "analyze:7", "analyze", 7, via="chat", session="test-chat")
+        deskstate.claim_request(REPO, "test-chat")
         out = self._cli("fail", "--repo", REPO, "--request", "analyze:7", "x")
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertEqual(deskstate.working(REPO)["n"], 9)
         deskstate.set_working(REPO, 7, "in chat")
-        deskstate.request(REPO, "explain:7", "explain", 7, via="chat")
-        deskstate.claim_request(REPO)
+        deskstate.request(REPO, "explain:7", "explain", 7, via="chat", session="test-chat")
+        deskstate.claim_request(REPO, "test-chat")
         self._cli("fail", "--repo", REPO, "--request", "explain:7", "x")
         self.assertIsNone(deskstate.working(REPO))
 
     def test_an_analyze_click_is_answered_before_the_provider_is_read(self):
         """The one-shot path answers in milliseconds and reads the provider in
         the job; the chat path read it in the handler. Same promise now."""
-        deskstate.chat_heartbeat(REPO)
+        deskstate.chat_heartbeat(REPO, "test-chat")
         started = threading.Event()
         release = threading.Event()
 
@@ -2692,7 +2699,7 @@ class AttachedChat(unittest.TestCase):
             self.assertTrue(started.wait(2))
             record = deskstate.load(REPO)["requests"]["analyze:1145"]
             self.assertEqual(record["status"], "preparing")
-            self.assertIsNone(deskstate.claim_request(REPO),
+            self.assertIsNone(deskstate.claim_request(REPO, "test-chat"),
                               "not claimable before its payload is in")
             release.set()
             for _ in range(50):
@@ -2702,10 +2709,10 @@ class AttachedChat(unittest.TestCase):
                 time.sleep(0.05)
         self.assertEqual(record["status"], "queued")
         self.assertEqual(record["payload"]["analysis_keys"], {"analysis": "k1"})
-        self.assertEqual(deskstate.claim_request(REPO)["key"], "analyze:1145")
+        self.assertEqual(deskstate.claim_request(REPO, "test-chat")["key"], "analyze:1145")
 
     def test_a_context_the_desk_cannot_read_fails_the_request(self):
-        deskstate.chat_heartbeat(REPO)
+        deskstate.chat_heartbeat(REPO, "test-chat")
 
         def broken(self_, n):
             raise RuntimeError("provider down")
@@ -2727,12 +2734,18 @@ class ListeningChat(unittest.TestCase):
     the command it stands for."""
 
     def setUp(self):
+        self.addCleanup(deskstate.chat_detach, REPO, "test-chat")
         state = deskstate.load(REPO)
-        for key in ("requests", "chat"):
+        for key in ("requests", "chat", "chats"):
             state.pop(key, None)
         deskstate.save(REPO, state)
 
     def _cli(self, *args, **kw):
+        if args[0] in ("result", "fail"):
+            key = args[args.index("--request") + 1]
+            record = deskstate.load(REPO)["requests"][key]
+            args += ("--request-id", record["id"])
+        args += ("--session", "test-chat")
         return subprocess.run(
             (sys.executable, str(ROOT / "chatdesk.py")) + args,
             capture_output=True, text=True,
@@ -2754,28 +2767,27 @@ class ListeningChat(unittest.TestCase):
             self.assertEqual(chatdesk.command_for(record), expected)
 
     def test_listen_claims_each_click_as_two_lines_and_detaches_on_exit(self):
-        deskstate.request(REPO, "run:issue-loop", "run", None, via="chat",
+        deskstate.request(REPO, "run:issue-loop", "run", None, via="chat", session="test-chat",
                           payload={"flow": "issue-loop", "ns": [7, 9],
                                    "batch": 2})
         deskstate.request(REPO, "issue-analyze:7", "issue-analyze", 7,
-                          via="chat")
+                          via="chat", session="test-chat")
         out = self._cli("listen", "--repo", REPO, "--timeout", "2")
         self.assertEqual(out.returncode, 0, out.stderr)
         lines = out.stdout.splitlines()
-        self.assertEqual(len(lines), 4, out.stdout)
+        self.assertEqual(len(lines), 2, out.stdout)
         self.assertIn("/issue-loop 7 9 batch=2", lines[0])
         self.assertEqual(json.loads(lines[1])["key"], "run:issue-loop")
-        self.assertIn("/issue-analyze 7", lines[2])
         state = deskstate.load(REPO)
         self.assertEqual(state["requests"]["run:issue-loop"]["status"], "taken")
-        self.assertEqual(state["requests"]["issue-analyze:7"]["status"], "taken")
+        self.assertEqual(state["requests"]["issue-analyze:7"]["status"], "queued")
         self.assertIsNone(deskstate.chat_attached(REPO),
                           "a listener that stopped is a detached chat")
 
     def test_listen_heartbeats_while_it_runs(self):
         proc = subprocess.Popen(
             (sys.executable, str(ROOT / "chatdesk.py"), "listen",
-             "--repo", REPO),
+             "--repo", REPO, "--session", "test-chat"),
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
             env=dict(os.environ, HOME=_HOME))
         try:
@@ -2790,7 +2802,7 @@ class ListeningChat(unittest.TestCase):
             if proc.poll() is None:
                 proc.kill()
                 proc.communicate()
-        self.assertIsNone(deskstate.load(REPO).get("chat"),
+        self.assertIsNone(deskstate.load(REPO).get("chats", {}).get("test-chat"),
                           "the monitor's death must detach the chat")
 
 
@@ -2807,7 +2819,8 @@ class DeskClosing(unittest.TestCase):
 
     def _cli(self, *args, **kw):
         return subprocess.run(
-            (sys.executable, str(ROOT / "chatdesk.py")) + args,
+            (sys.executable, str(ROOT / "chatdesk.py"), "--session",
+             "test-chat", "--desk", "both") + args,
             capture_output=True, text=True,
             env=dict(os.environ, HOME=_HOME), **kw)
 
@@ -2839,7 +2852,7 @@ class DeskClosing(unittest.TestCase):
         deskstate.register_desk(self.R, "pr", 8399)
         proc = subprocess.Popen(
             (sys.executable, str(ROOT / "chatdesk.py"), "listen",
-             "--repo", self.R),
+             "--repo", self.R, "--session", "test-chat", "--desk", "both"),
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
             env=dict(os.environ, HOME=_HOME))
         try:
@@ -2860,7 +2873,7 @@ class DeskClosing(unittest.TestCase):
         self.assertEqual(lines[0], "■ desk chiuso · %s" % self.R)
         self.assertEqual(json.loads(lines[1]),
                          {"closed": True, "repo": self.R})
-        self.assertIsNone(deskstate.load(self.R).get("chat"),
+        self.assertIsNone(deskstate.load(self.R).get("chats", {}).get("test-chat"),
                           "a closed ear is a detached chat")
 
     def test_listen_stays_while_the_sibling_desk_is_up(self):

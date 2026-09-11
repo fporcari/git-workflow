@@ -55,16 +55,19 @@ keep their own profiles.
   and end the turn:
 
   ```
-  Monitor(command="python3 <PLUGIN_ROOT>/server/chatdesk.py listen --repo <owner/repo>",
+  Monitor(command="python3 <PLUGIN_ROOT>/server/chatdesk.py listen --repo <owner/repo> --session <session-id> --desk issue",
           description="desk clicks · <owner/repo>", persistent=true, timeout_ms=3600000)
   ```
 
   Tell the user once that the desk is open and its clicks land here. Each
   click then comes back as a notification; follow "Attached chat" in
   `../review-desk/SKILL.md` to execute and publish it. One monitor per
-  repository: both desks share the state file, so a second desk on the same
-  repo from the same chat reuses the running monitor. The monitor ends by
-  itself once the last desk of the repository is gone (⏻, idle exit, kill),
+  session and repository; use the stable session identity described in
+  `../review-desk/SKILL.md`. A second desk in this chat requires restarting
+  that monitor with `--desk both` and the same session ID. A desk already
+  owned by another live chat rejects attachment: report the owner, never
+  silently take it over. The monitor ends when its selected desk closes
+  (both selected desks for `--desk both`),
   with a `■ desk chiuso` notification: retitle the chat ` · closed` and arm
   nothing else.
 - **Codex** (no monitor): follow the `wait` loop in the same section.
