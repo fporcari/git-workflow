@@ -2,8 +2,8 @@
 name: pr-triage
 description: >-
   Show every open PR the user is involved in, split by the work it needs, then
-  hand the actionable set to pr-loop. Explicit invocation only; never trigger
-  it automatically. The triage itself is read-only.
+  hand the actionable set to pr-loop. The triage itself is read-only.
+disable-model-invocation: true
 ---
 
 # PR triage

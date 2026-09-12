@@ -4,7 +4,8 @@ description: >-
   Show a read-only shortlist of recent open issues not yet analyzed, each with
   an urgency band and its reason, the issues it depends on, and a proposed
   resolution order, cross-checked against branches and PRs, then optionally
-  hand the selected batch to issue-loop. Explicit invocation only.
+  hand the selected batch to issue-loop.
+disable-model-invocation: true
 ---
 
 # Issue triage — the shortlist

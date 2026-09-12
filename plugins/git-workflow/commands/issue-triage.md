@@ -1,6 +1,7 @@
 ---
-description: Show the read-only issue shortlist and optionally hand it to issue-loop. Explicit invocation only.
+description: Show the read-only issue shortlist and optionally hand it to issue-loop.
 argument-hint: optional — "batch=N" to change the 10, "mine" to restrict to issues assigned to me
+disable-model-invocation: true
 allowed-tools: Bash, Read, Grep, Glob, Agent, AskUserQuestion, ToolSearch, mcp__ccd_session_mgmt__set_session_title
 ---
 
