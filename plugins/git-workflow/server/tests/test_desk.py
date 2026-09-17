@@ -2922,6 +2922,42 @@ class DeskClosing(unittest.TestCase):
         self.assertTrue(deskstate.load(self.R)["desks"]["issue"].get("stopped"))
         self.assertTrue(deskstate.desks_closed(self.R))
 
+    def test_close_terminates_the_servers_the_ear_was_watching(self):
+        """A dead ear is a dead desk. The chat re-armed a monitor for hours
+        instead, and what survived the session was a server nobody listened
+        to."""
+        procs = {}
+        for kind, port in (("pr", 8399), ("issue", 8398)):
+            proc = subprocess.Popen(
+                [sys.executable, "-c", "import time; time.sleep(60)"])
+            procs[kind] = proc
+            self.addCleanup(self._reap, proc)
+            deskstate.update(self.R, lambda state, k=kind, p=proc, q=port:
+                             state.setdefault("desks", {})
+                             .update({k: {"pid": p.pid, "port": q}}))
+        deskstate.chat_heartbeat(self.R, "test-chat", "both")
+        out = self._cli("close", "--repo", self.R)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn("■ desk chiuso · %s" % self.R, out.stdout)
+        for kind, proc in procs.items():
+            proc.wait(timeout=5)
+            self.assertIsNotNone(proc.poll(), "%s desk survived close" % kind)
+        self.assertEqual(deskstate.live_desks(self.R), [])
+        self.assertIsNone(deskstate.chat_attached(self.R, desk="pr"),
+                          "close detaches the chat it closed for")
+
+    def test_close_on_a_desk_already_gone_is_not_an_error(self):
+        deskstate.register_desk(self.R, "pr", 8399)
+        deskstate.desk_stopped(self.R, "pr")
+        out = self._cli("close", "--repo", self.R)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn("■ desk chiuso", out.stdout)
+
+    def _reap(self, proc):
+        if proc.poll() is None:
+            proc.kill()
+            proc.communicate()
+
 
 class SummaryFromData(unittest.TestCase):
     """What a PR is FOR: the author already wrote it. Asking a model to

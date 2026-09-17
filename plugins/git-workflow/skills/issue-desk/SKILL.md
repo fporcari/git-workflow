@@ -56,7 +56,7 @@ keep their own profiles.
 
   ```
   Monitor(command="python3 <PLUGIN_ROOT>/server/chatdesk.py listen --repo <owner/repo> --session <session-id> --desk issue",
-          description="desk clicks · <owner/repo>", persistent=true, timeout_ms=3600000)
+          description="desk clicks · <owner/repo>", persistent=true, timeout_ms=1800000)
   ```
 
   Tell the user once that the desk is open and its clicks land here. Each
@@ -66,10 +66,28 @@ keep their own profiles.
   `../review-desk/SKILL.md`. A second desk in this chat requires restarting
   that monitor with `--desk both` and the same session ID. A desk already
   owned by another live chat rejects attachment: report the owner, never
-  silently take it over. The monitor ends when its selected desk closes
-  (both selected desks for `--desk both`),
-  with a `■ desk chiuso` notification: retitle the chat ` · closed` and arm
-  nothing else.
+  silently take it over.
+
+  `1800000` is the tool's ceiling: a larger number is capped without a word,
+  and the expiry that follows is the monitor working, not failing.
+
+  **The ear's death is the desk's death.** The monitor ends two ways and both
+  close the desk: its selected desk is gone (both selected desks for
+  `--desk both`) and the notification reads `■ desk chiuso`, or the ear is
+  gone — the 30-minute expiry, an error, the session going down. Either way,
+  run
+
+  ```sh
+  python3 <PLUGIN_ROOT>/server/chatdesk.py close --repo <owner/repo> \
+      --session <session-id> --desk issue
+  ```
+
+  then retitle the chat ` · closed` and arm nothing else. `close` terminates
+  whatever server is still up and detaches; on a desk already gone it is a
+  no-op. **Never re-arm**, whatever the expiry notification suggests: a
+  re-armed monitor keeps alive a chat that is doing no work, and the death it
+  postpones arrives with the server still running and the chat still titled
+  open.
 - **Codex** (no monitor): follow the `wait` loop in the same section.
 - **Detached (opt-in)**: only when the user says to open the desk and leave
   ("apri e basta", "detached"). Arm nothing; every button starts its own

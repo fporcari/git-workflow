@@ -98,6 +98,9 @@ cache, rows and job JSON files by itself, and it never starts a model merely
 because the desk is open or polling. The launching conversation stays
 ATTACHED by default: on Claude Code through one persistent `Monitor` running
 `chatdesk.py listen`, on Codex through the blocking `chatdesk.py wait` loop.
+That ear is the desk's life: when it ends for any reason the chat runs
+`chatdesk.py close` — server terminated, chat retitled ` · closed` — and never
+re-arms.
 Each listener passes a stable conversation `--session` and an explicit
 `--desk pr|issue|both`; one live conversation owns each desk. While that
 heartbeat is fresh the server routes each non-triage click to its owning

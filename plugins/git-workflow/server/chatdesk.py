@@ -35,6 +35,12 @@ the buttons enqueue, and the pair of commands here is its whole contract:
     python3 chatdesk.py detach --repo owner/repo --session chat-id
         Drop the mark: the very next click goes back to a one-shot agent.
 
+    python3 chatdesk.py close --repo owner/repo --session chat-id --desk both
+        The ear died, so the desk dies with it: terminate the servers the
+        listener was watching, drop the mark, print the same `■ desk chiuso`
+        line. Idempotent — a desk already gone is not an error. The chat runs
+        this instead of arming a second listener.
+
 Both result and fail heartbeat on the way out: the chat is about to run wait
 again, and the seconds in between must not hand a click to a one-shot agent.
 """
@@ -43,6 +49,7 @@ import argparse
 import fcntl
 import hashlib
 import json
+import os
 import signal
 import sys
 import time
@@ -147,6 +154,37 @@ def wait(repo, timeout, session, desk="pr"):
         time.sleep(min(HEARTBEAT_EVERY, max(0.1, deadline - time.time())))
 
 
+def close(repo, session, desk="both", out=sys.stdout, grace=5):
+    """A dead ear is a dead desk: SIGTERM the servers this listener covered,
+    detach, and report. The server's own handler records the stop."""
+    state = deskstate.load(repo)
+    kinds = ("pr", "issue") if desk == "both" else (desk,)
+    live = deskstate.live_desks(repo, state)
+    stopped = []
+    for kind in kinds:
+        if kind not in live:
+            continue
+        pid = ((state.get("desks") or {}).get(kind) or {}).get("pid")
+        try:
+            os.kill(int(pid), signal.SIGTERM)
+        except (OSError, TypeError, ValueError):
+            continue
+        stopped.append(kind)
+    deadline = time.time() + grace
+    survivors = stopped
+    while survivors and time.time() < deadline:
+        survivors = sorted(set(stopped) & set(deskstate.live_desks(repo)))
+        if survivors:
+            time.sleep(0.2)
+    deskstate.chat_detach(repo, session)
+    out.write("\u25a0 desk chiuso \u00b7 %s%s\n"
+              % (repo, " \u00b7 " + " ".join(stopped) if stopped else ""))
+    if survivors:
+        out.write("ancora vivi dopo SIGTERM: %s\n" % " ".join(survivors))
+    out.flush()
+    return stopped
+
+
 def _persist(repo, record, result, state):
     kind = record.get("kind")
     n = record.get("n")
@@ -232,7 +270,8 @@ def fail(repo, key, why, session, request_id):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action",
-                        choices=("listen", "wait", "result", "fail", "detach"))
+                        choices=("listen", "wait", "result", "fail", "detach",
+                                 "close"))
     parser.add_argument("--repo", required=True)
     parser.add_argument("--timeout", type=int, default=None,
                         help="wait: seconds before {\"idle\": true} "
@@ -262,6 +301,8 @@ def main():
         if not (args.request and args.path and args.request_id):
             parser.error("fail needs --request, --request-id and a reason")
         fail(args.repo, args.request, args.path, args.session, args.request_id)
+    elif args.action == "close":
+        close(args.repo, args.session, args.desk)
     else:
         deskstate.chat_detach(args.repo, args.session)
 

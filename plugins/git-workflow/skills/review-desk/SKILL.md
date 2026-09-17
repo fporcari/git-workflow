@@ -137,11 +137,14 @@ protocol; restart desks and listeners after updating the plugin.
   `python3 <PLUGIN_ROOT>/server/chatdesk.py listen --repo <owner/repo> --session <session-id> --desk <desk>`
   (see the pr-desk skill for the call). It does not occupy the turn: the user
   keeps talking here, and each click arrives as a notification of two lines —
-  the command it stands for and the request record as JSON. Never re-arm a
-  monitor that is already running; stop it with TaskStop when the user says
-  stop, which detaches on the way out. The monitor ends by itself when the
-  selected desk is gone (both for `--desk both`) (⏻ button, idle exit, kill): the
-  notification reads `■ desk chiuso` — retitle the chat ` · closed`, arm
+  the command it stands for and the request record as JSON. Never arm a second
+  one, and never re-arm one that ended: **the ear's death is the desk's
+  death.** Whatever ends the monitor — the desk gone (`■ desk chiuso`: ⏻
+  button, idle exit, kill), or the ear gone (the 30-minute expiry the tool
+  imposes, an error, the session going down) — run
+  `python3 <PLUGIN_ROOT>/server/chatdesk.py close --repo <owner/repo> --session <session-id> --desk <desk>`,
+  which terminates whatever server is still up and detaches on the way out (a
+  no-op on a desk already gone), then retitle the chat ` · closed` and arm
   nothing else.
 - **Codex**: the blocking form,
   `python3 <PLUGIN_ROOT>/server/chatdesk.py wait --repo <owner/repo> --session <session-id> --desk <desk> --timeout 540`,
@@ -182,10 +185,12 @@ it in this conversation, by `kind`:
   conversation, and publishes the same request key and ID again once the user has
   answered and the operation is finished: only a `needs-input` result may be resumed. A replaced or expired request
   is rejected before any result is persisted.
-- When the user says stop: TaskStop the monitor (Claude Code) or run
-  `python3 <PLUGIN_ROOT>/server/chatdesk.py detach --repo <owner/repo> --session <session-id>`
-  (Codex), then retitle the chat ` · closed`. A missed detach costs only the
-  heartbeat TTL before the buttons fall back to one-shot agents.
+- When the user says stop: TaskStop the monitor (Claude Code), then
+  `python3 <PLUGIN_ROOT>/server/chatdesk.py close --repo <owner/repo> --session <session-id> --desk <desk>`
+  on either host, and retitle the chat ` · closed`. `detach` alone drops only
+  the mark — the buttons fall back to one-shot agents and the server stays up
+  until its idle exit; use it when the user wants the desk to outlive this
+  conversation, which a detached launch already gives him.
 
 Autonomy in attached mode is exactly the desk's: a click carries the same
 authorization it would have given the one-shot agent — analysis is read-only,
