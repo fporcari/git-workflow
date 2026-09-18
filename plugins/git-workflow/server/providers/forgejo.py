@@ -15,6 +15,9 @@ Field mapping notes:
   normalized to the GitHub vocabulary the verdict engine speaks.
 - unresolved review threads are not exposed by the API; `unresolved` is
   reported as 0 and `threads` counts review comments.
+- `requested_reviewers` is stale: Forgejo leaves a review request standing
+  after the review lands. `_pending_req` reads the reviews instead, so `req`
+  means what it means everywhere else — who still owes an answer.
 """
 
 import json
@@ -30,7 +33,7 @@ from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 
 from .base import (Provider, REVIEW_STATES, brief_row, closes_from_body, decision_from, detail_row,
-                   issue_row, logins, review_row, verification_result)
+                   issue_row, login, logins, review_row, verification_result)
 
 STATE_MAP = {"REQUEST_CHANGES": "CHANGES_REQUESTED", "COMMENT": "COMMENTED"}
 KEYCHAIN_SERVICE = "FORGEJO_TOKEN"
@@ -71,6 +74,24 @@ def _review_state(review):
         return "DISMISSED"
     state = review.get("state", "")
     return STATE_MAP.get(state, state)
+
+
+def _pending_req(pr, revs):
+    """Who of the requested reviewers still owes an answer.
+
+    GitHub drops a review request the moment that person reviews; Forgejo
+    keeps it for ever, so an approved PR would read as waiting on its
+    reviewer until the end of time. The reviews list carries the truth: a
+    person's LAST record is REQUEST_REVIEW while the ask is open and the
+    review itself once answered, and a re-request files a fresh
+    REQUEST_REVIEW, so a second round survives this. Somebody requested with
+    no record at all stays pending.
+    """
+    last = {}
+    for review in sorted(revs, key=lambda r: r.get("submitted_at") or ""):
+        last[login(review.get("user"))] = _review_state(review)
+    return [who for who in logins(pr.get("requested_reviewers"))
+            if last.get(who, "REQUEST_REVIEW") == "REQUEST_REVIEW"]
 
 
 class ForgejoProvider(Provider):
@@ -175,7 +196,7 @@ class ForgejoProvider(Provider):
                 if r.get("submitted_at"):
                     spoke.append({"t": r["submitted_at"], "who": reviews[-1]["who"], "ch": state.lower()})
         spoke.sort(key=lambda s: s["t"])
-        req = logins(pr.get("requested_reviewers"))
+        req = _pending_req(pr, revs)
         return {
             "n": pr["number"],
             "title": pr["title"],
@@ -249,16 +270,22 @@ class ForgejoProvider(Provider):
         pulls.sort(key=lambda pr: pr.get("created_at") or "", reverse=True)
         return [brief_row(pr) for pr in pulls]
 
-    def pr_reviews(self, repo, n):
-        reviews = self._get_all("/repos/%s/pulls/%s/reviews" % (repo, n))
-        states = [(r, _review_state(r)) for r in reviews]
+    def _reviews(self, revs):
+        states = [(r, _review_state(r)) for r in revs]
         out = [review_row(r, state) for r, state in states if state in REVIEW_STATES]
         out.sort(key=lambda r: r["on"])
         return out
 
+    def pr_reviews(self, repo, n):
+        return self._reviews(self._get_all("/repos/%s/pulls/%s/reviews" % (repo, n)))
+
     def pr_detail(self, repo, n):
         pr = self._get("/repos/%s/pulls/%s" % (repo, n))
-        return detail_row(pr, self.pr_reviews(repo, n), self._merge(pr), closes_from_body(pr.get("body")))
+        revs = self._get_all("/repos/%s/pulls/%s/reviews" % (repo, n))
+        row = detail_row(pr, self._reviews(revs), self._merge(pr),
+                         closes_from_body(pr.get("body")))
+        row["req"] = _pending_req(pr, revs)
+        return row
 
     def pr_diff(self, repo, n):
         return self._get_text("/repos/%s/pulls/%s.diff" % (repo, n))

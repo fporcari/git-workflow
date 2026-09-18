@@ -26,8 +26,10 @@ import gw                          # noqa: E402
 import prdesk                      # noqa: E402
 from providers import detect       # noqa: E402
 from providers import base         # noqa: E402
+from providers import forgejo      # noqa: E402
 from providers.forgejo import ForgejoProvider  # noqa: E402
 from providers.github import GitHubProvider    # noqa: E402
+import verdicts                  # noqa: E402
 
 FIXTURE = str(ROOT / "tests" / "fixtures" / "gw.json")
 
@@ -457,8 +459,44 @@ class ForgejoShapeTest(unittest.TestCase):
         p = self.provider()
         with mock.patch.object(ForgejoProvider, "_request", side_effect=self.request):
             pr = p.pr_detail("acme/widgets", 12)
-        self.assertEqual(pr, dict(EXPECTED, merge="CLEAN",
+        # same keys, one normalized value: bob reviewed, so the request
+        # Forgejo never withdrew is not something anybody still owes.
+        self.assertEqual(pr, dict(EXPECTED, merge="CLEAN", req=[],
                                   closes=[{"issue": 4, "source": "body"}]))
+
+    def test_a_reviewer_who_answered_is_no_longer_pending(self):
+        """Forgejo keeps `requested_reviewers` after the review lands; an
+        approved PR must not read for ever as waiting on its reviewer."""
+        pr = dict(PULL, requested_reviewers=[_user("bob"), _user("carol")])
+        revs = [
+            {"user": _user("bob"), "state": "REQUEST_REVIEW",
+             "submitted_at": "2026-09-08T09:00:00Z"},
+            {"user": _user("bob"), "state": "APPROVED",
+             "submitted_at": "2026-09-08T10:45:00Z"},
+            {"user": _user("carol"), "state": "REQUEST_REVIEW",
+             "submitted_at": "2026-09-08T09:00:00Z"},
+        ]
+        self.assertEqual(forgejo._pending_req(pr, revs), ["carol"])
+
+    def test_a_re_request_after_an_approval_is_pending_again(self):
+        pr = dict(PULL, requested_reviewers=[_user("bob")])
+        revs = [
+            {"user": _user("bob"), "state": "APPROVED",
+             "submitted_at": "2026-09-08T10:45:00Z"},
+            {"user": _user("bob"), "state": "REQUEST_REVIEW",
+             "submitted_at": "2026-09-08T12:00:00Z"},
+        ]
+        self.assertEqual(forgejo._pending_req(pr, revs), ["bob"])
+
+    def test_a_request_with_no_review_record_stays_pending(self):
+        pr = dict(PULL, requested_reviewers=[_user("bob")])
+        self.assertEqual(forgejo._pending_req(pr, []), ["bob"])
+
+    def test_the_queue_row_reports_an_approved_pr_as_nobody_s_wait(self):
+        p = self.provider()
+        row = p._row("acme/widgets", PULL, REVIEWS_FJ)
+        self.assertEqual((row["decision"], row["req"]), ("APPROVED", []))
+        self.assertEqual(verdicts.verdict(row, "alice")[:2], ("merge it", "ready"))
 
     def test_the_rest_of_the_verbs(self):
         p = self.provider()
