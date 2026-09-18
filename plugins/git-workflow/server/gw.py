@@ -17,7 +17,7 @@ on any repository the user works in.
     gw issue list
     gw issue view <n>
     gw collaborators             logins a review can be requested from
-    gw api <endpoint> [-X METHOD] [-f key=value]...
+    gw api <endpoint> [-X METHOD] [-f key=value]... [-F key=json]...
 
     gw issue create --title T (--body-file F | --body B) [--label L]... [--assignee L]...
     gw issue edit <n> [--add-assignee L]... [--add-label L]...
@@ -27,7 +27,13 @@ on any repository the user works in.
                  [--draft] [--label L]... [--assignee L]... [--reviewer L]...
     gw pr edit <n> [--add-assignee L]... [--add-label L]... [--add-reviewer L]...
     gw pr comment <n> (--body-file F | --body B)
+    gw pr merge <n> [--squash] [--delete-branch]
     gw pr verified <n> --sha SHA [--label NAME]
+
+`gw pr merge` reads the pull request back and reports the state of every
+issue its body closes, so the merge and its traceability are one answer.
+`--squash` belongs to a branch carrying fixups or merge commits: that is a
+reading of the branch, and the caller makes it.
 
 `gw pr verified` closes a verification pass: it removes the
 `needs-verification` label and records the tested SHA in the desk state
@@ -209,8 +215,35 @@ def cmd_collaborators(p, repo, args):
     _out(p.collaborators(repo))
 
 
-def cmd_api(p, repo, args):
+def cmd_pr_merge(p, repo, args):
+    detail = p.merge(repo, args.n, method="squash" if args.squash else "merge",
+                     delete_branch=args.delete_branch)
+    closes = [dict(c, state=p.issue_detail(repo, c["issue"])["state"])
+              for c in detail["closes"]]
+    _out({"n": args.n, "state": detail["state"], "merge": detail["merge"],
+          "closes": closes})
+
+
+def _api_fields(args):
+    """`-f` is a string, `-F` is JSON — the same split as `gh`.
+
+    Without it there is no way to send `true`: a service whose form field is
+    a bool rejects the string with a 422, and the verb that needed it had to
+    be composed by hand.
+    """
     fields = dict(item.split("=", 1) for item in args.field or [])
+    for item in args.raw_field or []:
+        key, _, value = item.partition("=")
+        try:
+            fields[key] = json.loads(value)
+        except json.JSONDecodeError:
+            raise RuntimeError("-F %s: %r is not JSON (use -f for a plain string)"
+                               % (key, value))
+    return fields
+
+
+def cmd_api(p, repo, args):
+    fields = _api_fields(args)
     endpoint = args.endpoint.replace("{repo}", repo)
     _out(p.api(endpoint, method=args.method, fields=fields or None))
 
@@ -272,6 +305,13 @@ def build_parser():
     _body_args(pcomment)
     pcomment.set_defaults(run=cmd_comment)
 
+    pmerge = pr.add_parser("merge", help="merge the PR and read back what it closed")
+    pmerge.add_argument("n", type=int)
+    pmerge.add_argument("--squash", action="store_true",
+                        help="only when the branch carries fixups or merge commits")
+    pmerge.add_argument("--delete-branch", action="store_true")
+    pmerge.set_defaults(run=cmd_pr_merge)
+
     pverified = pr.add_parser("verified", help="close a verification pass: drop the label, record the tested SHA")
     pverified.add_argument("n", type=int)
     pverified.add_argument("--sha", required=True, help="the commit the plan was run on")
@@ -312,6 +352,8 @@ def build_parser():
     api.add_argument("endpoint")
     api.add_argument("-X", "--method", default="GET")
     api.add_argument("-f", "--field", action="append", metavar="KEY=VALUE")
+    api.add_argument("-F", "--raw-field", action="append", metavar="KEY=JSON",
+                     help="value parsed as JSON: true, 12, [\"a\"]")
     api.set_defaults(run=cmd_api)
     return parser
 

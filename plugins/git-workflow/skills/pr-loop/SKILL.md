@@ -212,10 +212,13 @@ Squash when the branch carries fixups or merge commits, delete the branch, then
 verify the linked issues actually closed.
 
 ```bash
-gh pr merge <n> --squash --delete-branch
-gh pr view <n> --json state,mergedAt,closingIssuesReferences
-gh issue view <issue> --json state
+gw pr merge <n> [--squash] --delete-branch
 ```
+
+It reads the PR back and reports the state of every issue the body closes,
+so the merge and its traceability come back in one answer. `gh pr merge` is
+GitHub's own verb and does not exist on Forgejo — this lane runs unattended
+on both.
 
 **Never merge a PR the user did not author**, whatever its state, and never merge
 one failing any of the five — report it as a Lane B row instead. An order to

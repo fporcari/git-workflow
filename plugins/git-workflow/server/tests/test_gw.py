@@ -266,6 +266,44 @@ class FixtureVerbsTest(unittest.TestCase):
         self.assertEqual(self.verb("api", "repos/{repo}/branches/main/protection"),
                          {"enforce_admins": {"enabled": True}})
 
+    def test_raw_field_is_json_where_a_plain_field_is_a_string(self):
+        """A form field typed as a bool rejects the string "true" with a 422,
+        which is what left `gw pr merge`'s own call impossible to compose."""
+        with mock.patch("providers.fixture.FixtureProvider.api", return_value=None) as api:
+            self.verb("api", "repos/{repo}/pulls/7/merge", "-X", "POST",
+                      "-f", "Do=merge", "-F", "delete_branch_after_merge=true")
+        self.assertEqual(api.call_args.kwargs["fields"],
+                         {"Do": "merge", "delete_branch_after_merge": True})
+
+    def test_a_raw_field_that_is_not_json_is_refused_by_name(self):
+        code, out, err = run(*self.R, "api", "repos/{repo}/x", "-F", "flag=yes")
+        self.assertEqual((code, out), (1, ""))
+        self.assertIn("not JSON", err)
+
+    def test_merge_reports_the_state_of_every_issue_the_pr_closed(self):
+        merged = self.verb("pr", "merge", "7", "--delete-branch")
+        self.assertEqual((merged["n"], merged["state"], merged["merge"]),
+                         (7, "merged", "MERGED"))
+        self.assertEqual(merged["closes"],
+                         [{"issue": 3, "source": "provider", "state": "closed"}])
+
+    def test_squash_is_the_callers_reading_and_reaches_the_provider(self):
+        with mock.patch("providers.fixture.FixtureProvider.merge") as merge:
+            merge.return_value = {"state": "merged", "merge": "MERGED", "closes": []}
+            self.verb("pr", "merge", "7", "--squash", "--delete-branch")
+            self.assertEqual(merge.call_args.kwargs,
+                             {"method": "squash", "delete_branch": True})
+            merge.reset_mock()
+            self.verb("pr", "merge", "7")
+            self.assertEqual(merge.call_args.kwargs,
+                             {"method": "merge", "delete_branch": False})
+
+    def test_the_merge_command_handed_to_the_user_carries_no_token(self):
+        """It used to be a curl with $FORGEJO_TOKEN in it: a command nobody
+        could paste without leaking the token the keychain exists to hold."""
+        command = base.Provider().merge_command("acme/widgets", 7)
+        self.assertEqual(command, "gw pr merge 7 --repo acme/widgets --delete-branch")
+
     def test_a_missing_item_exits_1_with_a_message(self):
         code, out, err = run(*self.R, "pr", "view", "99")
         self.assertEqual((code, out), (1, ""))
@@ -463,6 +501,23 @@ class ForgejoShapeTest(unittest.TestCase):
         # Forgejo never withdrew is not something anybody still owes.
         self.assertEqual(pr, dict(EXPECTED, merge="CLEAN", req=[],
                                   closes=[{"issue": 4, "source": "body"}]))
+
+    def test_merge_sends_delete_branch_as_a_bool(self):
+        """Forgejo's form field is a Go bool: the string "true" comes back as
+        a 422, so the body has to carry a real one."""
+        p = self.provider()
+        sent = []
+
+        def record(path, method="GET", params=None, fields=None, accept=None):
+            sent.append((method, path, fields))
+            if path.endswith("/merge"):
+                return ""
+            return self.request(path, method, params, None, accept)
+
+        with mock.patch.object(ForgejoProvider, "_request", side_effect=record):
+            p.merge("acme/widgets", 12, method="squash", delete_branch=True)
+        self.assertEqual(sent[0], ("POST", "/repos/acme/widgets/pulls/12/merge",
+                                   {"Do": "squash", "delete_branch_after_merge": True}))
 
     def test_a_reviewer_who_answered_is_no_longer_pending(self):
         """Forgejo keeps `requested_reviewers` after the review lands; an

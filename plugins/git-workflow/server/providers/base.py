@@ -129,8 +129,15 @@ class Provider:
 
     def merge_command(self, repo, n):
         """The exact CLI command that merges the PR — handed to the user,
-        never executed by the desk."""
-        raise NotImplementedError
+        never executed by the desk.
+
+        One command for every service, because `gw pr merge` is one verb for
+        every service: a command carrying a service's own token was something
+        the user could not paste without leaking it. `--squash` is left off:
+        it belongs to a branch carrying fixups or merge commits, which is a
+        reading of the branch, not a property of the provider.
+        """
+        return "gw pr merge %s --repo %s --delete-branch" % (n, repo)
 
     def default_branch(self, repo):
         """The branch a PR targets unless told otherwise — the one base whose
@@ -208,6 +215,16 @@ class Provider:
         raise NotImplementedError
 
     def add_reviewers(self, repo, n, who):
+        raise NotImplementedError
+
+    def merge(self, repo, n, method="merge", delete_branch=False):
+        """Merge the pull request and return its detail read back.
+
+        `method` is "merge" or "squash"; the caller decides, having read
+        whether the branch carries fixups or merge commits. Reading the PR
+        back is the point: a merge nobody verified is how a queue grows a
+        row that everybody believes is gone.
+        """
         raise NotImplementedError
 
     def comment(self, repo, n, body):

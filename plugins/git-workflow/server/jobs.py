@@ -58,9 +58,11 @@ WRITE_TOOLS = (
     "Bash(gh api --input:*),"
     "Bash(gw pr create:*),Bash(gw pr edit:*),Bash(gw pr comment:*),"
     "Bash(gw issue create:*),Bash(gw issue edit:*),Bash(gw issue comment:*),"
+    "Bash(gw pr merge:*),"
     "Bash(gw label:*),Bash(gw api -X POST:*),Bash(gw api -X PATCH:*),"
     "Bash(gw api -X PUT:*),Bash(gw api -X DELETE:*),Bash(gw api --method:*),"
-    "Bash(gw api -f:*),Bash(gw api --field:*)"
+    "Bash(gw api -f:*),Bash(gw api --field:*),"
+    "Bash(gw api -F:*),Bash(gw api --raw-field:*)"
 )
 
 

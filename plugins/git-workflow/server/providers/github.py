@@ -218,9 +218,6 @@ class GitHubProvider(Provider):
             "url": "https://github.com/%s/pull/%s" % (repo, node["number"]),
         }
 
-    def merge_command(self, repo, n):
-        return "gh pr merge %s --repo %s --squash --delete-branch" % (n, repo)
-
     def default_branch(self, repo):
         return _gh("repo", "view", repo, "--json", "defaultBranchRef",
                    "--jq", ".defaultBranchRef.name").strip() or "main"
@@ -369,6 +366,13 @@ class GitHubProvider(Provider):
     def add_reviewers(self, repo, n, who):
         self._rest("repos/%s/pulls/%s/requested_reviewers" % (repo, n), "POST",
                    body={"reviewers": list(who)})
+
+    def merge(self, repo, n, method="merge", delete_branch=False):
+        args = ["pr", "merge", str(n), "--repo", repo, "--%s" % method]
+        if delete_branch:
+            args.append("--delete-branch")
+        _gh(*args)
+        return self.pr_detail(repo, n)
 
     def comment(self, repo, n, body):
         made = self._rest("repos/%s/issues/%s/comments" % (repo, n), "POST", body={"body": body})

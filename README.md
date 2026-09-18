@@ -274,15 +274,18 @@ gw issue list · issue view <n>
 gw issue create --title T --body-file F [--label L] [--assignee @me]
 gw pr create --title T --body-file F --head BRANCH [--base B] [--draft] [--label L] [--assignee @me] [--reviewer L]
 gw pr edit <n> --add-reviewer L · pr comment <n> --body-file F · issue edit · issue comment
+gw pr merge <n> [--squash] [--delete-branch] · pr verified <n> --sha SHA
 gw label ensure NAME [--color HEX] [--description D]
-gw api <endpoint> [-X METHOD] [-f k=v]      # {repo} expands to owner/repo
+gw api <endpoint> [-X METHOD] [-f k=v] [-F k=json]   # {repo} expands to owner/repo
 ```
 
 JSON out, the same shape on both services (`server/providers/base.py`). Exit
 1 when the service refuses or the item does not exist, 2 when the origin's
 host is unknown. `pr create` refuses a reviewer who is not a collaborator and
-exits 1 when the body's `Fixes #n` linked nothing. There is no verb that
-rewrites a PR body.
+exits 1 when the body's `Fixes #n` linked nothing. `pr merge` reads the PR
+back and reports the state of every issue its body closes. `-f` sends a
+string, `-F` a JSON value — a form field typed as a bool refuses the string.
+There is no verb that rewrites a PR body.
 
 ## Tests
 

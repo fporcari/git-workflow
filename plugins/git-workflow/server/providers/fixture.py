@@ -81,9 +81,6 @@ class FixtureProvider(Provider):
         return {"rows": rows, "total": self.data.get("issues_total", len(rows)),
                 "truncated": bool(self.data.get("issues_truncated"))}
 
-    def merge_command(self, repo, n):
-        return "gh pr merge %s --repo %s --squash --delete-branch" % (n, repo)
-
     def default_branch(self, repo):
         return self.data.get("default_branch") or "main"
 
@@ -122,7 +119,8 @@ class FixtureProvider(Provider):
             raise RuntimeError("fixture has no PR %s" % n)
         reviews = row.get("reviews") or []
         return {"n": n, "title": row["title"], "body": row.get("summary") or "",
-                "state": "open", "draft": row.get("draft", False), "author": row["author"],
+                "state": row.get("state") or "open",
+                "draft": row.get("draft", False), "author": row["author"],
                 "assignees": row.get("assignees") or [row["author"]],
                 "labels": row.get("labels") or [], "created": row["created"], "updated": None,
                 "base": {"ref": row.get("base"), "sha": row.get("base_head")},
@@ -149,7 +147,7 @@ class FixtureProvider(Provider):
         row = next((row for row in self.data["issues"] if row["n"] == n), None)
         if not row:
             raise RuntimeError("fixture has no issue %s" % n)
-        return {"n": n, "title": row["title"], "body": "", "state": "open",
+        return {"n": n, "title": row["title"], "body": "", "state": row.get("state") or "open",
                 "author": row["author"], "assignees": row.get("assignees") or [],
                 "labels": row.get("labels") or [], "created": row["created"],
                 "updated": row.get("updated"), "url": row.get("url"), "comments": []}
@@ -205,6 +203,24 @@ class FixtureProvider(Provider):
     def add_reviewers(self, repo, n, who):
         item = self._item(n)
         item["req"] = item.get("req", []) + [w for w in who if w not in item.get("req", [])]
+
+    def merge(self, repo, n, method="merge", delete_branch=False):
+        item = self._item(n)
+        item["state"], item["merge"] = "merged", "MERGED"
+        self.data.setdefault("merges", []).append(
+            {"n": n, "method": method, "delete_branch": delete_branch})
+        detail = self.pr_detail(repo, n)
+        for closed in detail["closes"]:
+            self._close(closed["issue"])
+        return detail
+
+    def _close(self, n):
+        recorded = (self.data.get("issue_details") or {}).get(str(n))
+        if recorded:
+            recorded["state"] = "closed"
+        for issue in self.data.get("issues") or []:
+            if issue["n"] == n:
+                issue["state"] = "closed"
 
     def comment(self, repo, n, body):
         self._item(n)
