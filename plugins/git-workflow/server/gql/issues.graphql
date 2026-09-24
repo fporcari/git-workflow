@@ -8,6 +8,7 @@ query($o:String!,$r:String!,$after:String){
         labels(first:10){nodes{name}}
         assignees(first:5){nodes{login}}
         comments{totalCount}
+        closedByPullRequestsReferences(first:5){nodes{number}}
       }
     }
   }

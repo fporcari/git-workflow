@@ -276,7 +276,7 @@ const AUTORUN_TIP="Cosa può fare pr-loop da solo: A1 merge (tua PR approvata e 
 
 let meta={},writeToken="",DESK="pr",prs=[],issues=[],chase={},grid=null,shortlist=null,session=null;
 let loaded=false,view="todo",query="",stateFilter=null,agentReady=true;
-let issuesTruncated=null,triageComplete=false,ranked=false,gates={};
+let issuesTruncated=null,issuesWithPr=0,triageComplete=false,ranked=false,gates={};
 let selected=null,tab="quadro",sort={key:"created",dir:-1},acting={},truncated=null,pendingMerge=false;
 const POLL=30000,STALE_PAINT=70;   // a paint older than two polls is behind
 let deskEtag=null,fetching=false,lastGenerated=null,lastPaintAt=null,timings={};
@@ -432,7 +432,7 @@ function applyDesk(d){
   prs=d.queue.rows;issues=d.issues.rows;chase=d.queue.chase||{};
   session=d.queue.session;lastGenerated=d.generated;lastPaintAt=Date.now();
   truncated=d.queue.truncated?d.queue.total:null;
-  issuesTruncated=d.issues.truncated?d.issues.total:null;
+  issuesTruncated=d.issues.truncated?d.issues.total:null;issuesWithPr=d.issues.excluded_with_pr||0;
   triageComplete=!!d.queue.triage_complete;
   ranked=!!d.issues.ranked;
   gates=d.queue.gates||{};
@@ -1173,7 +1173,7 @@ function renderSummary(){
       el.textContent=["unassigned","defect","assigned","in shortlist"][i];});
     $("cIssues").textContent=issues.length;$("cPrs").textContent="—";
     $("leadTitle").textContent=free?`${free} issue senza assignee`:"tutte le issue hanno un assignee";
-    $("leadSub").textContent=`${issues.length} aperte · provider ${meta.provider||"—"}`;
+    $("leadSub").textContent=`${issues.length} aperte${issuesWithPr?` · ${issuesWithPr} escluse perché hanno una PR aperta`:""} · provider ${meta.provider||"—"}`;
   }else{
     const c={ready:0,attention:0,waiting:0,decision:0};
     const current=prs.filter(r=>r.triage_status==="current");
@@ -1202,7 +1202,7 @@ function renderSummary(){
     else notes.push(`<b>Triage corrente</b>${session?` — ${esc(session)}`:""}.`);
   }
   if(truncated)notes.push(`<b>Coda troncata:</b> il provider dichiara ${truncated} PR e la pagina ne porta ${prs.length}. Le mancanti non sono in tabella.`);
-  if(issuesTruncated)notes.push(`<b>Issue troncate:</b> il repo ne ha ${issuesTruncated} aperte e il desk ne porta ${issues.length}. Le più vecchie non sono in tabella.`);
+  if(issuesTruncated)notes.push(`<b>Issue troncate:</b> il repo ne ha ${issuesTruncated} aperte e il desk ne ha lette ${issues.length+issuesWithPr}. Le più vecchie non sono in tabella.`);
   if(pendingMerge)notes.push("Lo stato di merge è la lettura più costosa del provider: arriva un attimo dopo, la tabella si riempie da sola.");
   banner("noteBox",notes.join(" · "),notes.length);
   renderSync();

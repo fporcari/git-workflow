@@ -3,7 +3,8 @@
 issue-triage Step 1 is four questions, and every one of them is data:
 
     has anyone already worked this?      a remote branch matching (^|/)<n>-
-    is there already a PR on it?         closingIssuesReferences of the queue
+    is there already a PR on it?         the issue's linked PRs, plus
+                                         closingIssuesReferences of the queue
     have I already looked at it?         the provider's `commenter:<me>` search
     is it mine to work?                  assignees
 
@@ -62,7 +63,10 @@ def annotate(issue_rows, check):
     for row in issue_rows:
         n = row["n"]
         refs = branches_for(n, check["branches"])
-        prs = check["open_prs"].get(str(n)) or []
+        # the queue only holds PRs involving me; the provider's own link,
+        # where it has one, sees everybody's
+        prs = sorted(set(check["open_prs"].get(str(n)) or [])
+                     | set(row.get("prs") or []))
         row["cross"] = {
             "branches": refs,
             "open_prs": prs,

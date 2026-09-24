@@ -271,6 +271,8 @@ class GitHubProvider(Provider):
                 "assignees": [a["login"] for a in issue["assignees"]["nodes"]],
                 "comments": issue["comments"]["totalCount"],
                 "url": issue["url"],
+                "prs": [pr["number"] for pr in
+                        issue["closedByPullRequestsReferences"]["nodes"]],
             })
         rows.sort(key=lambda r: r["created"], reverse=True)
         return {"rows": rows, "total": total, "truncated": more}

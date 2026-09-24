@@ -465,15 +465,19 @@ class Desk:
             shortlist = issuecheck.shortlist_export(rows)
         except Exception as exc:
             for row in rows:
-                row.setdefault("cross", {"branches": [], "open_prs": [],
+                row.setdefault("cross", {"branches": [], "open_prs": row.get("prs") or [],
                                          "seen_by_me": None, "mine": None,
                                          "note": "cross-check non disponibile: %s"
                                                  % str(exc)[:80]})
             shortlist = None
+        # an open PR already carries the issue: it is the PR desk's to follow
+        kept = [row for row in rows if not row["cross"]["open_prs"]]
+        excluded, rows = len(rows) - len(kept), kept
         picked = {r["n"] for r in (shortlist or {}).get("rows", [])}
         for row in rows:
             row["in_shortlist"] = row["n"] in picked
         return {"rows": rows, "total": raw.get("total", len(rows)),
+                "excluded_with_pr": excluded,
                 "truncated": raw.get("truncated", False),
                 "shortlist": shortlist,
                 "ranked": bool(shortlist and any(r.get("impact")

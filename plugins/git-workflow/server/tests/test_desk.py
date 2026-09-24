@@ -106,7 +106,7 @@ class RowContract(unittest.TestCase):
 
     def test_issues_report_their_own_total(self):
         got = fresh_desk().issues()
-        self.assertEqual(got["total"], len(got["rows"]))
+        self.assertEqual(got["total"], len(got["rows"]) + got["excluded_with_pr"])
         self.assertFalse(got["truncated"])
 
     def test_a_truncated_issue_list_is_reported(self):
@@ -2047,6 +2047,29 @@ class IssueCrossCheck(unittest.TestCase):
                                     "branches": ["feature/812-empty-grid"],
                                     "open_prs": {}})
         self.assertIn("lavoro fermo", row["cross"]["note"])
+
+    def test_a_pr_the_queue_does_not_hold_still_counts(self):
+        """The queue is `involves:me`: a colleague's PR on an issue I never
+        touched only reaches the desk through the issue's own link."""
+        row = {"n": 5, "assignees": [], "title": "t", "prs": [12]}
+        issuecheck.annotate([row], {"commented": [], "assigned_to_me": [],
+                                    "branches": [], "open_prs": {"5": [9, 12]}})
+        self.assertEqual(row["cross"]["open_prs"], [9, 12])
+        self.assertEqual(row["cross"]["note"], "PR aperta: #9 #12")
+
+    def test_an_issue_with_an_open_pr_leaves_the_desk(self):
+        desk = fresh_desk()
+        linked = next(i for i in desk.provider.data["issues"]
+                      if not any(c["issue"] == i["n"]
+                                 for r in desk.provider.data["rows"]
+                                 for c in r.get("closes") or []))
+        linked["prs"] = [4242]
+        got = desk.issues()
+        shown = {r["n"] for r in got["rows"]}
+        self.assertNotIn(linked["n"], shown)
+        self.assertNotIn(1160, shown, "closed by queue PR #1164")
+        self.assertTrue(got["excluded_with_pr"] >= 2)
+        self.assertFalse(any(r["cross"]["open_prs"] for r in got["rows"]))
 
     def test_the_desk_computes_the_shortlist_every_read(self):
         got = fresh_desk().issues()
