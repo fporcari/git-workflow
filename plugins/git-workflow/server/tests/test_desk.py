@@ -3090,6 +3090,22 @@ class DeskClosing(unittest.TestCase):
         self.assertIsNone(deskstate.chat_attached(self.R, desk="pr"),
                           "close detaches the chat it closed for")
 
+    def test_close_spares_a_desk_another_live_chat_listens_to(self):
+        """A second chat opening the same desk is refused by its listener; its
+        close must not kill the desk the first chat is working on."""
+        proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+        self.addCleanup(self._reap, proc)
+        deskstate.update(self.R, lambda state: state.setdefault("desks", {})
+                         .update(issue={"pid": proc.pid, "port": 8398}))
+        deskstate.chat_heartbeat(self.R, "owner-chat", "issue")
+        out = self._cli("close", "--repo", self.R)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn("issue desk lasciato aperto: lo ascolta la sessione owner-chat",
+                      out.stdout)
+        time.sleep(0.5)
+        self.assertIsNone(proc.poll(), "the owner's desk was killed")
+        self.assertEqual(deskstate.live_desks(self.R), ["issue"])
+
     def test_close_on_a_desk_already_gone_is_not_an_error(self):
         deskstate.register_desk(self.R, "pr", 8399)
         deskstate.desk_stopped(self.R, "pr")

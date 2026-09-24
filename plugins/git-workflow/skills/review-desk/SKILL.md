@@ -139,12 +139,15 @@ protocol; restart desks and listeners after updating the plugin.
   keeps talking here, and each click arrives as a notification of two lines —
   the command it stands for and the request record as JSON. Never arm a second
   one. **The monitor's expiry is a doze, not the desk's death**:
-  - the desk gone (`■ desk chiuso`: ⏻ button, idle exit, kill), an error, or
-    the listener refusing to attach — run
+  - the listener refusing to attach (`desk already attached to session <id>`)
+    — another live chat owns the desk: report the owner, arm nothing, never
+    `close`;
+  - the desk gone (`■ desk chiuso`: ⏻ button, idle exit, kill) or any other
+    error — run
     `python3 <PLUGIN_ROOT>/server/chatdesk.py close --repo <owner/repo> --session <session-id> --desk <desk>`,
-    which terminates whatever server is still up and detaches on the way out
-    (a no-op on a desk already gone), then retitle the chat ` · closed` and
-    arm nothing else;
+    which terminates whatever server is still up — except one another live
+    chat listens to — and detaches on the way out (a no-op on a desk already
+    gone), then retitle the chat ` · closed` and arm nothing else;
   - the 30-minute expiry the tool imposes — start
     `python3 <PLUGIN_ROOT>/server/chatdesk.py doze --repo <owner/repo> --session <session-id> --desk <desk>`
     as a background shell (Bash `run_in_background`: no cap). It heartbeats

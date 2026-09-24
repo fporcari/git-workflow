@@ -97,7 +97,11 @@ keep their own profiles.
     arm the monitor again, the same call as above, and it claims that click.
     It ends with `■ desk chiuso` when the desk goes: `close`, retitle, arm
     nothing.
-  - an error, or the listener refusing to attach: `close`, and report it.
+  - the listener refusing to attach (`desk already attached to session
+    <id>`): another live chat owns this desk. Report the owner and arm
+    nothing — never `close`: that desk is the other chat's work.
+  - any other error: `close`, and report it. `close` leaves up a desk
+    another live chat listens to, and says so.
 
   One ear at a time — the monitor or the doze, never both — and the monitor
   is armed again only on `⏰ sveglia`, never on an expiry.

@@ -200,9 +200,14 @@ def close(repo, session, desk="both", out=sys.stdout, grace=5):
     state = deskstate.load(repo)
     kinds = ("pr", "issue") if desk == "both" else (desk,)
     live = deskstate.live_desks(repo, state)
-    stopped = []
+    stopped, kept = [], []
     for kind in kinds:
         if kind not in live:
+            continue
+        # a desk another live chat listens to is that chat's, not ours to kill
+        owner = deskstate.chat_attached(repo, state, desk=kind)
+        if owner and owner.get("session") != session:
+            kept.append((kind, owner["session"]))
             continue
         pid = ((state.get("desks") or {}).get(kind) or {}).get("pid")
         try:
@@ -217,6 +222,8 @@ def close(repo, session, desk="both", out=sys.stdout, grace=5):
         if survivors:
             time.sleep(0.2)
     deskstate.chat_detach(repo, session)
+    for kind, owner in kept:
+        out.write("%s desk lasciato aperto: lo ascolta la sessione %s\n" % (kind, owner))
     out.write("\u25a0 desk chiuso \u00b7 %s%s\n"
               % (repo, " \u00b7 " + " ".join(stopped) if stopped else ""))
     if survivors:

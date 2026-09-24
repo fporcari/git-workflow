@@ -229,6 +229,9 @@ class Packaging(unittest.TestCase):
             self.assertIn("chatdesk.py doze", text, name)
             self.assertIn("run_in_background", text, name)
             self.assertIn("⏰ sveglia", text, name)
+            flat = " ".join(text.split())
+            self.assertIn("desk already attached to session", flat, name)
+            self.assertIn("never `close`", flat, name)
 
     def test_the_pr_loop_hook_ships_for_claude_and_stays_out_of_codex(self):
         """Claude Code loads hooks/hooks.json; Codex ignores the directory, so

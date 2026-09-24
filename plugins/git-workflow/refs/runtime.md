@@ -104,7 +104,9 @@ as a background shell, which has no cap, keeps the chat attached, and ends at
 the next click with `⏰ sveglia` — the one cue to arm the Monitor again. When
 the desk itself is gone (`■ desk chiuso`), or the ear fails, the chat runs
 `chatdesk.py close` — server terminated, chat retitled ` · closed` — and arms
-nothing.
+nothing. A listener refused because another live chat owns the desk is not a
+failed ear: that chat reports the owner and closes nothing, and `close` itself
+never terminates a desk another live chat listens to.
 Each listener passes a stable conversation `--session` and an explicit
 `--desk pr|issue|both`; one live conversation owns each desk. While that
 heartbeat is fresh the server routes each non-triage click to its owning
