@@ -2879,6 +2879,54 @@ class ListeningChat(unittest.TestCase):
         self.assertIsNone(deskstate.load(REPO).get("chats", {}).get("test-chat"),
                           "the monitor's death must detach the chat")
 
+    def _doze(self):
+        return subprocess.Popen(
+            (sys.executable, str(ROOT / "chatdesk.py"), "doze",
+             "--repo", REPO, "--session", "test-chat"),
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            env=dict(os.environ, HOME=_HOME))
+
+    def _until_listening(self):
+        for _ in range(50):
+            if deskstate.chat_listening(REPO):
+                return True
+            time.sleep(0.1)
+        return False
+
+    def test_doze_wakes_on_a_click_and_leaves_it_to_listen(self):
+        """The monitor expired; a click must still reach this chat, not a
+        one-shot agent, and the claim stays listen's."""
+        proc = self._doze()
+        try:
+            self.assertTrue(self._until_listening())
+            time.sleep(1.2)
+            self.assertIsNone(proc.poll(), "no click, no wake")
+            deskstate.request(REPO, "issue-analyze:7", "issue-analyze", 7,
+                              via="chat", session="test-chat")
+            out, err = proc.communicate(timeout=10)
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.communicate()
+        self.assertEqual(proc.returncode, 0, err)
+        self.assertEqual(out, "\u23f0 sveglia \u00b7 /issue-analyze 7\n")
+        self.assertEqual(deskstate.load(REPO)["requests"]["issue-analyze:7"]["status"],
+                         "queued")
+        self.assertTrue(deskstate.chat_attached(REPO),
+                        "listen is armed right after: the chat stays attached")
+
+    def test_doze_has_no_deadline_and_detaches_when_killed(self):
+        proc = self._doze()
+        try:
+            self.assertTrue(self._until_listening())
+            proc.terminate()
+            proc.communicate(timeout=5)
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.communicate()
+        self.assertIsNone(deskstate.load(REPO).get("chats", {}).get("test-chat"))
+
 
 class DeskClosing(unittest.TestCase):
     """The chat's ear tells a closed desk from a silent one: the server
@@ -2949,6 +2997,28 @@ class DeskClosing(unittest.TestCase):
                          {"closed": True, "repo": self.R})
         self.assertIsNone(deskstate.load(self.R).get("chats", {}).get("test-chat"),
                           "a closed ear is a detached chat")
+
+    def test_doze_ends_with_the_closing_line_when_the_desk_stops(self):
+        deskstate.register_desk(self.R, "pr", 8399)
+        proc = subprocess.Popen(
+            (sys.executable, str(ROOT / "chatdesk.py"), "doze",
+             "--repo", self.R, "--session", "test-chat", "--desk", "both"),
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            env=dict(os.environ, HOME=_HOME))
+        try:
+            for _ in range(50):
+                if deskstate.chat_listening(self.R):
+                    break
+                time.sleep(0.1)
+            deskstate.desk_stopped(self.R, "pr")
+            out, err = proc.communicate(timeout=10)
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.communicate()
+        self.assertEqual(proc.returncode, 0, err)
+        self.assertEqual(out.splitlines()[0], "■ desk chiuso · %s" % self.R)
+        self.assertIsNone(deskstate.load(self.R).get("chats", {}).get("test-chat"))
 
     def test_listen_stays_while_the_sibling_desk_is_up(self):
         deskstate.register_desk(self.R, "pr", 8399)

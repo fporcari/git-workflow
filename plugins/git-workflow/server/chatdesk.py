@@ -15,6 +15,14 @@ the buttons enqueue, and the pair of commands here is its whole contract:
         it keeps heartbeating while the chat works, later clicks queue
         behind the conversation instead of slipping to a one-shot agent.
 
+    python3 chatdesk.py doze --repo owner/repo --session chat-id --desk pr
+        The ear between two monitors, for Claude Code, whose Monitor dies at
+        30 minutes: run as a background shell when the monitor expires, it
+        heartbeats with no deadline, claims nothing, and exits with a
+        `⏰ sveglia` line as soon as a click is queued for this chat — the
+        chat then arms `listen` again, which claims it. Exits with
+        `■ desk chiuso` once the selected desk is gone.
+
     python3 chatdesk.py wait --repo owner/repo --session chat-id --desk pr [--timeout 540]
         The same ear for hosts without a monitor: heartbeat until a click
         arrives, claim it, print it as JSON and exit. Prints {"idle": true}
@@ -137,6 +145,38 @@ def listen(repo, session, timeout=None, out=sys.stdout, desk="pr"):
             time.sleep(LISTEN_POLL)
     finally:
         deskstate.chat_detach(repo, session)
+
+
+def doze(repo, session, out=sys.stdout, desk="pr"):
+    """The ear between two monitors. A monitor cannot outlive its cap, and a
+    desk that died with it was dying under the user's hands: this keeps the
+    chat attached with no deadline, claims nothing, and returns as soon as a
+    click is queued for it — the cue to arm `listen` again, which takes it."""
+    def bye(*_):
+        raise SystemExit(0)
+    signal.signal(signal.SIGTERM, bye)
+    last_beat = 0
+    try:
+        while True:
+            now = time.time()
+            if now - last_beat >= HEARTBEAT_EVERY:
+                deskstate.chat_heartbeat(repo, session, desk)
+                last_beat = now
+            record = deskstate.request_waiting(repo, session, desk)
+            if record:
+                out.write("\u23f0 sveglia · %s\n" % command_for(record))
+                out.flush()
+                return
+            if deskstate.desks_closed(repo, desk=desk):
+                deskstate.chat_detach(repo, session)
+                out.write("■ desk chiuso · %s\n" % repo)
+                out.write(json.dumps(closed_record(repo)) + "\n")
+                out.flush()
+                return
+            time.sleep(LISTEN_POLL)
+    except SystemExit:
+        deskstate.chat_detach(repo, session)
+        raise
 
 
 def wait(repo, timeout, session, desk="pr"):
@@ -270,8 +310,8 @@ def fail(repo, key, why, session, request_id):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action",
-                        choices=("listen", "wait", "result", "fail", "detach",
-                                 "close"))
+                        choices=("listen", "doze", "wait", "result", "fail",
+                                 "detach", "close"))
     parser.add_argument("--repo", required=True)
     parser.add_argument("--timeout", type=int, default=None,
                         help="wait: seconds before {\"idle\": true} "
@@ -288,6 +328,9 @@ def main():
     if args.action == "listen":
         with listener(args.repo, args.session):
             listen(args.repo, args.session, args.timeout, desk=args.desk)
+    elif args.action == "doze":
+        with listener(args.repo, args.session):
+            doze(args.repo, args.session, desk=args.desk)
     elif args.action == "wait":
         timeout = 540 if args.timeout is None else args.timeout
         with listener(args.repo, args.session):

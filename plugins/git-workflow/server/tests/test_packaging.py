@@ -222,6 +222,14 @@ class Packaging(unittest.TestCase):
             self.assertIn("Monitor(", text, name)
             self.assertNotIn("CLAUDE_PLUGIN_ROOT", text, name)
 
+    def test_the_monitor_expiry_dozes_instead_of_closing_the_desk(self):
+        """The Monitor dies at 30 minutes; the desk must not die with it."""
+        for name in ("pr-desk", "issue-desk", "review-desk"):
+            text = (PLUGIN / "skills" / name / "SKILL.md").read_text()
+            self.assertIn("chatdesk.py doze", text, name)
+            self.assertIn("run_in_background", text, name)
+            self.assertIn("⏰ sveglia", text, name)
+
     def test_the_pr_loop_hook_ships_for_claude_and_stays_out_of_codex(self):
         """Claude Code loads hooks/hooks.json; Codex ignores the directory, so
         the guard costs it nothing and the skills stay host-agnostic."""

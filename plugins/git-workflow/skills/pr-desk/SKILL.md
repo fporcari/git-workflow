@@ -68,26 +68,39 @@ keep their own profiles.
   owned by another live chat rejects attachment: report the owner, never
   silently take it over.
 
-  `1800000` is the tool's ceiling: a larger number is capped without a word,
-  and the expiry that follows is the monitor working, not failing.
+  `1800000` is the tool's ceiling: a larger number is capped without a word.
 
-  **The ear's death is the desk's death.** The monitor ends two ways and both
-  close the desk: its selected desk is gone (both selected desks for
-  `--desk both`) and the notification reads `■ desk chiuso`, or the ear is
-  gone — the 30-minute expiry, an error, the session going down. Either way,
-  run
+  **The monitor's expiry is a doze, not the desk's death.** The monitor ends
+  three ways:
 
-  ```sh
-  python3 <PLUGIN_ROOT>/server/chatdesk.py close --repo <owner/repo> \
-      --session <session-id> --desk pr
-  ```
+  - `■ desk chiuso` (⏻, idle exit, kill): the desk is gone. Run
 
-  then retitle the chat ` · closed` and arm nothing else. `close` terminates
-  whatever server is still up and detaches; on a desk already gone it is a
-  no-op. **Never re-arm**, whatever the expiry notification suggests: a
-  re-armed monitor keeps alive a chat that is doing no work, and the death it
-  postpones arrives with the server still running and the chat still titled
-  open.
+    ```sh
+    python3 <PLUGIN_ROOT>/server/chatdesk.py close --repo <owner/repo> \
+        --session <session-id> --desk pr
+    ```
+
+    then retitle the chat ` · closed` and arm nothing else. `close` terminates
+    whatever server is still up and detaches; on a desk already gone it is a
+    no-op.
+  - the 30-minute expiry: the desk is still up and the user may click at any
+    time. Start the doze as a background shell — Bash with
+    `run_in_background`, not a Monitor: a background shell has no cap —
+
+    ```sh
+    python3 <PLUGIN_ROOT>/server/chatdesk.py doze --repo <owner/repo> \
+        --session <session-id> --desk pr
+    ```
+
+    It keeps the chat attached, so clicks still queue for this conversation,
+    claims nothing, and ends with `⏰ sveglia · <command>` at the next click:
+    arm the monitor again, the same call as above, and it claims that click.
+    It ends with `■ desk chiuso` when the desk goes: `close`, retitle, arm
+    nothing.
+  - an error, or the listener refusing to attach: `close`, and report it.
+
+  One ear at a time — the monitor or the doze, never both — and the monitor
+  is armed again only on `⏰ sveglia`, never on an expiry.
 - **Codex** (no monitor): follow the `wait` loop in the same section.
 - **Detached (opt-in)**: only when the user says to open the desk and leave
   ("apri e basta", "detached"). Arm nothing; every button starts its own

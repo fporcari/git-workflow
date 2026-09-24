@@ -325,27 +325,39 @@ def reclaim_request(repo, key):
     return update(repo, mutate)
 
 
+def _queued_for(state, session, desk):
+    mark = (state.get("chats") or {}).get(session) or {}
+    desks = set(mark.get("desks", []))
+    if desk != "both":
+        desks &= {desk}
+    if not desks:
+        return []
+    return [(key, record) for key, record in (state.get("requests") or {}).items()
+            if record.get("status") == "queued"
+            and record.get("via") == "chat-session"
+            and record.get("session") == session
+            and record.get("desk") in desks and not expired(record)]
+
+
+def request_waiting(repo, session, desk="pr"):
+    """A click queued for this chat — read only, the claim stays listen's."""
+    queued = _queued_for(load(repo), session, desk)
+    return dict(queued[0][1], key=queued[0][0]) if queued else None
+
+
 def claim_request(repo, session, desk="pr"):
     def mutate(state):
-        mark = (state.get("chats") or {}).get(session) or {}
-        desks = set(mark.get("desks", []))
-        if desk != "both":
-            desks &= {desk}
-        if not desks or _chat_busy(state, session):
+        if _chat_busy(state, session):
             return None
-        ledger = state.get("requests") or {}
-        queued = [(key, record) for key, record in ledger.items()
-                  if record.get("status") == "queued"
-                  and record.get("via") == "chat-session"
-                  and record.get("session") == session
-                  and record.get("desk") in desks and not expired(record)]
+        queued = _queued_for(state, session, desk)
         if not queued:
             return None
         key, record = min(queued, key=lambda item: item[1].get("epoch", 0))
         taken_epoch = time.time()
         record.update(status="taken", taken_at=time.strftime("%H:%M:%S"),
                       taken_epoch=taken_epoch)
-        mark["busy"] = {"key": key, "id": record["id"], "epoch": taken_epoch}
+        state["chats"][session]["busy"] = {"key": key, "id": record["id"],
+                                           "epoch": taken_epoch}
         return dict(record, key=key)
     return update(repo, mutate)
 

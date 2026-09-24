@@ -98,9 +98,13 @@ cache, rows and job JSON files by itself, and it never starts a model merely
 because the desk is open or polling. The launching conversation stays
 ATTACHED by default: on Claude Code through one persistent `Monitor` running
 `chatdesk.py listen`, on Codex through the blocking `chatdesk.py wait` loop.
-That ear is the desk's life: when it ends for any reason the chat runs
-`chatdesk.py close` — server terminated, chat retitled ` · closed` — and never
-re-arms.
+The Monitor dies at the tool's 30-minute cap, and a desk that died with it
+died under the user's hands: on that expiry the chat starts `chatdesk.py doze`
+as a background shell, which has no cap, keeps the chat attached, and ends at
+the next click with `⏰ sveglia` — the one cue to arm the Monitor again. When
+the desk itself is gone (`■ desk chiuso`), or the ear fails, the chat runs
+`chatdesk.py close` — server terminated, chat retitled ` · closed` — and arms
+nothing.
 Each listener passes a stable conversation `--session` and an explicit
 `--desk pr|issue|both`; one live conversation owns each desk. While that
 heartbeat is fresh the server routes each non-triage click to its owning

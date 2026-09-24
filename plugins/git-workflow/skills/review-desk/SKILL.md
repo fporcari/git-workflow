@@ -138,14 +138,20 @@ protocol; restart desks and listeners after updating the plugin.
   (see the pr-desk skill for the call). It does not occupy the turn: the user
   keeps talking here, and each click arrives as a notification of two lines —
   the command it stands for and the request record as JSON. Never arm a second
-  one, and never re-arm one that ended: **the ear's death is the desk's
-  death.** Whatever ends the monitor — the desk gone (`■ desk chiuso`: ⏻
-  button, idle exit, kill), or the ear gone (the 30-minute expiry the tool
-  imposes, an error, the session going down) — run
-  `python3 <PLUGIN_ROOT>/server/chatdesk.py close --repo <owner/repo> --session <session-id> --desk <desk>`,
-  which terminates whatever server is still up and detaches on the way out (a
-  no-op on a desk already gone), then retitle the chat ` · closed` and arm
-  nothing else.
+  one. **The monitor's expiry is a doze, not the desk's death**:
+  - the desk gone (`■ desk chiuso`: ⏻ button, idle exit, kill), an error, or
+    the listener refusing to attach — run
+    `python3 <PLUGIN_ROOT>/server/chatdesk.py close --repo <owner/repo> --session <session-id> --desk <desk>`,
+    which terminates whatever server is still up and detaches on the way out
+    (a no-op on a desk already gone), then retitle the chat ` · closed` and
+    arm nothing else;
+  - the 30-minute expiry the tool imposes — start
+    `python3 <PLUGIN_ROOT>/server/chatdesk.py doze --repo <owner/repo> --session <session-id> --desk <desk>`
+    as a background shell (Bash `run_in_background`: no cap). It heartbeats
+    so clicks keep queuing here, claims nothing, and ends with
+    `⏰ sveglia · <command>` at the next click — arm the monitor again, which
+    claims it — or with `■ desk chiuso`, handled as above.
+  One ear at a time; the monitor is re-armed only on `⏰ sveglia`.
 - **Codex**: the blocking form,
   `python3 <PLUGIN_ROOT>/server/chatdesk.py wait --repo <owner/repo> --session <session-id> --desk <desk> --timeout 540`,
   with the host command timeout above the wait timeout. `{"idle": true}` →
@@ -185,7 +191,7 @@ it in this conversation, by `kind`:
   conversation, and publishes the same request key and ID again once the user has
   answered and the operation is finished: only a `needs-input` result may be resumed. A replaced or expired request
   is rejected before any result is persisted.
-- When the user says stop: TaskStop the monitor (Claude Code), then
+- When the user says stop: TaskStop the monitor or the doze (Claude Code), then
   `python3 <PLUGIN_ROOT>/server/chatdesk.py close --repo <owner/repo> --session <session-id> --desk <desk>`
   on either host, and retitle the chat ` · closed`. `detach` alone drops only
   the mark — the buttons fall back to one-shot agents and the server stays up
