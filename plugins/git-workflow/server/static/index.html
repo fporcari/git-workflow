@@ -276,7 +276,7 @@ const AUTORUN_TIP="Cosa può fare pr-loop da solo: A1 merge (tua PR approvata e 
 
 let meta={},writeToken="",DESK="pr",prs=[],issues=[],chase={},grid=null,shortlist=null,session=null;
 let loaded=false,view="todo",query="",stateFilter=null,agentReady=true;
-let issuesTruncated=null,issuesWithPr=0,triageComplete=false,ranked=false,gates={};
+let issuesTruncated=null,issuesWithPr=0,issuesTaken=0,triageComplete=false,ranked=false,gates={};
 let selected=null,tab="quadro",sort={key:"created",dir:-1},acting={},truncated=null,pendingMerge=false;
 const POLL=30000,STALE_PAINT=70;   // a paint older than two polls is behind
 let deskEtag=null,fetching=false,lastGenerated=null,lastPaintAt=null,timings={};
@@ -432,7 +432,7 @@ function applyDesk(d){
   prs=d.queue.rows;issues=d.issues.rows;chase=d.queue.chase||{};
   session=d.queue.session;lastGenerated=d.generated;lastPaintAt=Date.now();
   truncated=d.queue.truncated?d.queue.total:null;
-  issuesTruncated=d.issues.truncated?d.issues.total:null;issuesWithPr=d.issues.excluded_with_pr||0;
+  issuesTruncated=d.issues.truncated?d.issues.total:null;issuesWithPr=d.issues.excluded_with_pr||0;issuesTaken=d.issues.excluded_taken||0;
   triageComplete=!!d.queue.triage_complete;
   ranked=!!d.issues.ranked;
   gates=d.queue.gates||{};
@@ -613,7 +613,7 @@ function setSort(key){
 const VIEWS=()=>DESK==="issue"?[
   {id:"shortlist",label:"Shortlist",count:shortlist?shortlist.rows.length:"—",tip:"Il batch di issue-triage: le più recenti non analizzate, con tipo e cross-check di branch e PR"},
   {id:"free",label:"Unassigned",count:issues.filter(r=>!r.assignees.length).length,tip:"Le candidate per issue-loop: nessuno le ha ancora prese"},
-  {id:"all",label:"Tutte",count:loaded?issues.length:"—",tip:"Tutte le issue aperte del repo"},
+  {id:"all",label:"Tutte",count:loaded?issues.length:"—",tip:"Le issue ancora da prendere: libere o tue, e nessuna PR aperta le cita"},
 ]:[
   {id:"untriaged",label:"Da triagiare",count:prs.filter(r=>r.triage_status!=="current").length,tip:"PR aperte che non sono mai passate da pr-triage né da un analyze"},
   {id:"todo",label:"Da fare",count:prs.filter(r=>r.triage_status==="current"&&r.state!=="waiting").length,tip:"Le PR triagiate dove la prossima mossa è tua"},
@@ -1170,10 +1170,10 @@ function renderSummary(){
       $(id).textContent=[free,issues.filter(r=>r.type==="DEFECT").length,
                          issues.length-free,shortlist?shortlist.rows.length:"—"][i];});
     document.querySelectorAll(".metric span").forEach((el,i)=>{
-      el.textContent=["unassigned","defect","assigned","in shortlist"][i];});
+      el.textContent=["unassigned","defect","tue","in shortlist"][i];});
     $("cIssues").textContent=issues.length;$("cPrs").textContent="—";
     $("leadTitle").textContent=free?`${free} issue senza assignee`:"tutte le issue hanno un assignee";
-    $("leadSub").textContent=`${issues.length} aperte${issuesWithPr?` · ${issuesWithPr} escluse perché hanno una PR aperta`:""} · provider ${meta.provider||"—"}`;
+    $("leadSub").textContent=`${issues.length} aperte${issuesWithPr?` · ${issuesWithPr} escluse perché una PR aperta le cita`:""}${issuesTaken?` · ${issuesTaken} in mano ad altri`:""} · provider ${meta.provider||"—"}`;
   }else{
     const c={ready:0,attention:0,waiting:0,decision:0};
     const current=prs.filter(r=>r.triage_status==="current");
@@ -1202,7 +1202,7 @@ function renderSummary(){
     else notes.push(`<b>Triage corrente</b>${session?` — ${esc(session)}`:""}.`);
   }
   if(truncated)notes.push(`<b>Coda troncata:</b> il provider dichiara ${truncated} PR e la pagina ne porta ${prs.length}. Le mancanti non sono in tabella.`);
-  if(issuesTruncated)notes.push(`<b>Issue troncate:</b> il repo ne ha ${issuesTruncated} aperte e il desk ne ha lette ${issues.length+issuesWithPr}. Le più vecchie non sono in tabella.`);
+  if(issuesTruncated)notes.push(`<b>Issue troncate:</b> il repo ne ha ${issuesTruncated} aperte e il desk ne ha lette ${issues.length+issuesWithPr+issuesTaken}. Le più vecchie non sono in tabella.`);
   if(pendingMerge)notes.push("Lo stato di merge è la lettura più costosa del provider: arriva un attimo dopo, la tabella si riempie da sola.");
   banner("noteBox",notes.join(" · "),notes.length);
   renderSync();

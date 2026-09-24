@@ -9,6 +9,10 @@ query($o:String!,$r:String!,$after:String){
         assignees(first:5){nodes{login}}
         comments{totalCount}
         closedByPullRequestsReferences(first:5){nodes{number}}
+        timelineItems(last:50,itemTypes:[CROSS_REFERENCED_EVENT]){
+          nodes{... on CrossReferencedEvent{
+            source{... on PullRequest{number state repository{nameWithOwner}}}}}
+        }
       }
     }
   }

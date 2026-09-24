@@ -220,10 +220,27 @@ class ForgejoProvider(Provider):
             "url": pr.get("html_url") or "%s/%s/pulls/%s" % (self.base, repo, pr["number"]),
         }
 
+    CITING = ("pull_ref", "comment_ref")
+
+    def _open_prs_on(self, repo, n):
+        """Open PRs of this repository whose body or comments cite the issue.
+        Forgejo has no batch form of this: one timeline read per issue."""
+        prs = set()
+        for event in self._get_all("/repos/%s/issues/%s/timeline" % (repo, n)):
+            ref = event.get("ref_issue") or {}
+            if (event.get("type") in self.CITING and ref.get("pull_request")
+                    and ref.get("state") == "open"
+                    and ((ref.get("repository") or {}).get("full_name") or "").lower()
+                    == repo.lower()):
+                prs.add(ref["number"])
+        return sorted(prs)
+
     def issues(self, repo):
         issues = self._get_all("/repos/%s/issues" % repo, state="open", type="issues")
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            cited = list(pool.map(lambda i: self._open_prs_on(repo, i["number"]), issues))
         rows = []
-        for issue in issues:
+        for issue, prs in zip(issues, cited):
             rows.append({
                 "n": issue["number"],
                 "title": issue["title"],
@@ -234,6 +251,7 @@ class ForgejoProvider(Provider):
                 "assignees": [a["login"] for a in issue.get("assignees") or []],
                 "comments": issue.get("comments") or 0,
                 "url": issue.get("html_url") or "%s/%s/issues/%s" % (self.base, repo, issue["number"]),
+                "prs": prs,
             })
         rows.sort(key=lambda r: r["created"], reverse=True)
         return {"rows": rows, "total": len(rows), "truncated": False}

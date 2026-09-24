@@ -80,6 +80,18 @@ def _graphql(doc, timeout=90, **variables):
     return json.loads(_gh(*args, timeout=timeout))["data"]
 
 
+def _open_prs_on(issue, repo):
+    """Open PRs of this repository that close the issue or merely cite it."""
+    linked = {pr["number"] for pr in issue["closedByPullRequestsReferences"]["nodes"]}
+    for event in issue["timelineItems"]["nodes"]:
+        source = (event or {}).get("source") or {}
+        if (source.get("state") == "OPEN"
+                and ((source.get("repository") or {}).get("nameWithOwner") or "").lower()
+                == repo.lower()):
+            linked.add(source["number"])
+    return sorted(linked)
+
+
 class GitHubProvider(Provider):
     name = "github"
 
@@ -271,8 +283,7 @@ class GitHubProvider(Provider):
                 "assignees": [a["login"] for a in issue["assignees"]["nodes"]],
                 "comments": issue["comments"]["totalCount"],
                 "url": issue["url"],
-                "prs": [pr["number"] for pr in
-                        issue["closedByPullRequestsReferences"]["nodes"]],
+                "prs": _open_prs_on(issue, repo),
             })
         rows.sort(key=lambda r: r["created"], reverse=True)
         return {"rows": rows, "total": total, "truncated": more}

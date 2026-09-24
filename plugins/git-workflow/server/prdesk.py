@@ -470,14 +470,19 @@ class Desk:
                                          "note": "cross-check non disponibile: %s"
                                                  % str(exc)[:80]})
             shortlist = None
-        # an open PR already carries the issue: it is the PR desk's to follow
-        kept = [row for row in rows if not row["cross"]["open_prs"]]
-        excluded, rows = len(rows) - len(kept), kept
+        # the desk shows only what is still to take: an open PR citing the
+        # issue already carries it, and somebody else's assignment is theirs
+        with_pr = [row for row in rows if row["cross"]["open_prs"]]
+        taken = [row for row in rows if not row["cross"]["open_prs"]
+                 and row["assignees"] and self.me not in row["assignees"]]
+        gone = {row["n"] for row in with_pr + taken}
+        rows = [row for row in rows if row["n"] not in gone]
         picked = {r["n"] for r in (shortlist or {}).get("rows", [])}
         for row in rows:
             row["in_shortlist"] = row["n"] in picked
         return {"rows": rows, "total": raw.get("total", len(rows)),
-                "excluded_with_pr": excluded,
+                "excluded_with_pr": len(with_pr),
+                "excluded_taken": len(taken),
                 "truncated": raw.get("truncated", False),
                 "shortlist": shortlist,
                 "ranked": bool(shortlist and any(r.get("impact")

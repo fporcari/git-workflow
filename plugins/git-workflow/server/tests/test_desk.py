@@ -106,7 +106,8 @@ class RowContract(unittest.TestCase):
 
     def test_issues_report_their_own_total(self):
         got = fresh_desk().issues()
-        self.assertEqual(got["total"], len(got["rows"]) + got["excluded_with_pr"])
+        self.assertEqual(got["total"], len(got["rows"]) + got["excluded_with_pr"]
+                         + got["excluded_taken"])
         self.assertFalse(got["truncated"])
 
     def test_a_truncated_issue_list_is_reported(self):
@@ -2070,6 +2071,45 @@ class IssueCrossCheck(unittest.TestCase):
         self.assertNotIn(1160, shown, "closed by queue PR #1164")
         self.assertTrue(got["excluded_with_pr"] >= 2)
         self.assertFalse(any(r["cross"]["open_prs"] for r in got["rows"]))
+
+    def test_only_what_is_free_or_mine_stays(self):
+        desk = fresh_desk()
+        me = desk.me
+        cited = {c["issue"] for r in desk.provider.data["rows"] for c in r.get("closes") or []}
+        free = [i for i in desk.provider.data["issues"] if i["n"] not in cited]
+        theirs, mine = free[0], free[1]
+        theirs["assignees"], mine["assignees"] = ["somebody-else"], [me, "somebody-else"]
+        got = desk.issues()
+        shown = {r["n"] for r in got["rows"]}
+        self.assertNotIn(theirs["n"], shown)
+        self.assertIn(mine["n"], shown)
+        self.assertTrue(got["excluded_taken"] >= 1)
+        self.assertTrue(all(not r["assignees"] or me in r["assignees"] for r in got["rows"]))
+
+    def test_github_counts_a_pr_that_only_cites_the_issue(self):
+        def ref(n, state, repo=REPO):
+            return {"source": {"number": n, "state": state,
+                               "repository": {"nameWithOwner": repo}}}
+        issue = {"closedByPullRequestsReferences": {"nodes": [{"number": 4}]},
+                 "timelineItems": {"nodes": [ref(9, "OPEN"), ref(8, "MERGED"),
+                                             ref(7, "OPEN", "other/repo"),
+                                             {"source": {}}, None]}}
+        self.assertEqual(github_provider._open_prs_on(issue, REPO), [4, 9])
+
+    def test_forgejo_reads_the_citations_from_the_timeline(self):
+        def ref(kind, n, state="open", pull=True, repo=REPO):
+            return {"type": kind, "ref_issue": {
+                "number": n, "state": state, "repository": {"full_name": repo},
+                "pull_request": {"merged": False} if pull else None}}
+        timeline = [ref("pull_ref", 22), ref("comment_ref", 35),
+                    ref("pull_ref", 45, state="closed"), ref("issue_ref", 23, pull=False),
+                    ref("comment_ref", 50, repo="other/repo"),
+                    {"type": "commit_ref", "ref_issue": None}]
+        with mock.patch.dict(os.environ, {"FORGEJO_URL": "https://f", "FORGEJO_TOKEN": "t"}):
+            fj = forgejo_provider.ForgejoProvider()
+        with mock.patch.object(fj, "_get_all", return_value=timeline) as got:
+            self.assertEqual(fj._open_prs_on(REPO, 21), [22, 35])
+        got.assert_called_once_with("/repos/%s/issues/21/timeline" % REPO)
 
     def test_the_desk_computes_the_shortlist_every_read(self):
         got = fresh_desk().issues()

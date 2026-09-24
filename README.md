@@ -175,7 +175,7 @@ succeeded.
 | skill | what it does |
 |---|---|
 | **`pr-desk`** | The detached PR queue dashboard (default port 8399, a free one when that is taken). Startup, reload and polling use Python/provider JSON only. Explicit triage, analysis, explanation and workflow clicks each start one ephemeral Codex or Claude process. |
-| **`issue-desk`** | The same for the open issues (default port 8398): the cross-check and the shortlist computed without a model on every read, an issue with an open PR left out (the PR desk follows it; the lead line counts them), the resolution order, urgency and dependencies from `issue-triage` shown on every row, an analysis marked *da aggiornare* when its issue has moved since. Buttons for dedicated work sessions, `issue-analyze` and `issue-loop`. |
+| **`issue-desk`** | The same for the open issues (default port 8398): the cross-check and the shortlist computed without a model on every read, only the issues still to take — unassigned or yours, and cited by no open PR (the lead line counts what it leaves out), the resolution order, urgency and dependencies from `issue-triage` shown on every row, an analysis marked *da aggiornare* when its issue has moved since. Buttons for dedicated work sessions, `issue-analyze` and `issue-loop`. |
 | **`review-desk`** | Launches both detached servers and defines their JSON/job contract. The launching conversation finishes by default while the dashboards remain available; attached chat routing is opt-in. |
 
 `plugins/git-workflow/server/` is the code under all three: a zero-dependency
