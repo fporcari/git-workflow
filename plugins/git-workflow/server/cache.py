@@ -20,8 +20,10 @@ UI's polling, the two desks sharing one repo, a second tab.
 Path: <tempdir>/git-workflow-<uid>/<owner>__<repo>__cache.json
 """
 
+import json
 import threading
 import time
+from pathlib import Path
 
 import deskstate
 import safejson
@@ -33,12 +35,27 @@ _locks_guard = threading.Lock()
 _inflight = {}
 
 
+def _plugin_version():
+    root = Path(__file__).resolve().parents[1]
+    for host in ("claude", "codex"):
+        manifest = root / (".%s-plugin" % host) / "plugin.json"
+        if manifest.is_file():
+            return json.loads(manifest.read_text())["version"].split("+", 1)[0]
+    return None
+
+
+# an entry is only as good as the code that shaped it: after an upgrade the
+# rows another version stored are not rows this one can serve
+VERSION = _plugin_version()
+
+
 def cache_path(repo):
     return deskstate.runtime_path(repo, "cache.json")
 
 
 def _read(repo):
-    return safejson.read(cache_path(repo))
+    return {key: entry for key, entry in safejson.read(cache_path(repo)).items()
+            if entry.get("v") == VERSION}
 
 
 def _key_lock(repo, key):
@@ -56,7 +73,7 @@ def peek(repo, key):
 
 def store(repo, key, data):
     def mutate(blob):
-        blob[key] = {"at": time.time(), "data": data}
+        blob[key] = {"at": time.time(), "v": VERSION, "data": data}
     safejson.update(cache_path(repo), mutate)
     return data
 

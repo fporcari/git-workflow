@@ -1285,6 +1285,17 @@ class LaunchClearsTheCache(unittest.TestCase):
         self.assertEqual(cache.reset(self.REPO), "spared")
         self.assertIsNotNone(cache.peek(self.REPO, "queue"))
 
+    def test_an_upgrade_drops_what_the_old_version_stored(self):
+        """A restart right after an upgrade is seconds after the old desk's
+        last poll: the sibling grace must not hand the new code old rows."""
+        self.seed(2)
+        blob = json.loads(cache.cache_path(self.REPO).read_text())
+        blob["queue"]["v"] = "0.0.1"
+        cache.cache_path(self.REPO).write_text(json.dumps(blob))
+        self.assertIsNone(cache.peek(self.REPO, "queue"))
+        self.assertEqual(cache.reset(self.REPO), "empty")
+        self.assertIsNotNone(cache.VERSION)
+
     def test_an_empty_cache_is_not_an_error(self):
         cache.clear(self.REPO)
         self.assertEqual(cache.reset(self.REPO), "empty")
