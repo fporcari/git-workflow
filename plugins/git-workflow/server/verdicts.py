@@ -52,6 +52,37 @@ def _landing(gate):
 VERIFY_LABEL = "needs-verification"
 
 
+def _parked_on(row, me):
+    """Whom a draft of his waits on, when the last word is his.
+
+    The last word is the latest comment on the PR or on an issue it closes:
+    a draft parked on a decision is usually parked on a question asked on
+    the issue. Nobody named in it and nobody requested means it is still his
+    to finish."""
+    spoken = [row.get("last")] + [c.get("last") for c in row.get("closes") or []]
+    spoken = [s for s in spoken if s and s.get("t")]
+    if not spoken:
+        return []
+    latest = max(spoken, key=lambda s: s["t"])
+    if latest.get("who") != me:
+        return []
+    named = [who for who in latest.get("mentions") or [] if who != me]
+    return named or [who for who in row.get("req") or [] if who != me]
+
+
+def _changes_pending(row, author, last_who):
+    """Who asked for changes on the current head, while the author has not
+    spoken since: until he pushes or answers, a review is wasted work."""
+    head = row.get("head")
+    if not head or row.get("decision") != "CHANGES_REQUESTED" or last_who == author:
+        return []
+    latest = {}
+    for review in row.get("reviews") or []:
+        latest[review["who"]] = review
+    return [who for who, review in latest.items()
+            if review["state"] == "CHANGES_REQUESTED" and review.get("commit") == head]
+
+
 def verified(row, me):
     """The tested SHA decides, and it is pinned to a head: a push voids the
     verification like it voids an approval.
@@ -106,8 +137,14 @@ def verdict(row, me, gate=None):
 
     if draft:
         if mine:
+            parked = _parked_on(row, me)
+            if parked:
+                return ("waiting on %s (draft)" % ", ".join(parked), "waiting", "-")
             return ("mark ready or finish it", "decision", "yours")
         return ("waiting on %s (draft)" % author, "waiting", "-")
+
+    if not mine and _changes_pending(row, author, last_who):
+        return ("waiting on %s (changes requested)" % author, "waiting", "-")
 
     if me in req:
         return ("review it", "attention", "asks")
@@ -276,7 +313,10 @@ def waiting_on(row, me, gate=None):
     until the wording changed, which is exactly the kind of coupling that
     breaks silently."""
     if row.get("draft"):
-        return None if row.get("author") == me else row.get("author")
+        if row.get("author") != me:
+            return row.get("author")
+        parked = _parked_on(row, me)
+        return parked[0] if parked else None
     if row.get("author") != me:
         return row.get("author")
     # the user's own PR: whoever was asked, or whoever requested the changes,

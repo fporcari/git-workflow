@@ -201,6 +201,27 @@ class QueueMembership(unittest.TestCase):
         node["labels"]["pageInfo"] = {"hasNextPage": True}
         self.assertTrue(github_provider.GitHubProvider()._row(REPO, node)["incomplete"])
 
+    def test_provider_rows_carry_who_the_last_comments_name(self):
+        node = {"number": 4, "title": "t", "createdAt": "2026-09-01T00:00:00Z",
+                "author": {"login": "me"}, "isDraft": True, "baseRefName": "main",
+                "labels": {"nodes": []},
+                "assignees": {"pageInfo": {"hasNextPage": False}, "nodes": []},
+                "reviewRequests": {"pageInfo": {"hasNextPage": False}, "nodes": []},
+                "reviews": {"pageInfo": {"hasPreviousPage": False}, "nodes": []},
+                "comments": {"nodes": [{"author": {"login": "me"}, "createdAt": "2026-09-02T00:00:00Z",
+                                        "bodyText": "back to draft, see the issue"}]},
+                "reviewThreads": {"pageInfo": {"hasNextPage": False}, "nodes": []},
+                "closingIssuesReferences": {"pageInfo": {"hasNextPage": False}, "nodes": [{
+                    "number": 7, "title": "i", "assignees": {"nodes": []},
+                    "comments": {"nodes": [{"author": {"login": "me"},
+                                            "createdAt": "2026-09-03T00:00:00Z",
+                                            "bodyText": "@owner which option? mail me@x.it"}]}}]},
+                "reviewDecision": None, "bodyText": ""}
+        row = github_provider.GitHubProvider()._row(REPO, node)
+        self.assertEqual(row["last"]["mentions"], [])
+        self.assertEqual(row["closes"][0]["last"]["mentions"], ["owner"])
+        self.assertEqual(verdicts.waiting_on(row, "me"), "owner")
+
         with mock.patch.dict(os.environ, {"FORGEJO_URL": "https://f", "FORGEJO_TOKEN": "t"}):
             fj = forgejo_provider.ForgejoProvider()
         pr = {"number": 3, "title": "t", "created_at": "2026-09-01T00:00:00Z",
@@ -456,6 +477,71 @@ class Verdicts(unittest.TestCase):
         plain = self.labelled(labels=[])
         self.assertNotEqual(prdesk.triage_key(self.labelled(), None),
                             prdesk.triage_key(plain, None))
+
+
+class NobodyElsesMove(unittest.TestCase):
+    """A row whose next move is somebody else's never reaches his to-do."""
+
+    def changes_requested(self, **kw):
+        # genropy#1414: a maintainer asked for changes on the head, the
+        # author has neither pushed nor answered, a review of his still stands
+        row = {"author": "author", "draft": False, "merge": None, "head": "h",
+               "decision": "CHANGES_REQUESTED", "req": ["me"], "unresolved": 0,
+               "reviews": [{"who": "maint", "state": "CHANGES_REQUESTED", "commit": "h"}],
+               "last": {"who": "maint", "ch": "changes_requested", "t": "2026-09-24T12:48"}}
+        row.update(kw)
+        return row
+
+    def test_changes_requested_on_the_head_waits_on_the_author(self):
+        row = self.changes_requested()
+        self.assertEqual(verdicts.verdict(row, "me")[1], "waiting")
+        self.assertEqual(verdicts.waiting_on(row, "me"), "author")
+
+    def test_a_push_after_the_request_is_his_review_again(self):
+        row = self.changes_requested(head="h2")
+        self.assertEqual(verdicts.verdict(row, "me")[0], "review it")
+
+    def test_an_answer_from_the_author_is_his_review_again(self):
+        row = self.changes_requested(
+            last={"who": "author", "ch": "comment", "t": "2026-09-24T13:00"})
+        self.assertEqual(verdicts.verdict(row, "me")[0], "review it")
+
+    def test_a_later_approval_lifts_the_request(self):
+        row = self.changes_requested(reviews=[
+            {"who": "maint", "state": "CHANGES_REQUESTED", "commit": "h"},
+            {"who": "maint", "state": "APPROVED", "commit": "h"}])
+        self.assertEqual(verdicts.verdict(row, "me")[0], "review it")
+
+    def parked_draft(self, **kw):
+        # genropy#1374: his draft, parked on a question he asked on the issue
+        row = {"author": "me", "draft": True, "req": ["rev", "owner"], "reviews": [],
+               "unresolved": 0,
+               "last": {"who": "me", "ch": "comment", "t": "2026-09-25T10:05"},
+               "closes": [{"issue": 7, "last": {"who": "me", "ch": "comment",
+                                                "t": "2026-09-25T14:06",
+                                                "mentions": ["owner"]}}]}
+        row.update(kw)
+        return row
+
+    def test_his_draft_waits_on_whom_his_last_word_names(self):
+        row = self.parked_draft()
+        todo, state, _ = verdicts.verdict(row, "me")
+        self.assertEqual((todo, state), ("waiting on owner (draft)", "waiting"))
+        self.assertEqual(verdicts.waiting_on(row, "me"), "owner")
+
+    def test_naming_nobody_falls_back_on_the_requested_reviewers(self):
+        row = self.parked_draft(closes=[])
+        self.assertEqual(verdicts.verdict(row, "me")[0], "waiting on rev, owner (draft)")
+
+    def test_an_answer_on_the_issue_gives_the_draft_back_to_him(self):
+        row = self.parked_draft()
+        row["closes"][0]["last"] = {"who": "owner", "ch": "comment",
+                                    "t": "2026-09-25T15:00", "mentions": []}
+        self.assertEqual(verdicts.verdict(row, "me")[0], "mark ready or finish it")
+
+    def test_a_draft_without_his_last_word_is_still_his(self):
+        row = self.parked_draft(last=None, closes=[])
+        self.assertEqual(verdicts.verdict(row, "me")[0], "mark ready or finish it")
 
 
 class Cache(unittest.TestCase):

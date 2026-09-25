@@ -24,6 +24,7 @@ that is the only search phase two needs.
 """
 
 import json
+import re
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -51,6 +52,22 @@ def _gh(*args, timeout=90, stdin=None):
 
 
 SUMMARY_CHARS = 420
+# a login after @, not the domain half of an e-mail address
+MENTION = re.compile(r"(?<![\w@])@([A-Za-z0-9][A-Za-z0-9-]{0,38})")
+
+
+def _mentions(text):
+    return sorted(set(MENTION.findall(text or "")))
+
+
+def _last_comment(issue):
+    """The latest comment on a closed-by issue, in the `last` shape."""
+    nodes = (issue.get("comments") or {}).get("nodes") or []
+    if not nodes or not (nodes[-1].get("author") or {}).get("login"):
+        return None
+    c = nodes[-1]
+    return {"t": c["createdAt"], "who": c["author"]["login"], "ch": "comment",
+            "mentions": _mentions(c.get("bodyText"))}
 
 
 def _summary(body):
@@ -178,7 +195,8 @@ class GitHubProvider(Provider):
     def _row(self, repo, node):
         spoke = []
         for c in node["comments"]["nodes"]:
-            spoke.append({"t": c["createdAt"], "who": c["author"]["login"], "ch": "comment"})
+            spoke.append({"t": c["createdAt"], "who": c["author"]["login"], "ch": "comment",
+                          "mentions": _mentions(c.get("bodyText"))})
         reviews = []
         for r in node["reviews"]["nodes"]:
             who = (r.get("author") or {}).get("login")
@@ -223,7 +241,8 @@ class GitHubProvider(Provider):
             "unresolved": unresolved,
             "threads": len(node["reviewThreads"]["nodes"]),
             "closes": [{"issue": c["number"], "title": c.get("title"),
-                        "assignees": [a["login"] for a in c["assignees"]["nodes"]]}
+                        "assignees": [a["login"] for a in c["assignees"]["nodes"]],
+                        "last": _last_comment(c)}
                        for c in node["closingIssuesReferences"]["nodes"]],
             "summary": _summary(node.get("bodyText")),
             "last": spoke[-1] if spoke else None,
