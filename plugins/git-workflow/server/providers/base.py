@@ -39,18 +39,35 @@ are added after creation through the add_* methods, one path on every service.
 
 import re
 
-CLOSES = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s*#(\d+)", re.I)
+import issuecheck
+
+REPO_REF = r"(?:([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+))?#(\d+)\b"
+CLOSES = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s*" + REPO_REF, re.I)
+REFS = re.compile(r"(?<![\w/#.-])" + REPO_REF)
 REVIEW_STATES = ("APPROVED", "CHANGES_REQUESTED", "COMMENTED", "DISMISSED")
+
+
+def _unique_refs(pattern, text):
+    seen = []
+    for repo, number in pattern.findall(text or ""):
+        ref = (repo or None, int(number))
+        if ref not in seen:
+            seen.append(ref)
+    return seen
 
 
 def closes_from_body(body):
     """The issues a PR body says it closes — what a service without a
-    linked-issues API (Forgejo) resolves at merge time from these keywords."""
-    seen = []
-    for number in CLOSES.findall(body or ""):
-        if int(number) not in seen:
-            seen.append(int(number))
-    return [{"issue": n, "source": "body"} for n in seen]
+    linked-issues API (Forgejo) resolves at merge time from these keywords.
+    `repo` is there only for an issue of another repository (owner/repo#n)."""
+    return [dict({"issue": n, "source": "body"}, **({"repo": repo} if repo else {}))
+            for repo, n in _unique_refs(CLOSES, body)]
+
+
+def refs_from_body(body):
+    """Every #n and owner/repo#n a body cites, in order, once each:
+    {"n", "repo"}, `repo` None for this repository."""
+    return [{"repo": repo, "n": n} for repo, n in _unique_refs(REFS, body)]
 
 
 def decision_from(reviews, requests):
@@ -93,6 +110,11 @@ class Provider:
         is reported so a page cap never drops PRs silently.
         """
         raise NotImplementedError
+
+    def scope_repos(self, owner):
+        """The repositories of an organization (or user) that have an open
+        issue or PR, as 'owner/repo' — what an org-wide desk reads."""
+        raise NotImplementedError("%s has no org-wide search" % self.name)
 
     def open_numbers(self, repo, me):
         """Cheap authoritative membership for the user's open PR queue.
@@ -150,11 +172,11 @@ class Provider:
         the verdicts fall back to their field-only reading."""
         return {}
 
-    def remote_branches(self, cwd):
+    def remote_branches(self, cwd, repo=None):
         """Every branch on the remote — how the desk knows somebody already
-        started an issue. Repo-local, so the default is git itself."""
-        import issuecheck
-        return issuecheck.remote_branches(cwd)
+        started an issue. Repo-local, so the default is git itself, and a
+        repository with no local clone (cwd None) has none to read."""
+        return issuecheck.remote_branches(cwd) if cwd else []
 
     def issue_relations(self, repo, me):
         """Which open issues the user has already commented on, and which

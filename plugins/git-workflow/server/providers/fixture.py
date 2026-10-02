@@ -36,10 +36,24 @@ class FixtureProvider(Provider):
     def whoami(self):
         return self.data.get("me", "fixture-user")
 
+    def _d(self, repo):
+        """One repository's payload: a multi-repo fixture keeps them under
+        `repos`, keyed by owner/repo; a single-repo one is the payload."""
+        if "repos" not in self.data:
+            return self.data
+        try:
+            return self.data["repos"][repo]
+        except KeyError:
+            raise RuntimeError("fixture has no repository %s" % repo)
+
+    def scope_repos(self, owner):
+        repos = self.data.get("repos") or {self.data.get("repo"): None}
+        return sorted(r for r in repos if r and r.split("/")[0].lower() == owner.lower())
+
     def queue(self, repo, me):
         self._sleep()
         rows = []
-        for source in self.data["rows"]:
+        for source in self._d(repo)["rows"]:
             row = dict(source, merge=None)
             row.setdefault("assignees", [row["author"]])
             row.setdefault("labels", [])
@@ -47,21 +61,21 @@ class FixtureProvider(Provider):
             row.setdefault("head", None)
             row.setdefault("incomplete", False)
             rows.append(row)
-        return {"rows": rows, "total": self.data.get("queue_total", len(rows)),
-                "truncated": bool(self.data.get("queue_truncated"))}
+        return {"rows": rows, "total": self._d(repo).get("queue_total", len(rows)),
+                "truncated": bool(self._d(repo).get("queue_truncated"))}
 
     def open_numbers(self, repo, me):
         self._sleep()
-        return [row["n"] for row in self.data["rows"]
+        return [row["n"] for row in self._d(repo)["rows"]
                 if row.get("state", "OPEN") == "OPEN"]
 
     def mergestates(self, repo, me):
         self._sleep()
         return {str(row["n"]): row.get("merge") or "UNKNOWN"
-                for row in self.data["rows"] if row.get("author") == self.whoami()}
+                for row in self._d(repo)["rows"] if row.get("author") == self.whoami()}
 
     def analysis_probe(self, repo, n):
-        row = next((row for row in self.data["rows"] if row["n"] == n), None)
+        row = next((row for row in self._d(repo)["rows"] if row["n"] == n), None)
         if not row:
             return None
         return {
@@ -77,24 +91,24 @@ class FixtureProvider(Provider):
 
     def issues(self, repo):
         self._sleep()
-        rows = [dict(row) for row in self.data["issues"]]
-        return {"rows": rows, "total": self.data.get("issues_total", len(rows)),
-                "truncated": bool(self.data.get("issues_truncated"))}
+        rows = [dict(row) for row in self._d(repo)["issues"]]
+        return {"rows": rows, "total": self._d(repo).get("issues_total", len(rows)),
+                "truncated": bool(self._d(repo).get("issues_truncated"))}
 
     def default_branch(self, repo):
-        return self.data.get("default_branch") or "main"
+        return self._d(repo).get("default_branch") or "main"
 
     def gates(self, repo, me, bases):
         self._sleep()
-        recorded = self.data.get("gates") or {}
+        recorded = self._d(repo).get("gates") or {}
         return {b: recorded[b] for b in bases if b in recorded}
 
-    def remote_branches(self, cwd):
-        return self.data.get("branches") or []
+    def remote_branches(self, cwd, repo=None):
+        return self._d(repo).get("branches") or []
 
     def issue_relations(self, repo, me):
         self._sleep()
-        return self.data.get("issue_relations") or {
+        return self._d(repo).get("issue_relations") or {
             "commented": [], "assigned": [], "complete": True}
 
     # ---- per-item reads (gw): recorded under pr_details / issue_details /
@@ -184,7 +198,8 @@ class FixtureProvider(Provider):
             "draft": draft, "base": base, "head_ref": head, "summary": body,
             "labels": [], "assignees": [], "req": [], "reviews": [], "threads": 0,
             "closes": [{"issue": c["issue"]} for c in closes_from_body(body)
-                       if any(i["n"] == c["issue"] for i in self.data.get("issues") or [])],
+                       if not c.get("repo")
+                       and any(i["n"] == c["issue"] for i in self.data.get("issues") or [])],
             "url": self._url("pull", n)})
         return {"n": n, "url": self._url("pull", n)}
 

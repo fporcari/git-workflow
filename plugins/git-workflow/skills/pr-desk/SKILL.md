@@ -16,6 +16,15 @@ python3 <PLUGIN_ROOT>/server/prdesk.py --desk pr --agent <claude|codex> \
     >> "${TMPDIR:-/tmp}/git-workflow-pr-desk.log" 2>&1 &
 ```
 
+**Scope.** From a checkout the desk covers that repository, as it always
+did. For a whole organization add `--org [host/]owner` (repeatable); launched
+from a folder that holds clones and is not itself a checkout
+(`~/Development/erpy-org`), it covers every clone in it, and `--folder DIR`
+names another. Then the log line reads `repo=<scope name>` and ends with
+`repos=<owner/repo>,…`: one page over all of them, every row named
+`repo #n`. `../review-desk/SKILL.md` → *Scope* says what changes for the
+attached chat.
+
 The URL is the last `pr desk on http://127.0.0.1:<port>` line the log
 prints within a couple of seconds — read it, never assume 8399. The
 default port is 8399, but a desk that finds it taken by another repo or by
@@ -34,7 +43,8 @@ is no fixed-port launch configuration: the port is known only once the server
 has bound it.
 
 Then title this chat, when the host has a title tool (`runtime.md` →
-*Session metadata*): `PR desk · <owner/repo> · <YYYY-MM-DD HH:MM>`, date
+*Session metadata*): `PR desk · <scope> · <YYYY-MM-DD HH:MM>` (`<scope>` is
+the `repo=` value of the log line), date
 and time from `date '+%F %H:%M'`, never from memory. When the desk closes —
 the monitor ends with `■ desk chiuso`, or the user says stop — set the same
 title again with ` · closed` appended: the session list then tells an open
@@ -58,6 +68,10 @@ keep their own profiles.
   Monitor(command="python3 <PLUGIN_ROOT>/server/chatdesk.py listen --repo <owner/repo> --session <session-id> --desk pr",
           description="desk clicks · <owner/repo>", persistent=true, timeout_ms=1800000)
   ```
+
+  On a desk whose log line lists `repos=`, the ear is `--scope <scope>`
+  instead of `--repo <owner/repo>`, in this call and in every `doze` and
+  `close` below; `result` and `fail` keep `--repo`, the one the click names.
 
   Tell the user once that the desk is open and its clicks land here. Each
   click then comes back as a notification; follow "Attached chat" in

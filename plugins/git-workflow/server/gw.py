@@ -192,7 +192,8 @@ def cmd_pr_create(p, repo, args):
         detail = p.pr_detail(repo, made["n"])
         made.update(base=base, draft=args.draft, closes=detail["closes"], req=detail["req"])
         linked = {c["issue"] for c in detail["closes"]}
-        missing = [c["issue"] for c in closes_from_body(body) if c["issue"] not in linked]
+        missing = [c["issue"] for c in closes_from_body(body)
+                   if not c.get("repo") and c["issue"] not in linked]
         if missing:
             raise RuntimeError("the service did not link issues named in the body: #%s"
                                % ", #".join(str(n) for n in missing))

@@ -57,6 +57,7 @@ class El {
     if (k.startsWith("data-"))
       this.dataset[k.slice(5).replace(/-(\w)/g, (_, c) => c.toUpperCase())] = v;
   }
+  setAttribute(k, v) { this.setAttr(k, String(v)); }
   get id() { return this.attrs.id || ""; }
   get innerHTML() { return this._html; }
   set innerHTML(v) { this._html = String(v); this.children = build(this._html, this); }
@@ -205,11 +206,16 @@ globalThis.fetch = async () => { throw new Error("network is off in this test");
 
 /* ---- run the page's script ---- */
 const script = html.match(/<script>\n([\s\S]*)\n<\/script>/)[1];
-const page = new Function(`${script}\nreturn {applyDesk,applyState,render,renderSync,loadDesk,renderDetail,select,moveSelection,setSort,visiblePrs,visibleIssues,
+const page = new Function(`${script}\nreturn {applyDesk,applyState,render,renderSync,loadDesk,renderDetail,select,moveSelection,setSort,visiblePrs,visibleIssues,rk,setMode,openPalette,closePalette,commands,toggleScope,renderThreads,
   rowClick,togglePick,clearPicks,doRun,MAX_BATCH,pending,closed,startPending,endPending,
   get state(){return {prs,issues,selected,tab,view,loaded,DESK,truncated,pendingMerge,sort,
                       picked:[...picked],askBatch};},
   set view(v){view=v;}, set query(v){query=v;}, set agent(v){agentReady=v;}};`)();
+
+/* a row's name on the page is repo#n: the numbers the checks pick by are
+   turned into it here, once */
+const K = n => page.rk(page.state.prs.find(r => r.n === n) ||
+                       page.state.issues.find(r => r.n === n));
 
 /* ---- 1. what the server handed over ---- */
 ok("server answers /api/desk in one round trip",
@@ -252,7 +258,7 @@ for (const t of ["quadro", "analisi", "thread", "bozza"]) {
      errors[0] && errors[0].message);
 }
 
-const analyzedRow = page.state.prs.find(r => r.n === page.state.selected);
+const analyzedRow = page.state.prs.find(r => page.rk(r) === page.state.selected);
 const previousSkill = analyzedRow.skill;
 analyzedRow.skill = { author: "alice", problem: "problema verificato",
                       history: "storia ricostruita", next: "proposta unica" };
@@ -284,7 +290,7 @@ ok("mutating fetches carry the desk session token",
    html.includes('"X-Git-Workflow-Token":writeToken'));
 
 /* ---- 6. selection, sorting, filtering ---- */
-const first = page.visiblePrs()[0].n;
+const first = page.rk(page.visiblePrs()[0]);
 page.moveSelection(1);
 ok("arrow keys move the selection", page.state.selected !== first);
 page.setSort("n");
@@ -376,14 +382,14 @@ ok("the detail says what the PR is for, straight from the data",
    !!page.state.prs.find(r => r.summary));
 ok("Spiega is hidden when the author's own description answers it", (() => {
   const withSummary = page.visiblePrs().find(r => r.summary);
-  page.select(withSummary.n);
+  page.select(withSummary);
   return !document.getElementById("detailActions").innerHTML.includes("aExplain");
 })());
 ok("Spiega appears when there is no description to read", (() => {
   const row = page.state.prs.find(r => r.summary);
   const keep = row.summary;
   row.summary = null;
-  page.select(row.n);
+  page.select(row);
   const shown = document.getElementById("detailActions").innerHTML.includes("aExplain");
   row.summary = keep;
   return shown;
@@ -393,7 +399,7 @@ ok("a closed issue is named with its title, not just its number",
 
 /* ---- 7d. one press, one hand-over ---- */
 const target = page.visiblePrs()[0];
-page.select(target.n);
+page.select(target);
 target.requests = { analyze: { status: "queued", at: "10:00:00", kind: "analyze" } };
 page.render();
 const acts = document.getElementById("detailActions").innerHTML;
@@ -570,7 +576,7 @@ ok("a bar says which PR and what is happening", (() => {
 })());
 ok("the bar offers a jump to the row",
    document.getElementById("workingBar").innerHTML.includes("goWorking"));
-page.select(runner.n);
+page.select(runner);
 ok("the detail panel says the one-shot job is on this one",
    /job one-shot sta lavorando questa/.test(document.getElementById("detailGrid").innerHTML));
 /* ---- 7f. a batch marks every row it is working ---- */
@@ -590,7 +596,7 @@ page.applyState({ working: { n: three[0], ns: three,
                              items: { [three[1]]: "giro i test" },
                              msg: "3 in parallelo", at: "19:20:00" },
                   agent: { mode: "on-demand", busy: true }, feed: [] });
-page.select(three[1]);
+page.select(K(three[1]));
 ok("the detail of one batch member shows its own line, not the batch label",
    /giro i test/.test(document.getElementById("detailGrid").innerHTML));
 
@@ -603,11 +609,11 @@ const boxes = () => document.getElementById("tbody").querySelectorAll('input[typ
 ok("every row carries a checkbox", boxes().length === page.visiblePrs().length);
 ok("the header carries a select-all", !!document.getElementById("pickAll"));
 
-const box = n => boxes().find(b => +b.dataset.pick === n);
+const box = n => boxes().find(b => b.dataset.pick === K(n));
 box(three[0]).click();
 box(three[1]).click();
 ok("ticking a box picks the row",
-   page.state.picked.length === 2 && page.state.picked.includes(three[0]));
+   page.state.picked.length === 2 && page.state.picked.includes(K(three[0])));
 ok("a picked row is marked in the table",
    document.getElementById("tbody").querySelectorAll("tr")
      .filter(tr => tr.classList.contains("picked")).length === 2);
@@ -620,29 +626,29 @@ ok("ticking does not move the cursor, so the panel stays put", (() => {
 })());
 ok("unticking removes just that one", (() => {
   box(three[1]).click();
-  const only = page.state.picked.length === 1 && page.state.picked.includes(three[0]);
+  const only = page.state.picked.length === 1 && page.state.picked.includes(K(three[0]));
   box(three[1]).click();
   return only;
 })());
 ok("a plain click on the row never drops the picks", (() => {
-  page.rowClick(page.visiblePrs()[4].n, {});
+  page.rowClick(page.rk(page.visiblePrs()[4]), {});
   return page.state.picked.length === 2;
 })());
 ok("a click that lands on the checkbox does not also open the row", (() => {
   const before = page.state.selected;
   const target = box(page.visiblePrs()[6].n);
-  page.rowClick(page.visiblePrs()[6].n, { target });
+  page.rowClick(page.rk(page.visiblePrs()[6]), { target });
   const untouched = page.state.selected === before;
   return untouched;
 })());
 ok("shift-click on a box takes the stretch", (() => {
   page.clearPicks(); page.render();
   const list = page.visiblePrs();
-  boxes().find(b => +b.dataset.pick === list[1].n).click();
-  const far = boxes().find(b => +b.dataset.pick === list[4].n);
+  boxes().find(b => b.dataset.pick === page.rk(list[1])).click();
+  const far = boxes().find(b => b.dataset.pick === page.rk(list[4]));
   far.click({ shiftKey: true });
   const got = page.state.picked.slice().sort();
-  const want = [list[1].n, list[2].n, list[3].n, list[4].n].sort();
+  const want = [list[1], list[2], list[3], list[4]].map(page.rk).sort();
   return JSON.stringify(got) === JSON.stringify(want);
 })());
 ok("select-all takes every row of THIS view, not the whole queue", (() => {
@@ -664,7 +670,7 @@ ok("a non-table view leaves no stale checkbox behind", (() => {
 })());
 ok("the header box shows the in-between state when only some are picked", (() => {
   page.clearPicks(); page.render();
-  boxes().find(b => +b.dataset.pick === three[0]).click();
+  boxes().find(b => b.dataset.pick === K(three[0])).click();
   return document.getElementById("pickAll").indeterminate === true;
 })());
 page.clearPicks(); page.render();
@@ -682,7 +688,7 @@ ok("▶ on several picked rows asks batch or one at a time, it does not guess",
 ok("the batch it offers never exceeds one answer box", page.MAX_BATCH === 4);
 ok("a single picked row is not asked about", (() => {
   page.clearPicks(); page.render();
-  boxes().find(b => +b.dataset.pick === three[0]).click();
+  boxes().find(b => b.dataset.pick === K(three[0])).click();
   page.doRun();
   return !page.state.askBatch;
 })());
@@ -854,6 +860,88 @@ try {
      !document.getElementById("btnFetch").classList.contains("stale"));
 } finally {
   Date.now = realNow;
+  globalThis.fetch = async () => { throw new Error("network is off in this test"); };
+}
+
+/* ---- 9. one page, three views: PR, Issue, and the threads between them ---- */
+page.applyDesk(triaged);
+page.setMode("pr");
+page.render();
+const modes = document.getElementById("modeTabs").querySelectorAll("button");
+ok("the page offers PR, Issue and Filoni as one desk",
+   modes.map(b => b.dataset.mode).join() === "pr,issue,threads");
+page.setMode("issue");
+ok("switching to Issue paints the issue rows without a reload",
+   page.state.DESK === "issue" &&
+   document.getElementById("tbody").querySelectorAll("tr").length === page.visibleIssues().length);
+page.setMode("threads");
+const threadsBox = document.getElementById("threadsWrap");
+ok("Filoni pairs the issues with their PRs, grouped by who must move",
+   threadsBox.classList.contains("on") && /thrHead/.test(threadsBox.innerHTML) &&
+   triaged.threads.groups.length > 0);
+ok("Filoni has no detail panel of its own: a node opens its row",
+   document.getElementById("detail").style.display === "none" &&
+   threadsBox.querySelectorAll("[data-goto]").length > 0);
+const node = threadsBox.querySelectorAll("[data-goto]")[0];
+node.click();
+ok("a thread node opens its PR or issue in its own view",
+   page.state.DESK === node.dataset.goto && page.state.selected === node.dataset.k);
+page.setMode("pr");
+
+/* ---- 10. ⌘K: the page's actions, one keystroke away ---- */
+page.openPalette();
+ok("the palette opens with the views and the desk commands",
+   !document.getElementById("palette").hidden &&
+   page.commands().some(c => c.group === "Vai a" && c.label === "Filoni") &&
+   page.commands().some(c => c.label === "Rileggi il provider"));
+page.closePalette();
+ok("and closes", document.getElementById("palette").hidden);
+
+/* ---- 11. a scope of several repositories ---- */
+const [repoA, repoB] = ["acme/acme-engine", "acme/acme-ext"];
+const split = (rows, n) => rows.map((r, i) => ({...r, repo: i < n ? repoA : repoB,
+                                                label: `${i < n ? "engine" : "ext"} #${r.n}`}));
+const scoped = {...triaged,
+  meta: {...triaged.meta, repo: "acme", scope: {name: "acme", members: [
+    {repo: repoA, label: "engine", clone: true, provider: "forgejo"},
+    {repo: repoB, label: "ext", clone: false, provider: "forgejo"}]}},
+  queue: {...triaged.queue, rows: split(triaged.queue.rows, 3)},
+  issues: {...triaged.issues, rows: split(triaged.issues.rows, 3)}};
+page.applyDesk(scoped);
+page.setMode("pr", true);
+page.view = "all";
+page.render();
+ok("every row names its repository when the desk covers several",
+   /repoChip">engine</.test(document.getElementById("tbody").innerHTML) &&
+   /repoChip">ext</.test(document.getElementById("tbody").innerHTML));
+const extRow = page.state.prs.find(r => r.repo === repoB);
+page.select(extRow);
+ok("a repository without a clone says what stays off",
+   /non ha un clone locale/.test(document.getElementById("detail").innerHTML));
+page.toggleScope(true);
+ok("the scope popover lists the members and their clones",
+   /acme\/acme-ext/.test(document.getElementById("scopePop").innerHTML) &&
+   /nessun clone locale/.test(document.getElementById("scopePop").innerHTML));
+page.toggleScope(false);
+const posted = [];
+globalThis.fetch = async (path, opts) => {
+  posted.push({path, body: JSON.parse(opts.body || "{}")});
+  return {status: 202, headers: {get: () => null}, json: async () => ({runs: [
+    {via: "chat", repo: repoA}, {via: "chat", repo: repoB}]})};
+};
+try {
+  page.clearPicks();
+  const engineRow = page.state.prs.find(r => r.repo === repoA);
+  page.togglePick(engineRow);
+  page.togglePick(extRow);
+  page.doRun();
+  document.getElementById("pOne").click();
+  await new Promise(r => setTimeout(r, 0));
+  const run = posted.find(p => p.path === "/api/run");
+  ok("a run across repositories sends each row with its repository",
+     run && run.body.items.length === 2 &&
+     run.body.items.some(i => i.repo === repoB && i.n === extRow.n));
+} finally {
   globalThis.fetch = async () => { throw new Error("network is off in this test"); };
 }
 

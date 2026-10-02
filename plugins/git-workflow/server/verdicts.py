@@ -305,7 +305,7 @@ def blocks(rows):
             "what": row.get("title"), "todo": row.get("todo"),
             "autorun": row.get("autorun"), "state": row.get("state"),
             "waiting_on": row.get("waiting_on"), "base": row.get("base"),
-            "triage_key": row.get("triage_key"),
+            "triage_key": row.get("triage_key"), "repo": row.get("repo"),
         })
     return [{"title": title, "rows": grouped[title]} for title in BLOCK_TITLES]
 
@@ -338,6 +338,12 @@ def waiting_on(row, me, gate=None):
     return None
 
 
+def label(row):
+    """How a row is named in a message: #n, or `repo #n` on a desk that
+    covers several repositories (the scope sets `label`)."""
+    return row.get("label") or "#%s" % row["n"]
+
+
 def chase(rows, me):
     """Only the user's OWN PRs, the same rule chase.jq applies at its first
     select. Somebody else's PR waiting on its author is that author's business:
@@ -354,7 +360,7 @@ def chase(rows, me):
     out = {}
     for who, items in sorted(per.items(), key=lambda kv: -len(kv[1])):
         items.sort(key=lambda r: r.get("created") or "")
-        lines = ["#%s (%s) %s" % (r["n"], r.get("created"), r.get("title"))
+        lines = ["%s (%s) %s" % (label(r), r.get("created"), r.get("title"))
                  for r in items]
         out[who] = ("@%s \u2014 %s PR ferme su di te, la pi\u00f9 vecchia dal %s:\n%s"
                     % (who, len(items), items[0].get("created"), "\n".join(lines)))
@@ -368,7 +374,8 @@ def replies(rows, me):
     for row in rows:
         if row.get("state") == "reply" and row.get("author") == me and row.get("reply_to"):
             per.setdefault(row["reply_to"], []).append(
-                {"n": row["n"], "created": row.get("created"), "title": row.get("title")})
+                {"n": row["n"], "created": row.get("created"), "title": row.get("title"),
+                 "repo": row.get("repo"), "label": label(row)})
     for items in per.values():
         items.sort(key=lambda r: r.get("created") or "")
     return dict(sorted(per.items(), key=lambda kv: -len(kv[1])))
@@ -385,8 +392,8 @@ def handoff(row, repo, merge_command):
     if row["state"] == "waiting":
         who = row["req"][0] if row["req"] else row["author"]
         return {"kind": "chase", "label": "Copia sollecito",
-                "text": "@%s — PR #%s (%s) aperta dal %s, tocca a te."
-                        % (who, n, row["title"], row["created"])}
+                "text": "@%s — PR %s (%s) aperta dal %s, tocca a te."
+                        % (who, label(row), row["title"], row["created"])}
     context = ("titolo: %s · autore: %s · review: %s · merge: %s · thread aperti: %s/%s"
                % (row["title"], row["author"], row["decision"] or "nessuna",
                   row["merge"], row["unresolved"], row["threads"]))

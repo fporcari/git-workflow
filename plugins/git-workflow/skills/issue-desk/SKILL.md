@@ -16,6 +16,10 @@ python3 <PLUGIN_ROOT>/server/prdesk.py --desk issue --agent <claude|codex> \
     >> "${TMPDIR:-/tmp}/git-workflow-issue-desk.log" 2>&1 &
 ```
 
+The scope is the pr-desk's (`--org [host/]owner`, a folder of clones,
+`--folder DIR`; `../pr-desk/SKILL.md` → *Scope*), and so is the page: it
+opens on the Issue view, with Pull request and Filoni one tab away.
+
 The URL is the last `issue desk on http://127.0.0.1:<port>` line the log
 prints within a couple of seconds — read it, never assume 8398. The
 default port is 8398, but a desk that finds it taken by another repo or by
@@ -34,7 +38,8 @@ is no fixed-port launch configuration: the port is known only once the server
 has bound it.
 
 Then title this chat, when the host has a title tool (`runtime.md` →
-*Session metadata*): `Issue desk · <owner/repo> · <YYYY-MM-DD HH:MM>`, date
+*Session metadata*): `Issue desk · <scope> · <YYYY-MM-DD HH:MM>` (`<scope>`
+is the `repo=` value of the log line), date
 and time from `date '+%F %H:%M'`, never from memory. When the desk closes —
 the monitor ends with `■ desk chiuso`, or the user says stop — set the same
 title again with ` · closed` appended: the session list then tells an open
@@ -58,6 +63,10 @@ keep their own profiles.
   Monitor(command="python3 <PLUGIN_ROOT>/server/chatdesk.py listen --repo <owner/repo> --session <session-id> --desk issue",
           description="desk clicks · <owner/repo>", persistent=true, timeout_ms=1800000)
   ```
+
+  On a desk whose log line lists `repos=`, the ear is `--scope <scope>`
+  instead of `--repo <owner/repo>`, in this call and in every `doze` and
+  `close` below; `result` and `fail` keep `--repo`, the one the click names.
 
   Tell the user once that the desk is open and its clicks land here. Each
   click then comes back as a notification; follow "Attached chat" in

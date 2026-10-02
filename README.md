@@ -189,18 +189,46 @@ The skills launch it; you can also run it by hand:
 ```bash
 python3 plugins/git-workflow/server/prdesk.py        # repo from the cwd's origin
 python3 plugins/git-workflow/server/prdesk.py --repo owner/repo --desk issue
+python3 plugins/git-workflow/server/prdesk.py --org erpy   # every repo of an owner
+cd ~/Development/erpy-org && python3 …/prdesk.py           # a folder of clones
 ```
+
+**One page, three views.** Pull request, Issue and Filoni are tabs of the
+same page, whichever desk you launched: the server already reads both, and
+Filoni pairs every open issue with the PR that closes or cites it —
+`owner/repo#n` included — grouped by who has to move, with a strip of the
+people involved on top. The layout is built for a tall, narrow pane (the
+Browser pane beside the chat on a portrait screen): two-line rows, the
+detail under the list with a handle to move the split, filter chips instead
+of a metrics row. On a wide window the detail moves beside the list. ⌘K
+opens every action of the page — the picked rows, the selected row, the
+views, the chase messages, the scope — and `j`/`k`, `x`, `a`, `g p`/`g i`/`g f`
+work without it.
+
+**A scope of several repositories.** `--org [host/]owner` covers every
+repository of that owner with an open issue or PR (one cross-repo search: no
+`read:organization` scope needed on Forgejo); a cwd that holds clones without
+being one covers that folder, other owners included; `--folder DIR` and
+repeated `--repo` add up. Each member keeps its own cache, state file, jobs
+and click ledger — exactly the files a desk of its own would write — and the
+page merges them: every row is `repo #n`, every click names its repository,
+a run across repositories becomes one loop per repository, each in its own
+clone. Clones are found, not configured (the cwd, its children, its parent's
+children, `--clones DIR`); a member without one is read and analyzed but never
+worked, and the page says so on its rows. The scope button lists the members
+and their clones, and hides a member from the page without changing the scope.
 
 Open the URL of the `desk on http://127.0.0.1:<port>` line it prints: 8399
 for PRs and 8398 for issues when free, a free port the OS picks when another
 repo or the sibling desk holds it, and the running server's URL when the same
 desk of the same repo is already up (then the new process just exits). An
 explicit `--port` is strict. A desk idle for an hour with no job running exits
-on its own (`--idle-exit`). Tabs: Queue (needs a move from you), Mergeable,
-Waiting, All PRs, Issues. Clicking a row opens the detail panel: state of
-play, next move with the `pr-loop` autorun class, reviews, linked issues.
+on its own (`--idle-exit`). Clicking a row opens the detail panel: the next
+move with the `pr-loop` autorun class first, then what the PR solves, the
+state of play, reviews and linked issues.
 
-Options: `--repo`, `--provider github|forgejo|fixture`, `--me`, `--port`,
+Options: `--repo` (repeatable), `--org`, `--folder`, `--clones`,
+`--provider github|forgejo|fixture`, `--me`, `--port`,
 `--idle-exit`, `--agent auto|claude|codex`, `--keep-state`, `--keep-cache`,
 `--no-prefetch`.
 

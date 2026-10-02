@@ -857,7 +857,7 @@ class HeadlessAgents(unittest.TestCase):
             "problem_head": row["head"]}}})
         handler = object.__new__(prdesk.Handler)
         handler.desk = desk
-        keys, context = handler._analysis_inputs(1145)
+        keys, context = handler._analysis_inputs(desk, 1145)
         self.assertEqual(context["cached_problem"], "verified problem")
         self.assertEqual(context["previous_problem_head"], row["head"])
         self.assertTrue(context["probe"]["fresh"])
@@ -871,7 +871,7 @@ class HeadlessAgents(unittest.TestCase):
         source["head"] = "head-seen-by-probe"
         handler = object.__new__(prdesk.Handler)
         handler.desk = desk
-        keys, context = handler._analysis_inputs(1145)
+        keys, context = handler._analysis_inputs(desk, 1145)
         self.assertEqual(context["probe"]["head"], "head-seen-by-probe")
         self.assertEqual(keys["problem_head"], "head-seen-by-probe")
 
@@ -1389,8 +1389,8 @@ class LaunchClearsTheCache(unittest.TestCase):
     def test_keep_cache_is_the_opt_out(self):
         source = Path(ROOT / "prdesk.py").read_text()
         self.assertIn("--keep-cache", source)
-        self.assertIn('cache_action = "kept" if args.keep_cache else cache.reset(repo)',
-                      source)
+        self.assertIn('cache_action = ("kept" if args.keep_cache else', source)
+        self.assertIn("cache.reset(repo) for repo in repos", source)
 
     def test_a_reload_while_the_desk_is_up_still_hits(self):
         cache.clear(REPO)
@@ -2132,7 +2132,8 @@ class Chase(unittest.TestCase):
                          ("answer genro", "reply", "asks"))
         self.assertEqual(rows[0]["reply_to"], "genro")
         self.assertEqual(verdicts.replies(rows, "me"),
-                         {"genro": [{"n": 7, "created": "2026-09-09", "title": "e"}]})
+                         {"genro": [{"n": 7, "created": "2026-09-09", "title": "e",
+                                 "repo": None, "label": "#7"}]})
         self.assertEqual(verdicts.chase(rows, "me"), {})
         self.assertEqual(verdicts.block_of(rows[0]), "Solo tue")
 
@@ -2248,7 +2249,8 @@ class IssueCrossCheck(unittest.TestCase):
         with mock.patch.dict(os.environ, {"FORGEJO_URL": "https://f", "FORGEJO_TOKEN": "t"}):
             fj = forgejo_provider.ForgejoProvider()
         with mock.patch.object(fj, "_get_all", return_value=timeline) as got:
-            self.assertEqual(fj._open_prs_on(REPO, 21), [22, 35])
+            self.assertEqual(fj._open_prs_on(REPO, 21),
+                             ([22, 35], [{"repo": "other/repo", "n": 50}]))
         got.assert_called_once_with("/repos/%s/issues/21/timeline" % REPO)
 
     def test_the_desk_computes_the_shortlist_every_read(self):
@@ -2891,7 +2893,7 @@ class AttachedChat(unittest.TestCase):
         started = threading.Event()
         release = threading.Event()
 
-        def slow_inputs(self_, n):
+        def slow_inputs(self_, desk, n):
             started.set()
             release.wait(5)
             return {"analysis": "k1"}, {"probe": None, "row": {"n": n}}
@@ -2917,7 +2919,7 @@ class AttachedChat(unittest.TestCase):
     def test_a_context_the_desk_cannot_read_fails_the_request(self):
         deskstate.chat_heartbeat(REPO, "test-chat")
 
-        def broken(self_, n):
+        def broken(self_, desk, n):
             raise RuntimeError("provider down")
 
         with mock.patch.object(prdesk.Handler, "_analysis_inputs", broken):

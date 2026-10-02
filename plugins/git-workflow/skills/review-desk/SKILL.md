@@ -25,7 +25,8 @@ is the `<kind> desk on http://127.0.0.1:<port>` line each log prints: a
 default taken by another repo moves the desk to a free port, a default taken
 by the same desk of the same repo is reused (the process prints that URL and
 exits). Never pass `--port` from a skill. Both desks share the same
-repository state. Open the printed URLs in the Browser pane beside the chat
+repository state, and take the same scope flags (`--org`, `--folder`; see
+*Scope*): give both the same ones. Open the printed URLs in the Browser pane beside the chat
 (`preview_start` with `url` on Claude Code, the tool `runtime.md` → *Desks*
 names; local pages of processes you just started, nothing to ask first — a
 link alone is not the deliverable), then stay attached as the pr-desk and
@@ -34,7 +35,8 @@ desks for this session. Only a launch the user asked to be detached lets the
 conversation finish here.
 
 Title this chat when the host has a title tool (`runtime.md` → *Session
-metadata*): `Review desk · <owner/repo> · <YYYY-MM-DD HH:MM>`, date and time
+metadata*): `Review desk · <scope> · <YYYY-MM-DD HH:MM>` (`<scope>` is the
+`repo=` value of the log lines), date and time
 from `date '+%F %H:%M'`; once both desks are gone, the same title with
 ` · closed` appended.
 
@@ -205,6 +207,36 @@ Autonomy in attached mode is exactly the desk's: a click carries the same
 authorization it would have given the one-shot agent — analysis is read-only,
 an order or run click authorizes the named operation, and a merge is never
 autonomous beyond what the skill already allows.
+
+## Scope
+
+One desk may cover several repositories: an organization (`--org
+[host/]owner`), a folder of clones (launched from it, or `--folder DIR`),
+or several `--repo`. Each repository keeps its own cache, state file, jobs
+and click ledger, exactly as if it had a desk of its own; the server merges
+what they serve into one page — Pull request, Issue and Filoni, every row
+named `repo #n` — and sends each click to the repository it names. The log
+line then reads `repo=<scope name> … repos=<owner/repo>,…`.
+
+- **The ear is the scope's.** `listen`, `doze`, `wait` and `close` take
+  `--scope <scope name>` instead of `--repo`: one heartbeat covers every
+  member, and one `close` stops the one server behind them.
+- **A click says where it belongs.** A record claimed off a scope carries
+  `repo` and `cwd`, and its command line carries `--repo`
+  (`▶ /pr-analyze 79 --repo erpy/erpy-engine`). Run the skill against that
+  repository and, for anything that touches a checkout, from `cwd` — its
+  clone. `cwd` null means the scope has no clone of it: read and analyze
+  through the provider, never write; the desk already refuses order and run
+  clicks there, and says so on the row.
+- **Publish to the member.** `result` and `fail` take `--repo <record.repo>`,
+  never `--scope`: the outcome lands in that repository's ledger.
+- **A run is one per repository.** Rows picked across repositories become
+  one `run` request per repository, each with its own `ns`, in click order.
+- **Triage is one per repository too.** The triage press starts one job per
+  member; each publishes its own grid, and the page shows them merged.
+
+A desk over a scope refuses to open while any member already has a live desk
+of the same kind: two servers on one ledger would steal each other's clicks.
 
 ## Triage freshness
 
