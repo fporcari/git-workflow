@@ -1748,7 +1748,7 @@ class Blocks(unittest.TestCase):
 
     def test_a_moved_pr_is_reverdicted_not_expired(self):
         """The grid is pure engine output: a row the provider moved is
-        recomputed on read (0.07 ms), never handed back as `da triagiare`.
+        recomputed on read (0.07 ms), never handed back as `senza verdetto`.
         This is what used to make 'molti triage scadono subito'."""
         desk = fresh_desk()
         self.exported(desk)
@@ -1818,7 +1818,7 @@ class Blocks(unittest.TestCase):
     def test_an_analyzed_pr_counts_as_triaged(self):
         """The PR somebody flagged, analyzed directly without a press: the
         analysis is strictly more than a triage cell, so it leaves
-        'da triagiare', gets its cell in the grid and the next press has
+        'senza verdetto', gets its cell in the grid and the next press has
         nothing left to work."""
         desk = fresh_desk()
         self.exported(desk)
@@ -1838,7 +1838,7 @@ class Blocks(unittest.TestCase):
     def test_an_analyzed_pr_stays_seen_when_its_facts_move(self):
         """Same rule as a row the grid holds: the cell is re-verdicted, the
         analysis panel is marked stale, and the PR does not fall back to
-        'da triagiare'."""
+        'senza verdetto'."""
         desk = fresh_desk()
         self.exported(desk)
         row = self._add_untriaged(desk)
@@ -2113,6 +2113,37 @@ class Chase(unittest.TestCase):
                "merge": "CLEAN", "unresolved": 0, "last": None, "base": "develop"}
         rows = verdicts.decorate([row], "me")
         self.assertNotIn("me", verdicts.chase(rows, "me"))
+
+    def owed(self, **kw):
+        row = {"n": 7, "author": "me", "draft": False, "created": "2026-09-09",
+               "title": "e", "req": ["genro"], "decision": "REVIEW_REQUIRED",
+               "reviews": [{"who": "genro", "state": "COMMENTED"}],
+               "merge": "CLEAN", "unresolved": 0, "base": "develop",
+               "last": {"who": "genro", "ch": "commented", "t": "2026-09-28"}}
+        row.update(kw)
+        return verdicts.decorate([row], "me")
+
+    def test_a_comment_owed_is_a_reply_not_a_todo(self):
+        """genropy/genropy#1278: the reviewer spoke last, nothing asked of the
+        code and no thread open — a comment answers it, so it is not counted
+        among his moves and shows up in the Chase tab under that reviewer."""
+        rows = self.owed()
+        self.assertEqual((rows[0]["todo"], rows[0]["state"], rows[0]["autorun"]),
+                         ("answer genro", "reply", "asks"))
+        self.assertEqual(rows[0]["reply_to"], "genro")
+        self.assertEqual(verdicts.replies(rows, "me"),
+                         {"genro": [{"n": 7, "created": "2026-09-09", "title": "e"}]})
+        self.assertEqual(verdicts.chase(rows, "me"), {})
+        self.assertEqual(verdicts.block_of(rows[0]), "Solo tue")
+
+    def test_changes_or_open_threads_stay_a_todo(self):
+        changes = self.owed(decision="CHANGES_REQUESTED",
+                            reviews=[{"who": "genro", "state": "CHANGES_REQUESTED"}])
+        threads = self.owed(unresolved=2)
+        for rows in (changes, threads):
+            self.assertEqual(rows[0]["state"], "attention")
+            self.assertIsNone(rows[0]["reply_to"])
+            self.assertEqual(verdicts.replies(rows, "me"), {})
 
 
 class IssueCrossCheck(unittest.TestCase):

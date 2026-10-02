@@ -358,7 +358,7 @@ class Desk:
         nor an analyze has ever seen, and is what the next press works: an
         analysis is strictly more than a triage cell, so the PR somebody
         flagged and the user analyzed directly does not come back as
-        "da triagiare", and keeps its cell when its facts move, exactly like a
+        "senza verdetto", and keeps its cell when its facts move, exactly like a
         row the grid holds (analysis_stale marks the panel, not the cell).
         """
         records = triage_records(grid)
@@ -378,7 +378,7 @@ class Desk:
             else:
                 status = "missing"
                 row.update(state="untriaged", autorun="-", waiting_on=None,
-                           action=None, todo="da triagiare")
+                           action=None, todo="senza verdetto")
             row["triage_status"] = status
             counts[status] += 1
         return counts
@@ -429,6 +429,7 @@ class Desk:
                 "truncated": raw.get("truncated", False),
                 "mergestate_pending": not states,
                 "chase": verdicts.chase(triaged, self.me) if triaged else {},
+                "replies": verdicts.replies(triaged, self.me),
                 "session": state.get("session"),
                 "gates": gates,
                 "grid": self._current_grid(state.get("grid"), rows, state),

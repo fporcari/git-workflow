@@ -299,7 +299,7 @@ Closed set. Anything else is `needs a look - <the one unclear thing>` with `asks
 | `merge it` | his PR, not draft, `APPROVED` with empty bodies, zero standing requests, approvals on current head, `CLEAN` on a protected base | `A1` |
 | `answer the review` | a reviewer's `CHANGES_REQUESTED` is last and the ask is one named local edit | `A2` |
 | `answer the review` | same, but the ask needs analysis first | `asks` |
-| `answer <login>` | a reviewer's `COMMENTED` is last and asks a question | `asks` |
+| `answer <login>` | a reviewer's `COMMENTED` is last and asks a question; state `reply` — a comment answers it, so the desk keeps it out of "Da fare" and lists it in the Chase tab under that reviewer | `asks` |
 | `decide with <login>` | same, but it is a design choice between named alternatives | `yours` |
 | `realign with the base` | `DIRTY`, conflict on a shared changelog/version/lock file or disjoint additions | `A3` |
 | `realign with the base` | `DIRTY`, conflict in a file the base itself rewrote | `asks` |

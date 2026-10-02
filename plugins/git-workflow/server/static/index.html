@@ -130,7 +130,7 @@ tbody tr.working td:first-child{box-shadow:inset 3px 0 var(--amber);animation:ne
 .markCol{width:32px}
 .mark{text-align:center;font:700 12px var(--mono)}
 tr.attention .mark{color:var(--red)}tr.decision .mark{color:var(--amber)}
-tr.ready .mark{color:var(--green)}tr.waiting .mark{color:var(--muted)}
+tr.ready .mark{color:var(--green)}tr.waiting .mark,tr.reply .mark{color:var(--muted)}
 tr.untriaged .mark{color:var(--amber)}
 .prTitle{display:flex;align-items:center;gap:8px;max-width:420px}
 .prTitle b{font:600 11px var(--mono);color:var(--muted);flex:none}
@@ -270,11 +270,13 @@ h2{margin:0 0 7px}
 "use strict";
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const MARK={ready:"✓",attention:"!",waiting:"○",decision:"◆",untriaged:"?"};
-const STATE_LABEL={ready:"mergeable",attention:"mossa tua",waiting:"in attesa",decision:"decisione tua",untriaged:"da triagiare"};
+/* states that are not in "Da fare": somebody else's move, or only a comment due */
+const AWAY=["waiting","reply"];
+const MARK={ready:"✓",attention:"!",waiting:"○",decision:"◆",reply:"✎",untriaged:"?"};
+const STATE_LABEL={ready:"mergeable",attention:"mossa tua",waiting:"in attesa",decision:"decisione tua",reply:"da rispondere",untriaged:"senza verdetto"};
 const AUTORUN_TIP="Cosa può fare pr-loop da solo: A1 merge (tua PR approvata e CLEAN) · A2 edit banale chiesto dal reviewer · A3 riallineo del branch · asks richiede una decisione · yours decisione solo tua · - tocca ad altri";
 
-let meta={},writeToken="",DESK="pr",prs=[],issues=[],chase={},grid=null,shortlist=null,session=null;
+let meta={},writeToken="",DESK="pr",prs=[],issues=[],chase={},replies={},grid=null,shortlist=null,session=null;
 let loaded=false,view="todo",query="",stateFilter=null,agentReady=true;
 let issuesTruncated=null,issuesWithPr=0,issuesTaken=0,triageComplete=false,ranked=false,gates={};
 let selected=null,tab="quadro",sort={key:"created",dir:-1},acting={},truncated=null,pendingMerge=false;
@@ -429,7 +431,7 @@ async function loadDesk(refetch){
 function applyDesk(d){
   meta=d.meta||meta;writeToken=meta.write_token||writeToken;DESK=meta.desk||"pr";timings=d.timings||{};
   agentReady=meta.detached!==false;
-  prs=d.queue.rows;issues=d.issues.rows;chase=d.queue.chase||{};
+  prs=d.queue.rows;issues=d.issues.rows;chase=d.queue.chase||{};replies=d.queue.replies||{};
   session=d.queue.session;lastGenerated=d.generated;lastPaintAt=Date.now();
   truncated=d.queue.truncated?d.queue.total:null;
   issuesTruncated=d.issues.truncated?d.issues.total:null;issuesWithPr=d.issues.excluded_with_pr||0;issuesTaken=d.issues.excluded_taken||0;
@@ -583,7 +585,7 @@ function visiblePrs(){
   let list=prs.filter(r=>matches(r,[r.n,r.title,r.author,r.todo,r.base]));
   if(stateFilter)list=list.filter(r=>r.state===stateFilter);
   else if(view==="untriaged")list=list.filter(r=>r.triage_status!=="current");
-  else if(view==="todo")list=list.filter(r=>r.triage_status==="current"&&r.state!=="waiting");
+  else if(view==="todo")list=list.filter(r=>r.triage_status==="current"&&!AWAY.includes(r.state));
   else if(view==="waiting")list=list.filter(r=>r.triage_status==="current"&&r.state==="waiting");
   return sortRows(list);
 }
@@ -595,7 +597,7 @@ function visibleIssues(){
 }
 const SORTERS={
   n:r=>r.n,created:r=>r.created,author:r=>r.author||"",title:r=>(r.title||"").toLowerCase(),
-  state:r=>["untriaged","attention","decision","ready","waiting"].indexOf(r.state),
+  state:r=>["untriaged","attention","decision","ready","reply","waiting"].indexOf(r.state),
   merge:r=>r.merge||"",unresolved:r=>r.unresolved||0,decision:r=>r.decision||"",
   todo:r=>r.todo||"",autorun:r=>r.autorun||"",type:r=>r.type||"",
   comments:r=>r.comments||0,assignees:r=>(r.assignees||[]).join(","),
@@ -611,16 +613,16 @@ function setSort(key){
 
 /* ---------- header / tabs ---------- */
 const VIEWS=()=>DESK==="issue"?[
-  {id:"shortlist",label:"Shortlist",count:shortlist?shortlist.rows.length:"—",tip:"Il batch di issue-triage: le più recenti non analizzate, con tipo e cross-check di branch e PR"},
+  {id:"shortlist",label:"Shortlist",count:shortlist?shortlist.rows.length:"—",tip:"Le 10 issue più recenti che nessuno ha preso e su cui non hai ancora scritto, senza PR aperte: la calcola il desk. ↻ ordina shortlist le mette in ordine di risoluzione"},
   {id:"free",label:"Unassigned",count:issues.filter(r=>!r.assignees.length).length,tip:"Le candidate per issue-loop: nessuno le ha ancora prese"},
   {id:"all",label:"Tutte",count:loaded?issues.length:"—",tip:"Le issue ancora da prendere: libere o tue, e nessuna PR aperta le cita"},
 ]:[
-  {id:"untriaged",label:"Da triagiare",count:prs.filter(r=>r.triage_status!=="current").length,tip:"PR aperte che non sono mai passate da pr-triage né da un analyze"},
-  {id:"todo",label:"Da fare",count:prs.filter(r=>r.triage_status==="current"&&r.state!=="waiting").length,tip:"Le PR triagiate dove la prossima mossa è tua"},
+  {id:"untriaged",label:"Senza verdetto",count:prs.filter(r=>r.triage_status!=="current").length,tip:"PR aperte che non sono mai passate da pr-triage né da un analyze"},
+  {id:"todo",label:"Da fare",count:prs.filter(r=>r.triage_status==="current"&&!AWAY.includes(r.state)).length,tip:"Le PR triagiate dove la prossima mossa è tua, e non è solo un commento"},
   {id:"waiting",label:"In attesa",count:prs.filter(r=>r.triage_status==="current"&&r.state==="waiting").length,tip:"PR triagiate ferme in attesa di altri"},
   {id:"all",label:"Tutte",count:loaded?prs.length:"—",tip:"Tutte le PR aperte in cui sei coinvolto"},
   {id:"blocks",label:"Blocks",count:grid?grid.blocks.filter(b=>b.rows.length).length:"—",tip:"I cinque blocchi pubblicati dall'ultimo pr-triage esplicito"},
-  {id:"chase",label:"Chase",count:Object.keys(chase).length,tip:"Un messaggio pronto per ogni persona da sollecitare"},
+  {id:"chase",label:"Chase",count:Object.keys(chase).length+Object.keys(replies).length,tip:"Un messaggio pronto per ogni persona da sollecitare, e le risposte che devi"},
 ];
 function renderTabs(){
   $("tabs").innerHTML=VIEWS().map(v=>`<button class="${view===v.id?"active":""}" data-v="${v.id}" title="${esc(v.tip)}">${v.label} <b>${v.count}</b></button>`).join("");
@@ -631,9 +633,12 @@ function renderTabs(){
   const flowOut=rec=>!!(rec&&OUT_STATUS.includes(rec.status));
   const triOut=flowOut(flows[triFlow]);
   const untriaged=onIssue?0:prs.filter(r=>r.triage_status!=="current").length;
-  tri.textContent=(triOut?"in corso · ":"↻ ")+triFlow+(!onIssue?` · ${untriaged||"✓"}`:"");
+  const unranked=onIssue&&shortlist?shortlist.rows.filter(r=>!r.impact).length:0;
+  tri.textContent=onIssue
+    ?(triOut?"in corso · ordino la shortlist":`↻ ordina shortlist · ${unranked?unranked+" da ordinare":"✓"}`)
+    :(triOut?"in corso · ":"↻ ")+triFlow+` · ${untriaged||"✓"}`;
   tri.title=(onIssue
-    ?"Rilegge il provider, pubblica la shortlist fresca e avvia un agente one-shot solo per il giudizio richiesto."
+    ?"La shortlist la calcola il desk da solo a ogni lettura. Questo bottone fa leggere a un agente one-shot (issue-triage) le issue in shortlist ancora senza ordine: urgenza U1–U4, da quali dipendono, e l'ordine in cui risolverle."
     :"Rilegge il provider, pubblica i verdetti freschi e avvia un agente one-shot solo per gli artefatti mancanti.");
   tri.disabled=!agentReady||triOut||!loaded;
   tri.classList.toggle("locked",!!triOut);
@@ -731,7 +736,7 @@ function th(key,label,extra){
 }
 function triageChip(r){
   if(r.triage_status==="current")return "";
-  return `<small class="triageChip" title="Questa PR non è ancora passata da pr-triage">? da triagiare</small>`;
+  return `<small class="triageChip" title="Questa PR non è ancora passata da pr-triage">? senza verdetto</small>`;
 }
 function renderTable(){
   const tb=$("tbody"),head=$("thead");
@@ -805,8 +810,8 @@ function renderBlocks(){
    Whoever is on this tab has already decided what to do — chase — and only
    needs the text. */
 function renderChase(){
-  const names=Object.keys(chase),wrap=$("chaseWrap");
-  if(!names.length){
+  const names=Object.keys(chase),owed=Object.keys(replies),wrap=$("chaseWrap");
+  if(!names.length&&!owed.length){
     wrap.innerHTML=`<div class="chaseNote">${!loaded
       ?"Ancora niente: la coda non è caricata."
       :!triageComplete
@@ -815,7 +820,7 @@ function renderChase(){
     return;
   }
   const stamp=`Dall'ultimo ${esc(DESK==="issue"?"issue-triage":"pr-triage")}${session?` — ${esc(session)}`:""}.`;
-  wrap.innerHTML=`<div class="chaseNote">${stamp} Un messaggio per persona, pronto da incollare.</div>`
+  wrap.innerHTML=`<div class="chaseNote">${stamp} ${names.length?"Un messaggio per persona, pronto da incollare.":"Nessuno da sollecitare."}${owed.length?" Sotto, chi aspetta una tua risposta: basta un commento.":""}</div>`
     + names.map(w=>{
         const text=chase[w];
         const lines=text.split("\n").length-1;      // the header line is not a PR
@@ -824,8 +829,15 @@ function renderChase(){
           <h2>@${esc(w)} <span class="chaseCount">${lines} PR${oldest?` · dal ${esc(oldest)}`:""}</span></h2>
           <pre>${esc(text)}</pre>
           <button class="btn" data-copy="${esc(text)}">Copia messaggio</button></div>`;
-      }).join("");
+      }).join("")
+    + owed.map(w=>`<div class="chaseCard reply">
+        <h2>@${esc(w)} <span class="chaseCount">aspetta una tua risposta · ${replies[w].length} PR</span></h2>
+        ${replies[w].map(r=>`<div class="signal" data-n="${r.n}" style="cursor:pointer">
+          <b class="mono">#${r.n}</b><span>${esc((r.title||"").slice(0,70))}</span>
+          <span class="mono">${esc(r.created||"")}</span></div>`).join("")}</div>`).join("");
   wrap.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>copyText(b,b.dataset.copy));
+  wrap.querySelectorAll(".reply [data-n]").forEach(el=>el.onclick=()=>{
+    view="all";stateFilter=null;select(+el.dataset.n);});
 }
 
 /* ---------- detail panel ---------- */
@@ -1175,7 +1187,7 @@ function renderSummary(){
     $("leadTitle").textContent=free?`${free} issue senza assignee`:"tutte le issue hanno un assignee";
     $("leadSub").textContent=`${issues.length} aperte${issuesWithPr?` · ${issuesWithPr} escluse perché una PR aperta le cita`:""}${issuesTaken?` · ${issuesTaken} in mano ad altri`:""} · provider ${meta.provider||"—"}`;
   }else{
-    const c={ready:0,attention:0,waiting:0,decision:0};
+    const c={ready:0,attention:0,waiting:0,decision:0,reply:0};
     const current=prs.filter(r=>r.triage_status==="current");
     const pending=prs.length-current.length;
     current.forEach(r=>c[r.state]++);
@@ -1183,22 +1195,25 @@ function renderSummary(){
     $("mWaiting").textContent=c.waiting;$("mReady").textContent=c.ready;
     const mine=c.attention+c.decision+c.ready;
     $("cPrs").textContent=prs.length;$("cIssues").textContent=issues.length;
-    $("leadTitle").textContent=pending?`${pending} pull request da triagiare`:mine?`${mine} pull request aspettano una mossa tua`:"nessuna PR aspetta una mossa tua";
+    $("leadTitle").textContent=pending?`${pending} pull request senza verdetto`:mine?`${mine} pull request aspettano una mossa tua`:"nessuna PR aspetta una mossa tua";
     $("leadSub").textContent=`${prs.length} fetched · ${current.length} con triage corrente · ${issues.length} issue · provider ${meta.provider||"—"}`;
   }
   const notes=[];
   if(DESK==="issue"){
     notes.push("<b>Cross-check e shortlist calcolati dal desk</b> — nessun modello coinvolto.");
-    notes.push(ranked
-      ? `<b>Shortlist nell'ordine di risoluzione proposto</b> — urgenza (U1–U4) e dipendenze (dopo #n) su ogni riga${session?` — ${esc(session)}`:""}.`
-      : "<b>Non ancora ordinata</b> — l'ordine è per data finché issue-triage non la legge.");
+    const unranked=shortlist?shortlist.rows.filter(r=>!r.impact).length:0;
+    notes.push(!ranked
+      ? "<b>Shortlist non ancora ordinata</b> — per ora è in ordine di data: ↻ ordina shortlist fa leggere le issue e propone urgenza, dipendenze e ordine di risoluzione."
+      : unranked
+      ? `<b>Shortlist ordinata in parte</b> — ${unranked} entrate dopo l'ultimo ordinamento stanno in fondo, per data: ↻ ordina shortlist rilegge tutta la shortlist e rifà l'ordine.`
+      : `<b>Shortlist nell'ordine di risoluzione proposto</b> — urgenza (U1–U4) e dipendenze (dopo #n) su ogni riga${session?` — ${esc(session)}`:""}.`);
     const stale=issues.filter(r=>r.analysis_stale).length;
     if(stale)notes.push(`<b>${stale} analisi da aggiornare:</b> l'issue si è mossa dopo che erano state scritte.`);
   }
   else{
     const missing=prs.filter(r=>r.triage_status==="missing").length;
     notes.push(`<b>Fetch provider completato</b> — ${prs.length} PR caricate senza eseguire pr-triage.`);
-    if(missing)notes.push(`<b>${missing} da triagiare:</b> PR mai viste da pr-triage.`);
+    if(missing)notes.push(`<b>${missing} senza verdetto:</b> PR mai viste da pr-triage.`);
     else notes.push(`<b>Triage corrente</b>${session?` — ${esc(session)}`:""}.`);
   }
   if(truncated)notes.push(`<b>Coda troncata:</b> il provider dichiara ${truncated} PR e la pagina ne porta ${prs.length}. Le mancanti non sono in tabella.`);

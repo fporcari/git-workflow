@@ -232,7 +232,9 @@ def verdict(row, me, gate=None):
             if waiting_on:
                 return ("waiting on %s" % waiting_on, "waiting", "-")
             return ("needs a look - whose move is unclear", "decision", "asks")
-        return ("answer %s" % last_who, "attention", "asks")
+        # nothing asked of the code, nothing left open: a comment answers it,
+        # so it waits in the Chase tab rather than in his to-do
+        return ("answer %s" % last_who, "reply", "asks")
 
     if last_who == me:
         return ("waiting on %s" % author, "waiting", "-")
@@ -267,6 +269,7 @@ def decorate(rows, me, gates=None):
         row["state"] = state
         row["autorun"] = autorun
         row["waiting_on"] = waiting_on(row, me, gate) if state == "waiting" else None
+        row["reply_to"] = _last_who(row) if state == "reply" else None
     return rows
 
 
@@ -288,7 +291,7 @@ def block_of(row):
         return "Review da fare"
     if row.get("state") == "waiting":
         return "In attesa di altri"
-    # a decision, or an `attention` that is nobody else's move: his call
+    # a decision, an `attention` or a `reply`: his call
     return "Solo tue"
 
 
@@ -356,6 +359,19 @@ def chase(rows, me):
         out[who] = ("@%s \u2014 %s PR ferme su di te, la pi\u00f9 vecchia dal %s:\n%s"
                     % (who, len(items), items[0].get("created"), "\n".join(lines)))
     return out
+
+
+def replies(rows, me):
+    """The answers he owes, per person: his PRs where somebody else spoke
+    last and only a comment is due. One card per person, like the chase."""
+    per = {}
+    for row in rows:
+        if row.get("state") == "reply" and row.get("author") == me and row.get("reply_to"):
+            per.setdefault(row["reply_to"], []).append(
+                {"n": row["n"], "created": row.get("created"), "title": row.get("title")})
+    for items in per.values():
+        items.sort(key=lambda r: r.get("created") or "")
+    return dict(sorted(per.items(), key=lambda kv: -len(kv[1])))
 
 
 def handoff(row, repo, merge_command):

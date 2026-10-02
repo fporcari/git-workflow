@@ -314,8 +314,8 @@ page.render();
 ok("fetch does not publish a triage grid", snapshot.queue.grid === null);
 ok("every fetched PR starts visibly untriaged",
    page.state.prs.every(r => r.triage_status === "missing") &&
-   document.getElementById("tbody").innerHTML.includes("da triagiare"));
-ok("the default PR view is Da triagiare",
+   document.getElementById("tbody").innerHTML.includes("senza verdetto"));
+ok("the default PR view is Senza verdetto",
    page.state.view === "untriaged" && page.visiblePrs().length === page.state.prs.length);
 ok("the fetch banner does not claim a triage ran",
    document.getElementById("noteBox").innerHTML.includes("Fetch provider completato"));
@@ -347,14 +347,14 @@ const newDesk = {...triaged, queue: {...triaged.queue,
   triage_complete: false, chase: {},
   rows: triaged.queue.rows.map(r => r.n !== newN ? r : ({...r,
     state: "untriaged", autorun: "-", action: null, waiting_on: null,
-    todo: "da triagiare", triage_status: "missing"})),
+    todo: "senza verdetto", triage_status: "missing"})),
   grid: {...triaged.queue.grid, blocks: triaged.queue.grid.blocks.map(b =>
     ({...b, rows: b.rows.filter(r => +r.n !== newN)}))}}};
 page.applyDesk(newDesk);
 page.view = "untriaged"; page.render();
-ok("a never-triaged PR alone reads as da triagiare",
+ok("a never-triaged PR alone reads as senza verdetto",
    page.visiblePrs().length === 1 && page.visiblePrs()[0].n === newN &&
-   document.getElementById("tbody").innerHTML.includes("da triagiare"));
+   document.getElementById("tbody").innerHTML.includes("senza verdetto"));
 page.applyDesk(triaged);
 
 page.view = "todo";
@@ -725,6 +725,11 @@ ok("the login is not upper-cased: it is a case-sensitive handle",
    /\.chaseCard h2\{[^}]*text-transform:none/.test(html));
 ok("a card says how many and since when",
    document.getElementById("chaseWrap").innerHTML.includes("chaseCount"));
+ok("a reply owed sits under the person waiting for it, not in a message",
+   Object.keys(triaged.queue.replies).length > 0 &&
+   Object.entries(triaged.queue.replies).every(([who, items]) =>
+     document.getElementById("chaseWrap").innerHTML.includes(`@${who} <span class="chaseCount">aspetta una tua risposta`) &&
+     items.every(r => document.getElementById("chaseWrap").innerHTML.includes(`data-n="${r.n}"`))));
 ok("no PR detail panel under the chase blocks — the unit here is a person",
    document.getElementById("detail").innerHTML === "" &&
    document.getElementById("detail").style.display === "none");
@@ -734,6 +739,10 @@ tabsNow().find(b => b.dataset.v === "todo").click();
 ok("leaving Chase brings the detail panel back",
    document.getElementById("detail").innerHTML.includes("detailGrid") &&
    document.getElementById("detail").style.display !== "none");
+ok("Da fare leaves out a PR where only a comment is due",
+   triaged.queue.rows.some(r => r.state === "reply") &&
+   triaged.queue.rows.filter(r => r.state === "reply")
+     .every(r => !document.getElementById("tbody").innerHTML.includes(`data-n="${r.n}"`)));
 
 /* ---- 8. the issue desk uses the same panel ---- */
 page.applyDesk({ ...snapshot, meta: { ...snapshot.meta, desk: "issue" } });
@@ -748,6 +757,24 @@ ok("the issue shortlist is computed on every read",
    !!snapshot.issues.shortlist && snapshot.issues.ranked === false);
 ok("every issue row says whether it is in it",
    snapshot.issues.rows.every(r => "in_shortlist" in r));
+ok("the ordering button says what it does and how many wait for it",
+   document.getElementById("btnTriage").textContent ===
+     `↻ ordina shortlist · ${snapshot.issues.shortlist.rows.length} da ordinare`);
+ok("an unranked shortlist says it is in date order and what the button adds",
+   document.getElementById("noteBox").innerHTML.includes("Shortlist non ancora ordinata"));
+{
+  const rows = snapshot.issues.shortlist.rows;
+  page.applyDesk({ ...snapshot, meta: { ...snapshot.meta, desk: "issue" },
+                   issues: { ...snapshot.issues, ranked: true,
+                             shortlist: { ...snapshot.issues.shortlist,
+                                          rows: rows.map((r, i) => ({ ...r, impact: i ? i : null })) } } });
+  page.render();
+  ok("a shortlist ranked before new issues came in says so, and counts them",
+     document.getElementById("btnTriage").textContent === "↻ ordina shortlist · 1 da ordinare" &&
+     document.getElementById("noteBox").innerHTML.includes("Shortlist ordinata in parte"));
+  page.applyDesk({ ...snapshot, meta: { ...snapshot.meta, desk: "issue" } });
+  page.render();
+}
 ok("the page no longer hunts the shortlist array per row",
    !html.includes("shortlist.rows.find"));
 page.applyState({ agent: { mode: "on-demand", busy: false }, feed: [],
