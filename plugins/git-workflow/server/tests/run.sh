@@ -18,6 +18,7 @@ UI_HOME=""
 
 cleanup() {
   [ -n "$DESK" ] && kill "$DESK" 2>/dev/null || true
+  [ -n "$DESK" ] && wait "$DESK" 2>/dev/null || true
   rm -f "$TEST_LOG"
   [ -n "$UI_HOME" ] && rm -rf "$UI_HOME"
 }
