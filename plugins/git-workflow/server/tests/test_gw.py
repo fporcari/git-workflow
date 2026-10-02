@@ -553,6 +553,38 @@ class ForgejoShapeTest(unittest.TestCase):
         self.assertEqual((row["decision"], row["req"]), ("APPROVED", []))
         self.assertEqual(verdicts.verdict(row, "alice")[:2], ("merge it", "ready"))
 
+    def test_admin_queue_includes_only_unreviewed_prs_without_a_reviewer(self):
+        p = self.provider()
+        pulls = [dict(PULL, number=n, user=_user(author), requested_reviewers=requested)
+                 for n, author, requested in (
+                     (12, "alice", [_user("bob")]),
+                     (13, "bob", []),
+                     (14, "carol", [_user("dave")]),
+                     (15, "erin", []))]
+
+        def get(path, **params):
+            if path == "/repos/acme/widgets/pulls":
+                return pulls
+            if path == "/repos/acme/widgets":
+                return {"permissions": {"admin": admin}}
+            return REVIEWS_FJ if path.endswith("/15/reviews") else []
+
+        with mock.patch.object(p, "_get", side_effect=get):
+            admin = True
+            rows = p.queue("acme/widgets", "alice")["rows"]
+            self.assertEqual({row["n"] for row in rows}, {12, 13})
+            orphan = next(row for row in rows if row["n"] == 13)
+            self.assertEqual(orphan["req"], [])
+            self.assertTrue(orphan["maintainer_review"])
+            self.assertEqual(verdicts.verdict(orphan, "alice"),
+                             ("review it (maintainer)", "attention", "asks"))
+            self.assertEqual(verdicts.block_of({"todo": "review it (maintainer)"}),
+                             "Review da fare")
+
+            admin = False
+            self.assertEqual([row["n"] for row in p.queue("acme/widgets", "alice")["rows"]],
+                             [12])
+
     def test_the_rest_of_the_verbs(self):
         p = self.provider()
         with mock.patch.object(ForgejoProvider, "_request", side_effect=self.request):

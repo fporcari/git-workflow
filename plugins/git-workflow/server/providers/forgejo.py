@@ -168,12 +168,17 @@ class ForgejoProvider(Provider):
 
     def queue(self, repo, me):
         pulls = self._get("/repos/%s/pulls" % repo, state="open", limit=50)
+        permissions = self._get("/repos/%s" % repo).get("permissions") or {}
+        maintainer = bool(permissions.get("admin"))
         with ThreadPoolExecutor(max_workers=6) as pool:
             reviews = list(pool.map(
                 lambda pr: self._get("/repos/%s/pulls/%s/reviews" % (repo, pr["number"])), pulls))
         rows = []
         for pr, revs in zip(pulls, reviews):
             row = self._row(repo, pr, revs or [])
+            row["maintainer_review"] = (maintainer and row["author"] != me
+                                        and not pr.get("requested_reviewers")
+                                        and not row["reviews"])
             if self._involves(row, me):
                 rows.append(row)
         rows.sort(key=lambda r: r["created"], reverse=True)
@@ -185,7 +190,8 @@ class ForgejoProvider(Provider):
 
     def _involves(self, row, me):
         return (row["author"] == me or me in row["req"]
-                or any(r["who"] == me for r in row["reviews"]))
+                or any(r["who"] == me for r in row["reviews"])
+                or row.get("maintainer_review", False))
 
     def _row(self, repo, pr, revs):
         reviews, spoke = [], []

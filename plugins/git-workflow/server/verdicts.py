@@ -149,6 +149,9 @@ def verdict(row, me, gate=None):
     if me in req:
         return ("review it", "attention", "asks")
 
+    if row.get("maintainer_review"):
+        return ("review it (maintainer)", "attention", "asks")
+
     if review_states.get(me) == "CHANGES_REQUESTED" and last_who not in (me, None):
         return ("re-review it", "attention", "asks")
 
@@ -273,7 +276,7 @@ def decorate(rows, me, gates=None):
 
 BLOCK_TITLES = ("Da mergiare subito", "Azione banale", "Review da fare",
                 "Solo tue", "In attesa di altri")
-REVIEW_TODOS = ("review it", "re-review it", "verify it")
+REVIEW_TODOS = ("review it", "review it (maintainer)", "re-review it", "verify it")
 
 
 def block_of(row):

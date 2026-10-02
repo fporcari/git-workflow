@@ -1725,6 +1725,18 @@ class Blocks(unittest.TestCase):
         self.assertFalse(queue["triage_complete"])
         self.assertEqual(queue["triage_counts"]["missing"], len(queue["rows"]))
 
+    def test_maintainer_review_is_actionable_without_model_triage(self):
+        desk = fresh_desk()
+        row = desk.provider.data["rows"][0]
+        row.update(author="Roberto", req=[], reviews=[], last=None, draft=False,
+                   maintainer_review=True)
+        queue = desk.queue()
+        current = next(item for item in queue["rows"] if item["n"] == row["n"])
+        self.assertEqual((current["triage_status"], current["todo"], current["state"]),
+                         ("current", "review it (maintainer)", "attention"))
+        self.assertEqual(verdicts.block_of(current), "Review da fare")
+        self.assertIsNone(queue["grid"])
+
     def test_publishing_the_export_marks_every_row_current(self):
         desk = fresh_desk()
         self.exported(desk)          # the run publishes the grid itself

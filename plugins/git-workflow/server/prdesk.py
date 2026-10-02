@@ -364,7 +364,8 @@ class Desk:
         records = triage_records(grid)
         analyzed = {int(n) for n, note in (notes or {}).items()
                     if (note or {}).get("analysis_key") and n.isdigit()}
-        seen = set(records) | analyzed
+        seen = (set(records) | analyzed |
+                {row["n"] for row in rows if row.get("maintainer_review")})
         counts = {"current": 0, "missing": 0, "stale": 0}
         if seen:
             decorate(rows, self.me, gates)
