@@ -1,7 +1,12 @@
 # Host runtime
 
 The workflow semantics are portable. Only the mechanics in this file vary by
-host.
+host. Global and repository instructions override every skill's default mandate.
+On Codex resolve `~/.codex/AGENTS.md` and read `git-workflow.md` beside its
+real target before Git/GitHub work. If those instructions require confirmation
+immediately before each merge, an invocation, batch selection or desk click
+does not waive it: ask then in the attached chat; a detached one-shot returns
+`needs-input` without merging.
 
 ## Plugin root
 
@@ -20,16 +25,15 @@ Never split one batch into several questions merely to fit a tool schema.
 
 ## Desks
 
-Start the requested desk with the appropriate `--desk` value and a one-shot
-agent backend:
+Start the desk with `--desk pr` and the current host as its one-shot agent
+backend; Pull request, Issue and Filoni are tabs of that one page:
 
 ```sh
 python3 <PLUGIN_ROOT>/server/prdesk.py --desk pr --agent codex
-python3 <PLUGIN_ROOT>/server/prdesk.py --desk issue --agent claude
 ```
 
 Start it in the background with stderr on a log and open the URL of the
-`<kind> desk on http://127.0.0.1:<port>` line it prints — the port is chosen
+`pr desk on http://127.0.0.1:<port>` line it prints — the port is chosen
 at bind time (default when free, otherwise one the OS picks, or the running
 twin's URL), so no launch configuration may hard-code it.
 
@@ -40,9 +44,10 @@ twin's URL), so no launch configuration may hard-code it.
   127.0.0.1 by the process just started: no login, nothing to state or ask
   first — open it. Not the `launch.json` browser-preview recipe: it needs a
   port known in advance.
-- Codex: start the process in a persistent terminal session, then open the
-  URL with the Codex browser panel/tool when available. Otherwise give the
-  URL to the user.
+- Codex: start the process in a persistent terminal session, then call
+  `mcp__codex_app__open_in_codex` with target `{"type":"browser","url":<printed URL>}`.
+  The opening URL is local; no login is needed. Use the returned URL, never
+  a guessed port. If the tool is unavailable, give the URL to the user.
 
 Use `--agent claude` from Claude Code and `--agent codex` from Codex.
 `--agent auto` is the compatibility fallback for a manual launch.
@@ -58,8 +63,10 @@ pr-loop, issue-loop and orders):
 
 Effort accepts the common portable values `low`, `medium`, `high`, `xhigh` and
 `max`. With no variables set, Claude jobs default to `opus` — `ANALYZE` and
-`OPERATION` at `high`, `TRIAGE` at `medium` — and Codex jobs keep the host's
-configured defaults, since those aliases are Claude's.
+`OPERATION` at `high`, `TRIAGE` at `medium` — and Codex jobs use `gpt-5.6-sol` for `ANALYZE`/high and `TRIAGE`/medium,
+and `gpt-6-astra` for `OPERATION`/high. Host-specific overrides win over
+shared overrides, which win over defaults. Claude aliases never enter a
+Codex command by default.
 
 ## Opening a URL
 
@@ -76,7 +83,7 @@ the instance the user has running:
 The model follows the reader of the output. Output a human reads — replies to
 reviews, PR bodies, proposals, and the merges and realigns Lane A performs
 without asking again — wants the strongest model: open the launching chat on
-`fable` at effort `high`, and give `OPERATION` the same where the account has
+Claude `fable` or Codex `gpt-6-astra`, at effort `high`, and give `OPERATION` the same where the account has
 fable (`GIT_WORKFLOW_CLAUDE_OPERATION_MODEL=fable`; the shipped default stays
 `opus` because a model the account lacks kills the job at launch). Output a schema reads wants `opus`: `ANALYZE` at `high`
 (claims verified against the code), `TRIAGE` at `medium` (a classification over
@@ -86,18 +93,20 @@ inherited. `sonnet` is not in the palette: a wrong answer on somebody else's PR
 is public and has no repair. The profiles enforce the jobs' model; the chat's
 is enforced only where the host can: on Claude Code the plugin ships a
 PreToolUse hook (`hooks/hooks.json`) that blocks `pr-loop` below Opus or
-Fable, fail-closed, and a second one that blocks every rewrite of a PR's
-description (`gh pr edit --body`, a `PATCH` on `pulls/<n>`, the same through
-`gw api`): a review is answered in a comment or thread, the body stays the
-author's record as opened. Codex has no hooks, so there the model rule lives
-only in the skills' text; the body rule holds on both hosts through `gw`, whose
-`pr edit` has no `--body` and whose skills never call `gh pr edit`.
+Fable, fail-closed. Codex can load shared hooks on the tested desktop
+installation; the Skill matcher does not establish a native model gate.
+Native one-shot profiles select Codex models, and live chats follow host
+instructions. A PR's description may be rewritten when the change moved
+(`gh pr edit <n> --body-file <f>`); warn the user first when the rewrite
+would make existing review comments read as nonsense. Rewriting another
+author's description remains outside automatic actions.
 
 The server is detached from the launching conversation. It reads provider
 cache, rows and job JSON files by itself, and it never starts a model merely
 because the desk is open or polling. The launching conversation stays
 ATTACHED by default: on Claude Code through one persistent `Monitor` running
-`chatdesk.py listen`, on Codex through the blocking `chatdesk.py wait` loop.
+`chatdesk.py listen`, on Codex through the `chatdesk.py wait --timeout 50` loop, yielding within
+60 seconds and resuming the same command session until it returns.
 The Monitor dies at the tool's 30-minute cap, and a desk that died with it
 died under the user's hands: on that expiry the chat starts `chatdesk.py doze`
 as a background shell, which has no cap, keeps the chat attached, and ends at
@@ -110,7 +119,7 @@ never terminates a desk another live chat listens to.
 Each listener passes a stable conversation `--session` and an explicit
 `--desk pr|issue|both`; one live conversation owns each desk. While that
 heartbeat is fresh the server routes each non-triage click to its owning
-conversation, which executes it there (see "Attached chat" in the review-desk
+conversation, which executes it there (see "Attached chat" in the git-desk
 skill). With no chat attached — a detached launch, or a session that ended —
 analyze, explain and workflow buttons each start one ephemeral CLI process,
 wait through the corresponding job JSON, then let the process exit. Triage
@@ -139,7 +148,8 @@ A desk click requesting a dedicated issue session is the user's explicit
 request for that session.
 
 - Claude Code: create its native spawn-task chip.
-- Codex: create a Codex task with the host's thread/task tool. Use the saved
+- Codex: call `mcp__codex_app__list_projects`, then
+  `mcp__codex_app__create_thread` for the exact saved repository project. Use the saved
   repository project and its normal isolated worktree. The issue-work skill
   works in that existing isolated checkout and must not create a nested
   worktree.
@@ -155,12 +165,12 @@ Set a session/task title only when the host exposes a title tool.
   tool, so it must be loaded with ToolSearch before the call, or declared in
   the `allowed-tools` of the command wrapper that loads the skill. A tool the
   skill does not name is a tool the model never looks for.
-- Codex: the host's own thread/task title tool, when one is exposed.
+- Codex: `mcp__codex_app__set_thread_title`, omitting `threadId` to title
+  this chat. Use `CODEX_THREAD_ID` as the stable listener session id.
 
-The desks title the launching chat so it can be found again in the session
-list: `PR desk · <owner/repo> · <YYYY-MM-DD HH:MM>` (`Issue desk`, `Review
-desk`) on opening, date and time from `date '+%F %H:%M'`, and the same title
-with ` · closed` appended once the selected desk is gone (both for review-desk). The
-triages title theirs by date only.
+The desk titles the launching chat so it can be found again in the session
+list: `Git desk · <owner/repo> · <YYYY-MM-DD HH:MM>` on opening, date and time
+from `date '+%F %H:%M'`, and the same title with ` · closed` appended once the
+desk is gone. The triages title theirs by date only.
 
 Missing title support never blocks the workflow.

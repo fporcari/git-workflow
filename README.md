@@ -37,7 +37,7 @@ claude plugin install git-workflow@fporcari
 
 Codex: point it at the marketplace in `.agents/plugins/marketplace.json` of
 this repo; the skills are invoked as `$pr-triage`, `$issue-triage`,
-`$review-desk`, and so on.
+`$git-desk`, and so on.
 
 ## Two hosts, one plugin
 
@@ -111,28 +111,27 @@ decision. The
 launch recipe is the repo's own (a `run`/`ui-test` project skill or
 `.claude/launch.json`); without one the UI steps come back blocked, not faked.
 
-**"Show me, don't tell me."** — the detached dashboards:
+**"Show me, don't tell me."** — the detached dashboard:
 
 ```
-/pr-desk
+/git-desk
 ```
 
-or `/issue-desk`, or `/review-desk` for both. Each opens in the browser, reads
+One page, with Pull request, Issue and Filoni as tabs. It opens in the browser, reads
 provider/cache JSON itself and paints in seconds. Opening or polling it spends
 no model tokens; an explicit action button starts one ephemeral Codex or
 Claude process and records its progress and result in a job JSON. While it
 runs, the desk shows elapsed time, current phase and sanitized tool activity;
 opening the progress view does not attach the primary conversation. The
-launching chat is titled `PR desk · owner/repo · 2026-09-09 14:32` when the
+launching chat is titled `Git desk · owner/repo · 2026-09-09 14:32` when the
 desk opens and gets a ` · closed` suffix once the desk is gone — the server
-registers itself at boot, and the chat's listener ends by itself when the selected
-desk has stopped (both for review-desk) — so the session list tells the two apart.
+registers itself at boot, and the chat's listener ends by itself when the
+desk has stopped — so the session list tells the two apart.
 
 Attached clicks carry the originating desk, owning session and a unique
-request ID. PR and issue desks can belong to different chats; a second chat
-cannot silently take over a live desk. Each chat executes one click at a time,
-and late results cannot overwrite a newer request. Opening the sibling desk
-preserves in-progress work. After updating, restart existing desks and chat
+request ID. A second chat cannot silently take over a live desk. Each chat
+executes one click at a time, and late results cannot overwrite a newer
+request. After updating, restart existing desks and chat
 listeners to use the new routing protocol.
 
 ## What is in the box
@@ -174,9 +173,7 @@ succeeded.
 
 | skill | what it does |
 |---|---|
-| **`pr-desk`** | The detached PR queue dashboard (default port 8399, a free one when that is taken). Startup, reload and polling use Python/provider JSON only. Explicit triage, analysis, explanation and workflow clicks each start one ephemeral Codex or Claude process. |
-| **`issue-desk`** | The same for the open issues (default port 8398): the cross-check and the shortlist computed without a model on every read, only the issues still to take — unassigned or yours, and cited by no open PR (the lead line counts what it leaves out), the resolution order, urgency and dependencies from `issue-triage` shown on every row, an analysis marked *da aggiornare* when its issue has moved since. Buttons for dedicated work sessions, `issue-analyze` and `issue-loop`. |
-| **`review-desk`** | Launches both detached servers and defines their JSON/job contract. The launching conversation finishes by default while the dashboards remain available; attached chat routing is opt-in. |
+| **`git-desk`** | The detached dashboard (default port 8399, a free one when that is taken), one page with three tabs. *Pull request*: the PR queue. *Issue*: the cross-check and the shortlist computed without a model on every read, only the issues still to take — unassigned or yours, and cited by no open PR (the lead line counts what it leaves out), the resolution order, urgency and dependencies from `issue-triage` shown on every row, an analysis marked *da aggiornare* when its issue has moved since. *Filoni*: PRs and the issues they close, read together. Startup, reload and polling use Python/provider JSON only; the launching chat stays attached by default and executes every click except triage, which — like every click on a detached desk — starts one ephemeral Codex or Claude process. The skill also defines the JSON/job contract. |
 
 `plugins/git-workflow/server/` is the code under all three: a zero-dependency
 Python stdlib server that reads the provider, prepares explicit triage work,
@@ -189,18 +186,46 @@ The skills launch it; you can also run it by hand:
 ```bash
 python3 plugins/git-workflow/server/prdesk.py        # repo from the cwd's origin
 python3 plugins/git-workflow/server/prdesk.py --repo owner/repo --desk issue
+python3 plugins/git-workflow/server/prdesk.py --org erpy   # every repo of an owner
+cd ~/Development/erpy-org && python3 …/prdesk.py           # a folder of clones
 ```
+
+**One page, three views.** Pull request, Issue and Filoni are tabs of the
+same page, whichever desk you launched: the server already reads both, and
+Filoni pairs every open issue with the PR that closes or cites it —
+`owner/repo#n` included — grouped by who has to move, with a strip of the
+people involved on top. The layout is built for a tall, narrow pane (the
+Browser pane beside the chat on a portrait screen): two-line rows, the
+detail under the list with a handle to move the split, filter chips instead
+of a metrics row. On a wide window the detail moves beside the list. ⌘K
+opens every action of the page — the picked rows, the selected row, the
+views, the chase messages, the scope — and `j`/`k`, `x`, `a`, `g p`/`g i`/`g f`
+work without it.
+
+**A scope of several repositories.** `--org [host/]owner` covers every
+repository of that owner with an open issue or PR (one cross-repo search: no
+`read:organization` scope needed on Forgejo); a cwd that holds clones without
+being one covers that folder, other owners included; `--folder DIR` and
+repeated `--repo` add up. Each member keeps its own cache, state file, jobs
+and click ledger — exactly the files a desk of its own would write — and the
+page merges them: every row is `repo #n`, every click names its repository,
+a run across repositories becomes one loop per repository, each in its own
+clone. Clones are found, not configured (the cwd, its children, its parent's
+children, `--clones DIR`); a member without one is read and analyzed but never
+worked, and the page says so on its rows. The scope button lists the members
+and their clones, and hides a member from the page without changing the scope.
 
 Open the URL of the `desk on http://127.0.0.1:<port>` line it prints: 8399
 for PRs and 8398 for issues when free, a free port the OS picks when another
 repo or the sibling desk holds it, and the running server's URL when the same
 desk of the same repo is already up (then the new process just exits). An
 explicit `--port` is strict. A desk idle for an hour with no job running exits
-on its own (`--idle-exit`). Tabs: Queue (needs a move from you), Mergeable,
-Waiting, All PRs, Issues. Clicking a row opens the detail panel: state of
-play, next move with the `pr-loop` autorun class, reviews, linked issues.
+on its own (`--idle-exit`). Clicking a row opens the detail panel: the next
+move with the `pr-loop` autorun class first, then what the PR solves, the
+state of play, reviews and linked issues.
 
-Options: `--repo`, `--provider github|forgejo|fixture`, `--me`, `--port`,
+Options: `--repo` (repeatable), `--org`, `--folder`, `--clones`,
+`--provider github|forgejo|fixture`, `--me`, `--port`,
 `--idle-exit`, `--agent auto|claude|codex`, `--keep-state`, `--keep-cache`,
 `--no-prefetch`.
 
@@ -300,3 +325,25 @@ invariants (`test_packaging.py`). The UI checks drive the **real**
 `static/index.html` against a **real** desk process through a small DOM shim,
 so it is the page's own render path that runs.
 `plugins/git-workflow/server/tests/README.md` says what each file is for.
+
+## Codex compatibility update — 0.56.0
+
+One desk skill, `git-desk`, replaces `pr-desk`, `issue-desk` and
+`review-desk`: the page already served Pull request, Issue and Filoni from one
+server, so the three skills launched the same page. Invoke `git-desk` instead
+of the old names; restart running desks after the update.
+
+Codex one-shot jobs select native profiles: Sol/high for analysis, Sol/medium
+for triage, Astra/high for operations. Existing host-specific and shared
+environment overrides retain precedence. Attached desks use 50-second waits,
+yielding and resuming the same command session instead of starting duplicate
+listeners. Runtime guidance names the native browser, title and task tools.
+Global/repository instructions override lane defaults; when a merge needs
+immediate confirmation, detached work returns `needs-input` without merging.
+
+Aligned with upstream 0.55.1, including organization/folder scopes and the
+three-view desk. PR descriptions may follow changes to the approach, with a
+warning before invalidating existing review comments; another author's body
+requires authorization. The obsolete Bash body guard is removed. Codex can
+load shared hook files, but the remaining Claude Skill matcher does not
+establish its model gate. Refresh the chat after an installed plugin update.

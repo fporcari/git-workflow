@@ -180,11 +180,11 @@ class ChatSessions(unittest.TestCase):
         handler.desk = SimpleNamespace(repo=self.repo, kind="issue")
         handler._send = mock.Mock()
         with mock.patch.object(prdesk.notify, "notify"):
-            handler._chat_handoff("issue-analyze", 7, {}, "analyze")
+            handler._chat_handoff(handler.desk, "issue-analyze", 7, {}, "analyze")
         record = deskstate.load(self.repo)["requests"]["issue-analyze:7"]
         self.assertEqual((record["desk"], record["session"]), ("issue", "b"))
         deskstate.chat_detach(self.repo, "b")
-        self.assertIsNone(handler._chat_handoff("issue-analyze", 8, {}, "analyze"))
+        self.assertIsNone(handler._chat_handoff(handler.desk, "issue-analyze", 8, {}, "analyze"))
 
     def test_closed_wait_detaches_only_its_own_chat(self):
         deskstate.register_desk(self.repo, "pr", 8399)

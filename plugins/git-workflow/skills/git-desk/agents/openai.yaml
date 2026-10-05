@@ -1,0 +1,4 @@
+interface:
+  display_name: "Git Desk"
+  short_description: "Open the detached dashboard of pull requests and issues."
+  default_prompt: "Use $git-desk to open the pull request and issue dashboard."

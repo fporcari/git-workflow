@@ -5,233 +5,335 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Review desk</title>
 <style>
-:root{--bg:#f4f2ed;--panel:#fbfaf7;--ink:#1e1d1a;--muted:#77736b;--line:#d9d5cc;--soft:#ebe8e0;--rust:#b95832;--red:#a53d32;--amber:#a57421;--green:#347044;--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+:root{--bg:#fbfbfa;--panel:#ffffff;--ink:#1c1b19;--muted:#67655f;--line:#e7e5e0;--soft:#f3f2ee;--sel:#edebe5;
+  --rust:#c2410c;--red:#a63a0a;--amber:#8a5a00;--green:#13652f;--blue:#1e3a9a;--accent:#2b50c8;
+  --att-bg:#ffe6d5;--dec-bg:#e6ecff;--ok-bg:#e2f2e7;--wait-bg:#eeede9;--warn-bg:#fff7e0;--warn-line:#ead9a0;
+  --mono:ui-monospace,SFMono-Regular,Menlo,monospace;--split:44%}
 *{box-sizing:border-box}
-html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink)}
-body{font:13px/1.4 system-ui,sans-serif}
-.shell{min-height:100vh;display:flex;flex-direction:column}
+[hidden]{display:none!important}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink)}
+body{font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}
+button,input{font:inherit}
+button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.shell{height:100vh;display:flex;flex-direction:column;min-height:0}
 
-.topbar{height:48px;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 18px;background:var(--panel);justify-content:space-between;gap:12px}
-.brand,.topStats{display:flex;align-items:center;gap:12px}
-.brandMark{font:700 10px/26px var(--mono);width:26px;height:26px;border-radius:7px;text-align:center;background:var(--ink);color:var(--panel);letter-spacing:-.05em}
-.brand strong{font-size:13px}
-.repo{font:11px var(--mono);color:var(--muted);border-left:1px solid var(--line);padding-left:12px;white-space:nowrap}
-.topStats{font-size:11px;color:var(--muted)}
-.topStats b{font:600 12px var(--mono);color:var(--ink)}
-.btn{border:1px solid var(--line);border-radius:6px;background:var(--panel);padding:5px 9px;color:var(--ink);font:11px inherit;cursor:pointer;text-decoration:none;white-space:nowrap}
+.topbar{height:44px;flex:none;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 10px;background:var(--panel);gap:8px}
+.brand,.topStats{display:flex;align-items:center;gap:8px;min-width:0}
+.topStats{margin-left:auto}
+.brandMark{font:600 10px/24px var(--mono);width:24px;height:24px;border-radius:6px;text-align:center;background:var(--ink);color:var(--panel);flex:none}
+.brand strong{display:none}
+.repo{display:none}
+.scopeBtn{display:flex;align-items:center;gap:6px;height:30px;padding:0 8px;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--ink);cursor:pointer;min-width:0;max-width:52vw}
+.scopeBtn b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.scopeBtn span{color:var(--muted);white-space:nowrap}
+.scopeBtn[aria-expanded=true]{border-color:var(--ink);background:var(--soft)}
+.topStats>span:not(.chatState){display:none}
+.btn{border:1px solid var(--line);border-radius:7px;background:var(--panel);padding:5px 9px;color:var(--ink);font-size:12px;cursor:pointer;text-decoration:none;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
 .btn:hover:not(:disabled){background:var(--soft)}
 .btn:disabled{opacity:.42;cursor:not-allowed}
 .btn.primary{background:var(--ink);border-color:var(--ink);color:var(--panel)}
-.btn.copied,.btn.done{border-color:var(--green);color:var(--green);background:color-mix(in srgb,var(--green) 8%,var(--panel))}
+.btn.primary:hover:not(:disabled){background:#3a3935}
+.btn.copied,.btn.done{border-color:var(--green);color:var(--green);background:var(--ok-bg)}
 .btn.working{border-color:var(--amber);color:var(--amber)}
-.btn.locked{border-style:dashed;color:var(--amber);border-color:var(--amber);cursor:default;background:color-mix(in srgb,var(--amber) 6%,var(--panel))}
+.btn.locked{border-style:dashed;color:var(--amber);border-color:var(--amber);cursor:default;background:var(--warn-bg)}
+.btn.icon{width:30px;height:30px;padding:0;justify-content:center}
 .sync{display:flex;align-items:center;gap:6px}
-.btn.sync.stale{border-color:var(--amber);color:var(--amber);background:color-mix(in srgb,var(--amber) 6%,var(--panel))}
-.sync i{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px color-mix(in srgb,var(--green) 12%,transparent);flex:none}
-.sync.loading i{background:var(--amber);box-shadow:0 0 0 3px color-mix(in srgb,var(--amber) 12%,transparent);animation:pulse 1s infinite}
-.sync.ko i{background:var(--red);box-shadow:0 0 0 3px color-mix(in srgb,var(--red) 12%,transparent)}
+.btn.sync.stale{border-color:var(--amber);color:var(--amber);background:var(--warn-bg)}
+.sync i{width:6px;height:6px;border-radius:50%;background:#16a34a;flex:none}
+.sync.loading i{background:var(--amber);animation:pulse 1s infinite}
+.sync.ko i{background:var(--red)}
 @keyframes pulse{50%{opacity:.25}}
+.chatState{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#14532d;padding:0 4px;white-space:nowrap}
+.chatState::before{content:"";width:7px;height:7px;border-radius:50%;background:#16a34a}
+.chatState[hidden]{display:none}
 
-.summary{display:grid;grid-template-columns:minmax(300px,1fr) repeat(4,minmax(104px,150px));border-bottom:1px solid var(--line);background:var(--panel)}
-.summaryLead{padding:14px 18px;display:flex;flex-direction:column;gap:2px;min-width:0}
-.summaryLead strong{font-size:17px;letter-spacing:-.02em}
-.summaryLead small{color:var(--muted)}
-.eyebrow,h2{font:600 10px var(--mono);text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
-.metric{padding:12px 16px;border-left:1px solid var(--line);display:flex;flex-direction:column;justify-content:center;cursor:pointer;border-top:0;background:none;text-align:left;font:inherit;color:inherit}
+.modeTabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));flex:none;height:42px;padding:0 6px;border-bottom:1px solid var(--line);background:var(--panel)}
+.modeTabs button{border:0;background:none;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;font-size:13px}
+.modeTabs button[aria-selected=true]{color:var(--ink);font-weight:600;box-shadow:inset 0 -2px 0 var(--ink)}
+.modeTabs b{font:500 11px var(--mono);color:var(--muted)}
+.modeTabs b.hot{min-width:18px;padding:0 5px;border-radius:9px;background:var(--rust);color:#fff;text-align:center}
+
+.scopePop{position:absolute;top:50px;left:10px;right:10px;max-width:560px;z-index:30;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 20px 56px rgba(28,27,25,.22);overflow:hidden}
+.scopePop[hidden]{display:none}
+.scopePop h2{margin:0;padding:12px 14px 4px}
+.scopeRow{display:grid;grid-template-columns:20px minmax(0,1fr) auto;gap:2px 10px;align-items:center;padding:7px 14px;cursor:pointer}
+.scopeRow:hover{background:var(--soft)}
+.scopeRow b{font:500 12.5px var(--mono)}
+.scopeRow small{grid-column:2;color:var(--muted);font-size:12px}
+.scopeRow small.bare{color:var(--amber)}
+.scopeRow em{font:normal 11px var(--mono);color:var(--muted)}
+.scopeFoot{padding:10px 14px;border-top:1px solid var(--line);background:var(--bg);color:var(--muted);font-size:12px;line-height:1.45}
+
+.summary{display:flex;align-items:center;gap:6px;flex:none;padding:6px 10px;border-bottom:1px solid var(--line);background:var(--bg);overflow-x:auto;white-space:nowrap}
+.summaryLead{display:flex;align-items:baseline;gap:8px;min-width:0;margin-right:auto;padding-right:8px}
+.summaryLead strong{font-size:13px;font-weight:600}
+.summaryLead small{color:var(--muted);overflow:hidden;text-overflow:ellipsis}
+.eyebrow,h2{font:600 10.5px system-ui,sans-serif;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.summaryLead .eyebrow{display:none}
+.metric{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid #e2e0da;border-radius:14px;background:var(--panel);cursor:pointer;color:var(--ink);font-size:12px}
 .metric:hover{background:var(--soft)}
-.metric.on{box-shadow:inset 0 -2px var(--rust)}
-.metric b{font:600 21px/1 var(--mono)}
-.metric span{font-size:10.5px;color:var(--muted);margin-top:3px}
-.metric.hot b{color:var(--red)}.metric.amber b{color:var(--amber)}.metric.green b{color:var(--green)}
+.metric.on{background:var(--ink);border-color:var(--ink);color:var(--panel)}
+.metric b{font:600 11px var(--mono);order:2}
+.metric span{order:1}
+.metric.hot b{color:var(--red)}.metric.amber b{color:var(--blue)}.metric.green b{color:var(--green)}
+.metric.on b{color:var(--panel)}
 
-.banner{display:none;padding:7px 18px;border-bottom:1px solid var(--line);font-size:11.5px}
+.banner{display:none;flex:none;padding:6px 12px;border-bottom:1px solid var(--line);font-size:12px}
 .banner.on{display:block}
-.banner.err{background:color-mix(in srgb,var(--red) 7%,var(--panel));color:var(--red)}
-.banner.warn{background:color-mix(in srgb,var(--amber) 8%,var(--panel));color:var(--amber)}
+.banner.err{background:#fdeee8;color:var(--red)}
+.banner.warn{background:var(--warn-bg);color:var(--amber)}
 .banner.info{background:var(--panel);color:var(--muted)}
-.jobPanel{display:none;padding:9px 18px;border-bottom:1px solid var(--line);background:var(--panel);gap:8px;flex-direction:column}
+.jobPanel{display:none;flex:none;padding:8px 10px;border-bottom:1px solid var(--line);background:var(--panel);gap:8px;flex-direction:column;max-height:30vh;overflow:auto}
 .jobPanel.on{display:flex}
-.jobCard{border:1px solid color-mix(in srgb,var(--amber) 45%,var(--line));border-radius:7px;padding:8px 10px;background:color-mix(in srgb,var(--amber) 5%,var(--panel))}
-.jobHead{display:flex;align-items:center;gap:8px;font-size:11.5px}.jobHead b{font:600 11px var(--mono)}
-.jobHead .spin{width:7px;height:7px;border-radius:50%;background:var(--amber);animation:pulse 1s infinite;flex:none}
-.jobHead .elapsed{margin-left:auto;color:var(--muted);font:10px var(--mono)}
-.chatState{font:600 11px/1 var(--mono);color:var(--green);border:1px solid color-mix(in srgb,var(--green) 40%,var(--line));border-radius:6px;padding:5px 8px}
-.reportCard{border-color:color-mix(in srgb,var(--ink) 22%,var(--line));background:var(--panel)}
-.reportCard .runReport{white-space:pre-wrap;margin:7px 0 0;max-height:320px;overflow:auto;font:11px/1.55 var(--mono);color:var(--ink)}
-.jobRail{height:2px;background:var(--soft);overflow:hidden;margin:7px 0}.jobRail i{display:block;width:28%;height:100%;background:var(--amber);animation:travel 1.8s ease-in-out infinite}
+.jobCard{border:1px solid #ecdcb9;border-radius:8px;padding:8px 10px;background:#fffaf0}
+.jobHead{display:flex;align-items:center;gap:8px;font-size:12px}.jobHead b{font:600 11.5px var(--mono)}
+.jobHead .spin{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:pulse 1s infinite;flex:none}
+.jobHead .elapsed{margin-left:auto;color:var(--muted);font:11px var(--mono)}
+.reportCard{border-color:var(--line);background:var(--panel)}
+.reportCard .runReport{white-space:pre-wrap;margin:7px 0 0;max-height:320px;overflow:auto;font:11.5px/1.55 var(--mono);color:var(--ink)}
+.jobRail{height:2px;background:var(--soft);overflow:hidden;margin:7px 0}.jobRail i{display:block;width:28%;height:100%;background:var(--accent);animation:travel 1.8s ease-in-out infinite}
 @keyframes travel{0%{transform:translateX(-100%)}100%{transform:translateX(460%)}}
-.jobCurrent{font-size:11px;color:var(--ink)}
-.jobEvents{margin-top:6px;padding-top:5px;border-top:1px solid var(--line);font:10.5px/1.55 var(--mono);color:var(--muted);max-height:104px;overflow:auto}
-.jobEvents div{display:flex;gap:8px}.jobEvents time{color:var(--amber);flex:none}.jobEvents span{overflow-wrap:anywhere}
-.feed{display:none;padding:6px 18px;border-bottom:1px solid var(--line);background:var(--panel);max-height:88px;overflow:auto;font:11px var(--mono);color:var(--muted)}
+.jobCurrent{font-size:12px;color:var(--ink)}
+.jobEvents{margin-top:6px;padding-top:5px;border-top:1px solid var(--line);font:11px/1.55 var(--mono);color:var(--muted);max-height:104px;overflow:auto}
+.jobEvents div{display:flex;gap:8px}.jobEvents time{color:var(--accent);flex:none}.jobEvents span{overflow-wrap:anywhere}
+.feed{display:none;flex:none;padding:5px 12px;border-bottom:1px solid var(--line);background:var(--panel);max-height:72px;overflow:auto;font:11px var(--mono);color:var(--muted)}
 .feed.on{display:block}
 .feed div{padding:1px 0}.feed b{color:var(--ink);margin-right:7px}
-.testBox{display:none;padding:9px 18px;border-bottom:1px solid var(--line);background:var(--panel);font:11.5px var(--mono)}
+.testBox{display:none;flex:none;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--panel);font:12px var(--mono)}
 .testBox.on{display:block}
 .testBox .ok{color:var(--green)}.testBox .ko{color:var(--red)}.testBox .pending{color:var(--muted)}
 
-.queue{background:var(--panel);border-bottom:1px solid var(--line)}
-.queueTools{min-height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-bottom:1px solid var(--line);gap:10px;flex-wrap:wrap}
-.tabs{display:flex;gap:2px;align-self:stretch}
-.tabs button{border:0;border-bottom:2px solid transparent;background:none;color:var(--muted);font:500 11.5px inherit;padding:0 10px;cursor:pointer}
-.tabs button.active{color:var(--ink);border-color:var(--rust)}
-.tabs b{font:500 10px var(--mono);padding:1px 5px;border-radius:8px;background:var(--soft);margin-left:4px}
-.tools{display:flex;gap:6px;align-items:center}
-.search{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);padding:4px 8px;color:var(--muted)}
-.search input{width:190px;border:0;outline:0;background:transparent;font:11px inherit;color:var(--ink)}
+.work{flex:1;min-height:0;display:flex;flex-direction:column}
+.queue{background:var(--panel);display:flex;flex-direction:column;min-height:0;flex:0 0 var(--split)}
+.queue.full{flex:1 1 auto}
+.queueTools{min-height:40px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 8px;border-bottom:1px solid var(--line);gap:8px;flex-wrap:wrap}
+.tabs{display:flex;gap:2px;align-self:stretch;overflow-x:auto}
+.tabs button{border:0;border-bottom:2px solid transparent;background:none;color:var(--muted);font-size:12px;padding:0 8px;cursor:pointer;white-space:nowrap}
+.tabs button.active{color:var(--ink);border-color:var(--ink);font-weight:600}
+.tabs b{font:500 10.5px var(--mono);padding:0 5px;border-radius:8px;background:var(--soft);margin-left:3px}
+.tools{display:flex;gap:6px;align-items:center;padding:4px 0}
+.search{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:7px;background:var(--bg);padding:4px 8px;color:var(--muted)}
+.search input{width:130px;border:0;outline:0;background:transparent;font-size:12px;color:var(--ink)}
 
-.tableWrap{overflow:auto;max-height:min(34vh,340px)}
-table{width:100%;border-collapse:collapse}
-th,td{text-align:left;border-bottom:1px solid var(--line);padding:6px 10px;white-space:nowrap}
-th{position:sticky;top:0;z-index:2;background:var(--panel);font:600 9.5px var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.07em;cursor:pointer;user-select:none}
-th .dir{color:var(--rust)}
+.tableWrap{overflow:auto;flex:1;min-height:0}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+th,td{text-align:left;border-bottom:1px solid #efede8;padding:7px 8px;vertical-align:middle}
+th{position:sticky;top:0;z-index:2;background:var(--panel);font:600 10px system-ui,sans-serif;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;cursor:pointer;user-select:none;white-space:nowrap}
+th .dir{color:var(--ink)}
 tbody tr{cursor:pointer;outline:none}
-tbody tr:hover td{background:#f7f5f0}
-tbody tr.selected td{background:#eeeae1}
-tbody tr.picked td{background:color-mix(in srgb,var(--rust) 10%,var(--panel))}
-tbody tr.picked td:first-child{box-shadow:inset 3px 0 var(--rust)}
-tbody tr.untriaged td{background:color-mix(in srgb,var(--amber) 5%,var(--panel))}
-tbody tr.untriaged.selected td{background:color-mix(in srgb,var(--amber) 11%,var(--panel))}
-.pickBar{display:none;padding:7px 18px;border-bottom:1px solid var(--line);font-size:11.5px;
-         align-items:center;gap:10px;flex-wrap:wrap;background:color-mix(in srgb,var(--rust) 6%,var(--panel))}
-.pickBar.on{display:flex}
-.pickBar b{font:600 11px var(--mono)}
-.pickBar .grow{margin-left:auto;display:flex;gap:6px}
-tbody tr.selected td:first-child{box-shadow:inset 3px 0 var(--rust)}
-/* the row the one-shot job is on right now: a moving edge, not a colour swap, so it
-   reads as work in progress and never competes with the selection */
-tbody tr.working td{background:color-mix(in srgb,var(--amber) 9%,var(--panel))}
-tbody tr.working.selected td{background:color-mix(in srgb,var(--amber) 15%,var(--panel))}
-tbody tr.working td:first-child{box-shadow:inset 3px 0 var(--amber);animation:needle 1.4s ease-in-out infinite}
-@keyframes needle{50%{box-shadow:inset 3px 0 color-mix(in srgb,var(--amber) 25%,transparent)}}
-.nowChip{display:inline-flex;align-items:center;gap:5px;font:10px var(--mono);color:var(--amber);
-  border:1px solid var(--amber);border-radius:9px;padding:0 6px;margin-left:6px;white-space:nowrap}
-.nowChip i{width:5px;height:5px;border-radius:50%;background:var(--amber);animation:pulse 1s infinite;flex:none}
-.workingBar{display:none;padding:7px 18px;border-bottom:1px solid var(--line);font-size:11.5px;
-  background:color-mix(in srgb,var(--amber) 8%,var(--panel));color:var(--amber);
-  align-items:center;gap:8px}
+tbody tr:hover td{background:#f6f5f2}
+tbody tr.selected td{background:var(--sel)}
+tbody tr.picked td{background:#eef1fc}
+tbody tr.picked td:first-child{box-shadow:inset 3px 0 var(--accent)}
+tbody tr.untriaged td{background:#fffdf6}
+tbody tr.untriaged.selected td{background:#f6efdc}
+tbody tr.selected td:first-child{box-shadow:inset 3px 0 var(--ink)}
+tbody tr.working td{background:#f3f6ff}
+tbody tr.working.selected td{background:#e8eefc}
+tbody tr.working td:first-child{box-shadow:inset 3px 0 var(--accent);animation:needle 1.4s ease-in-out infinite}
+@keyframes needle{50%{box-shadow:inset 3px 0 #c9d5fa}}
+.nowChip{display:inline-flex;align-items:center;gap:5px;font:10.5px var(--mono);color:var(--accent);border:1px solid var(--accent);border-radius:9px;padding:0 6px;white-space:nowrap}
+.nowChip i{width:5px;height:5px;border-radius:50%;background:var(--accent);animation:pulse 1s infinite;flex:none}
+.workingBar{display:none;flex:none;padding:6px 12px;border-bottom:1px solid var(--line);font-size:12px;background:#f3f6ff;color:var(--blue);align-items:center;gap:8px}
 .workingBar.on{display:flex}
-.workingBar b{font:600 11px var(--mono)}
-.workingBar .spin{width:7px;height:7px;border-radius:50%;background:var(--amber);animation:pulse 1s infinite;flex:none}
-.pickCol{width:30px;text-align:center;padding-left:12px}
+.workingBar b{font:600 11.5px var(--mono)}
+.workingBar .spin{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:pulse 1s infinite;flex:none}
+.pickCol{width:34px;text-align:center;padding-left:10px;padding-right:2px}
 /* Gmail's shape, for Gmail's reason: ticking a box must not be the same
    gesture as opening the row. The action stays one click further on, so a
    slip picks instead of acting. */
-.pick{appearance:none;-webkit-appearance:none;width:13px;height:13px;border:1.5px solid var(--line);
-  border-radius:3px;background:var(--panel);cursor:pointer;vertical-align:middle;position:relative;flex:none}
+.pick{appearance:none;-webkit-appearance:none;width:14px;height:14px;border:1.5px solid #c9c6be;border-radius:3px;background:var(--panel);cursor:pointer;vertical-align:middle;position:relative;flex:none;margin:0}
 .pick:hover{border-color:var(--muted)}
-.pick:checked{background:var(--rust);border-color:var(--rust)}
-.pick:checked::after{content:"";position:absolute;left:3px;top:0;width:4px;height:8px;
-  border:solid var(--panel);border-width:0 1.5px 1.5px 0;transform:rotate(40deg)}
+.pick:checked{background:var(--ink);border-color:var(--ink)}
+.pick:checked::after{content:"";position:absolute;left:3.5px;top:.5px;width:4px;height:8px;border:solid var(--panel);border-width:0 1.5px 1.5px 0;transform:rotate(40deg)}
 .pick:indeterminate{background:var(--muted);border-color:var(--muted)}
-.pick:indeterminate::after{content:"";position:absolute;left:2px;top:5px;width:7px;height:0;
-  border-top:1.5px solid var(--panel)}
-.pick:focus-visible{outline:2px solid var(--rust);outline-offset:1px}
-.markCol{width:32px}
-.mark{text-align:center;font:700 12px var(--mono)}
-tr.attention .mark{color:var(--red)}tr.decision .mark{color:var(--amber)}
-tr.ready .mark{color:var(--green)}tr.waiting .mark,tr.reply .mark{color:var(--muted)}
-tr.untriaged .mark{color:var(--amber)}
-.prTitle{display:flex;align-items:center;gap:8px;max-width:420px}
-.prTitle b{font:600 11px var(--mono);color:var(--muted);flex:none}
-.prTitle span{overflow:hidden;text-overflow:ellipsis;font-weight:560}
-.prTitle small{margin-left:auto;color:var(--muted);font:10px var(--mono);flex:none}
-.prTitle .triageChip{margin-left:0;border:1px solid color-mix(in srgb,var(--amber) 45%,var(--line));
-  border-radius:9px;padding:0 6px;color:var(--amber);font:9px var(--mono)}
-.avatar{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#d9dfe0;color:#425657;font:600 8px var(--mono);margin-right:6px;vertical-align:middle}
-.status{display:inline-block;border:1px solid var(--line);border-radius:10px;padding:1px 7px;font-size:10px;color:var(--muted)}
-.status.attention{color:var(--red);border-color:color-mix(in srgb,var(--red) 35%,var(--line));background:color-mix(in srgb,var(--red) 6%,transparent)}
-.status.decision{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 35%,var(--line))}
-.status.ready{color:var(--green);border-color:color-mix(in srgb,var(--green) 35%,var(--line))}
-.status.untriaged{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 35%,var(--line))}
+.pick:indeterminate::after{content:"";position:absolute;left:2.5px;top:5.5px;width:7px;height:0;border-top:1.5px solid var(--panel)}
+.markCol{width:30px;padding-left:2px;padding-right:2px}
+.mark{text-align:center}
+.mark span{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;font:700 11px var(--mono);background:var(--wait-bg);color:#57554f}
+tr.attention .mark span{background:var(--att-bg);color:var(--red)}
+tr.decision .mark span{background:var(--dec-bg);color:var(--blue)}
+tr.ready .mark span{background:var(--ok-bg);color:var(--green)}
+tr.untriaged .mark span{background:var(--warn-bg);color:var(--amber)}
+.prTitle{min-width:0;overflow:hidden}
+.l1{display:flex;align-items:center;gap:7px;min-width:0;font:12px var(--mono);color:var(--muted);white-space:nowrap}
+.l1 b{color:var(--ink);font-weight:500}
+.l1 .repoChip{color:var(--muted)}
+.l1 .grow{margin-left:auto}
+.l2{display:flex;align-items:center;gap:8px;min-width:0;margin-top:2px}
+.l2>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13.5px}
+tr.selected .l2>span{font-weight:600}
+.prTitle b.num{font:600 12px var(--mono);color:var(--ink)}
+.triageChip{border:1px solid #e6d29d;border-radius:9px;padding:0 6px;color:var(--amber);font:10.5px var(--mono);white-space:nowrap}
+.movePill{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:11px;border:1px solid #e2e0da;font-size:12px;font-weight:500;white-space:nowrap;color:#57554f;max-width:220px;overflow:hidden;text-overflow:ellipsis}
+tr.attention .movePill{background:var(--att-bg);border-color:var(--att-bg);color:#8a2f07}
+tr.decision .movePill{background:var(--dec-bg);border-color:var(--dec-bg);color:var(--blue)}
+tr.ready .movePill{background:var(--ok-bg);border-color:var(--ok-bg);color:var(--green)}
+tr.untriaged .movePill{background:var(--warn-bg);border-color:var(--warn-line);color:var(--amber)}
+.moveCol{text-align:right;width:168px}
+@media(max-width:520px){.moveCol{width:118px}}
+.avatar{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#e4e2dc;color:#3f3d38;font:600 8px var(--mono);margin-right:5px;vertical-align:middle}
+.status{display:inline-block;border:1px solid var(--line);border-radius:10px;padding:1px 7px;font-size:11px;color:var(--muted)}
+.status.attention{color:var(--red);border-color:var(--att-bg);background:var(--att-bg)}
+.status.decision{color:var(--blue);border-color:var(--dec-bg);background:var(--dec-bg)}
+.status.ready{color:var(--green);border-color:var(--ok-bg);background:var(--ok-bg)}
+.status.untriaged{color:var(--amber);border-color:var(--warn-line);background:var(--warn-bg)}
 .check{font-size:8px}
 .check.CLEAN{color:var(--green)}.check.DIRTY,.check.BLOCKED{color:var(--red)}
-.check.UNSTABLE{color:var(--amber)}.check.pending{color:var(--line)}
-.num{text-align:right}.mono{font:10.5px var(--mono)}
+.check.UNSTABLE{color:var(--amber)}.check.pending{color:#c9c6be}
+.num{text-align:right}.mono{font:11.5px var(--mono)}
 .next{max-width:250px;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
-.tag{display:inline-block;border:1px solid var(--line);border-radius:4px;padding:0 5px;font:9.5px var(--mono);color:var(--muted)}
-.tag.DEFECT{color:var(--red);border-color:color-mix(in srgb,var(--red) 35%,var(--line))}
-.tag.REQUEST{color:var(--green);border-color:color-mix(in srgb,var(--green) 35%,var(--line))}
-.tag.QUESTION{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 35%,var(--line))}
-.dot{color:var(--rust);font-size:9px}
-.empty{padding:26px;display:flex;flex-direction:column;align-items:center;color:var(--muted);gap:3px}
+.tag{display:inline-block;border:1px solid var(--line);border-radius:4px;padding:0 5px;font:10.5px var(--mono);color:var(--muted);background:var(--soft)}
+.tag.DEFECT{color:var(--red);border-color:var(--att-bg);background:var(--att-bg)}
+.tag.REQUEST{color:var(--green);border-color:var(--ok-bg);background:var(--ok-bg)}
+.tag.QUESTION{color:var(--blue);border-color:var(--dec-bg);background:var(--dec-bg)}
+.dot{color:var(--accent);font-size:10px}
+.empty{padding:26px;display:flex;flex-direction:column;align-items:center;color:var(--muted);gap:3px;text-align:center}
 .empty b{color:var(--ink)}
 .skel{padding:0}
-.skel div{height:29px;border-bottom:1px solid var(--line);background:linear-gradient(90deg,var(--panel),var(--soft),var(--panel));background-size:200% 100%;animation:shimmer 1.1s infinite}
+.skel div{height:46px;border-bottom:1px solid var(--line);background:linear-gradient(90deg,var(--panel),var(--soft),var(--panel));background-size:200% 100%;animation:shimmer 1.1s infinite}
 @keyframes shimmer{to{background-position:-200% 0}}
 
-.chaseWrap{display:none;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px;padding:12px 14px}
+.chaseWrap{display:none;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;padding:12px;overflow:auto;flex:1;min-height:0;align-content:start}
 .chaseWrap.on{display:grid}
-.chaseCard{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--bg)}
+.chaseCard{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--panel)}
 /* a login is case-sensitive: the shared h2 uppercase would show `genro` as
    `@GENRO`, which is wrong the moment somebody reads it as the handle */
-.chaseCard h2{text-transform:none;letter-spacing:0;font:600 12px var(--mono);color:var(--ink)}
-.chaseCount{font:10px var(--mono);color:var(--muted);font-weight:400}
-.chaseCard pre{margin:6px 0 8px;white-space:pre-wrap;font:11px var(--mono);color:var(--muted)}
-.chaseNote{grid-column:1/-1;color:var(--muted);font-size:11.5px}
+.chaseCard h2{text-transform:none;letter-spacing:0;font:600 13px system-ui,sans-serif;color:var(--ink)}
+.chaseCount{font:11px var(--mono);color:var(--muted);font-weight:400}
+.chaseCard pre{margin:6px 0 8px;white-space:pre-wrap;font:11.5px var(--mono);color:#57554f}
+.chaseNote{grid-column:1/-1;color:var(--muted);font-size:12px}
 
-.detail{padding:12px 18px 18px;flex:1;min-height:230px}
-.detailHead{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:9px;gap:14px}
+.threadsWrap{display:none;flex-direction:column;overflow:auto;flex:1;min-height:0}
+.threadsWrap.on{display:flex}
+.people{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;padding:10px;border-bottom:1px solid var(--line);background:var(--bg)}
+.person{display:flex;flex-direction:column;gap:4px;padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:var(--panel);text-align:left;color:var(--ink);cursor:pointer}
+.person:hover{border-color:#c9c6be}
+.person.on{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.person.me{background:#fff6ef;border-color:#f3cdb4}
+.person span{display:flex;align-items:center;gap:7px}
+.person strong{flex:1;font-weight:600}
+.person em{font:600 13px var(--mono);font-style:normal}
+.person small{color:#57554f;font-size:12px}
+.thrHead{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:8px;height:36px;padding:0 12px;background:var(--bg);border-bottom:1px solid #efede8;font-size:12px}
+.thrHead strong{font-weight:600}
+.thrHead .grow{margin-left:auto;color:var(--muted)}
+.thr{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border-bottom:1px solid #efede8}
+.thrNode{display:grid;grid-template-columns:16px minmax(0,1fr) auto;gap:2px 8px;align-items:center;padding:6px 8px;border:1px solid transparent;border-radius:8px;background:none;text-align:left;color:var(--ink);cursor:pointer;width:100%}
+.thrNode:hover{background:#f6f5f2}
+.thrNode.pr{margin-left:14px;width:calc(100% - 14px);border-color:var(--line)}
+.thrNode.stub{cursor:default;color:var(--muted)}
+.thrNode i{font-style:normal;color:var(--muted)}
+.thrNode .ref{font:12px var(--mono)}
+.thrNode .who{font-size:12px;color:var(--muted);white-space:nowrap}
+.thrNode .title{grid-column:2/4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.thrNone{margin-left:14px;padding:6px 8px;border:1px dashed #d3d0c9;border-radius:8px;color:var(--muted);font-size:12px}
+.thrLinks{display:flex;flex-wrap:wrap;gap:4px 12px;padding-left:6px;font-size:12px;color:#57554f}
+.thrLinks .warn{color:var(--amber)}
+.thrMove{display:flex;align-items:center;gap:8px;padding-left:6px}
+.thrMove strong{font-weight:600}
+.thrMove small{color:var(--muted)}
+
+.splitter{flex:none;height:10px;display:flex;align-items:center;justify-content:center;background:var(--soft);border-top:1px solid var(--line);border-bottom:1px solid var(--line);cursor:row-resize;touch-action:none}
+.splitter::before{content:"";width:36px;height:4px;border-radius:2px;background:#c9c6be}
+.splitter[hidden]{display:none}
+
+.detail{padding:12px 12px 18px;flex:1;min-height:0;overflow:auto;background:var(--panel)}
+.detailHead{display:flex;flex-direction:column;gap:10px;margin-bottom:10px}
 .detailHead>div:first-child{display:grid;grid-template-columns:26px 1fr;column-gap:8px;min-width:0}
-.largeMark{grid-row:1/3;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--line);font:700 11px var(--mono)}
-.largeMark.attention{color:var(--red);border-color:var(--red)}
-.largeMark.decision{color:var(--amber);border-color:var(--amber)}
-.largeMark.ready{color:var(--green);border-color:var(--green)}
-.largeMark.untriaged{color:var(--amber);border-color:var(--amber)}
-.detailKicker{font:10px var(--mono);color:var(--muted)}
-h1{font-size:18px;line-height:1.2;margin:2px 0 0;letter-spacing:-.02em}
-.detailActions{display:flex;gap:7px;flex:none;flex-wrap:wrap;justify-content:flex-end}
+.largeMark{grid-row:1/3;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:var(--wait-bg);color:#57554f;font:700 11px var(--mono)}
+.largeMark.attention{background:var(--att-bg);color:var(--red)}
+.largeMark.decision{background:var(--dec-bg);color:var(--blue)}
+.largeMark.ready{background:var(--ok-bg);color:var(--green)}
+.largeMark.untriaged{background:var(--warn-bg);color:var(--amber)}
+.detailKicker{font:11.5px var(--mono);color:var(--muted)}
+h1{font-size:17px;line-height:1.3;margin:3px 0 0;letter-spacing:-.01em;font-weight:600}
+.detailActions{display:flex;gap:7px;flex-wrap:wrap}
+.detailActions .btn{height:34px;padding:0 12px;font-size:12.5px}
 .detailTabs{display:flex;gap:2px;margin-bottom:-1px;position:relative;z-index:1}
-.detailTabs button{border:1px solid transparent;border-radius:6px 6px 0 0;background:none;padding:5px 10px;color:var(--muted);font:11px inherit;cursor:pointer}
+.detailTabs button{border:1px solid transparent;border-radius:7px 7px 0 0;background:none;padding:6px 11px;color:var(--muted);font-size:12px;cursor:pointer}
 .detailTabs button[aria-selected=true]{background:var(--panel);border-color:var(--line);border-bottom-color:var(--panel);color:var(--ink);font-weight:600}
-.detailGrid{display:grid;grid-template-columns:1.3fr .9fr .9fr;border:1px solid var(--line);border-radius:0 8px 8px 8px;background:var(--panel);overflow:hidden;min-height:140px}
-.detailGrid>*{padding:12px 15px;min-width:0}
-.detailGrid>*+*{border-left:1px solid var(--line)}
-.wideArticle{grid-column:span 2}
+.detailGrid{display:grid;grid-template-columns:1fr;border:1px solid var(--line);border-radius:0 10px 10px 10px;background:var(--panel);overflow:hidden;min-height:140px}
+.detailGrid>*{padding:12px 14px;min-width:0}
+.detailGrid>*+*{border-top:1px solid var(--line)}
+.wideArticle{grid-column:auto}
 h2{margin:0 0 7px}
-.detailGrid p{margin:0 0 11px}
-.detailGrid dl{margin:0;border-top:1px solid var(--line)}
-.detailGrid dl div{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--line);font-size:11px}
-.detailGrid dt{color:var(--muted);flex:none}
-.detailGrid dd{margin:0;font-weight:560;text-align:right;overflow:hidden;text-overflow:ellipsis}
-.nextCard{background:color-mix(in srgb,var(--amber) 4%,var(--panel))}
-.nextCard p{font-weight:600;font-size:14px}
+.detailGrid p{margin:0 0 10px;line-height:1.5}
+.detailGrid dl{margin:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px 14px}
+.detailGrid dl div{display:flex;flex-direction:column;gap:1px;font-size:12px}
+.detailGrid dt{color:var(--muted)}
+.detailGrid dd{margin:0;font-weight:500;overflow:hidden;text-overflow:ellipsis}
+.nextCard{background:#fff6ef;order:-1}
+.nextCard p{font-weight:600;font-size:15px}
 .nextCard small{color:var(--muted)}
-.signal{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--line);padding:6px 0;font-size:11px}
-.signal span{color:var(--muted)}
-.evidence{display:flex;flex-direction:column;padding:5px 0;border-bottom:1px solid var(--line)}
-.evidence code{font:10.5px var(--mono);white-space:normal}
-.evidence span{font-size:10.5px;color:var(--muted)}
-.thread{display:grid;grid-template-columns:22px 1fr;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
+.signal{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid #efede8;padding:6px 0;font-size:12px}
+.signal span{color:var(--muted);text-align:right}
+.evidence{display:flex;flex-direction:column;padding:5px 0;border-bottom:1px solid #efede8}
+.evidence code{font:11.5px var(--mono);white-space:normal}
+.evidence span{font-size:11.5px;color:var(--muted)}
+.thread{display:grid;grid-template-columns:22px 1fr;gap:8px;padding:8px 0;border-bottom:1px solid #efede8}
 .thread>span{width:20px;height:20px;display:grid;place-items:center;border-radius:50%;background:var(--soft);font:10px var(--mono)}
-.thread p{margin:2px 0;color:var(--muted);font-size:11.5px}
-.draft{border-left:3px solid var(--red);padding:9px 11px;background:var(--bg);border-radius:0 6px 6px 0}
-.draft span{font:600 9px var(--mono);color:var(--red)}
+.thread p{margin:2px 0;color:var(--muted);font-size:12px}
+.draft{padding:10px 12px;background:var(--bg);border:1px solid var(--line);border-radius:8px}
+.draft span{font:600 10px var(--mono);color:var(--red)}
 .draft p{margin:4px 0 0;white-space:pre-wrap}
 .draftActions{display:flex;gap:7px;margin-top:10px;flex-wrap:wrap}
-.detailGrid ul{margin:0;padding-left:17px;color:var(--muted);font-size:11.5px}
+.detailGrid ul{margin:0;padding-left:17px;color:var(--muted);font-size:12px}
 .detailGrid li{margin:4px 0}
-.tabEmpty{padding:18px 0;color:var(--muted)}
-.actionText{border:1px dashed var(--line);border-radius:6px;padding:8px 10px;margin-top:9px;color:var(--muted);font-size:11.5px}
-.kbd{font:10px var(--mono);border:1px solid var(--line);border-radius:3px;padding:0 4px;color:var(--muted)}
+.tabEmpty{padding:14px;color:var(--muted);border:1px dashed #dad8d2;border-radius:8px}
+.actionText{border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:8px;padding:8px 10px;margin-top:9px;color:#4f3d00;font-size:12px}
+.kbd{font:10.5px var(--mono);border:1px solid #dad8d2;border-bottom-width:2px;border-radius:4px;padding:0 4px;color:#4a4843;background:var(--panel)}
 .timings{font:10px var(--mono);color:var(--muted)}
 
-@media(max-width:1000px){.summary{grid-template-columns:1fr repeat(2,120px)}.metric:nth-last-child(-n+2){display:none}.detailGrid{grid-template-columns:1fr 1fr}.detailGrid aside{grid-column:1/-1;border-left:0;border-top:1px solid var(--line)}}
-@media(max-width:680px){.repo,.topStats span{display:none}.summary{grid-template-columns:1fr 1fr}.summaryLead{grid-column:1/-1}.detailGrid{grid-template-columns:1fr}.wideArticle{grid-column:auto}.detailGrid>*+*{border-left:0;border-top:1px solid var(--line)}.search input{width:110px}}
+.pickBar{display:none;flex:none;padding:8px 10px;font-size:12px;align-items:center;gap:8px;flex-wrap:wrap;background:var(--ink);color:var(--panel)}
+.pickBar.on{display:flex}
+.pickBar b{font:600 12px var(--mono)}
+.pickBar>span{color:#c9c7c1}
+.pickBar .grow{margin-left:auto;display:flex;gap:6px}
+.pickBar .btn{background:#2a2926;border-color:#55534d;color:var(--panel)}
+.pickBar .btn.primary{background:var(--panel);border-color:var(--panel);color:var(--ink)}
+.pickBar .kbd{background:#2a2926;color:var(--panel);border-color:#55534d}
+
+.palette{position:fixed;inset:0;z-index:40;background:rgba(28,27,25,.30);display:flex;align-items:flex-start;justify-content:center;padding:52px 10px}
+.palette[hidden]{display:none}
+.palBox{width:100%;max-width:640px;background:var(--panel);border-radius:12px;box-shadow:0 24px 64px rgba(28,27,25,.28);overflow:hidden;display:flex;flex-direction:column;max-height:calc(100vh - 80px)}
+.palBox label{display:flex;align-items:center;gap:10px;height:50px;padding:0 14px;border-bottom:1px solid #efede8}
+.palBox input{flex:1;min-width:0;border:0;outline:0;font-size:15px;background:none;color:var(--ink)}
+.palList{overflow:auto;padding:4px 0 8px}
+.palGroup{padding:10px 14px 4px;font:600 10.5px system-ui,sans-serif;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.palOpt{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:10px;align-items:center;min-height:42px;width:calc(100% - 12px);margin:0 6px;padding:5px 10px;border:0;border-radius:7px;background:none;text-align:left;color:var(--ink);cursor:pointer}
+.palOpt.on,.palOpt:hover{background:#eceffc}
+.palOpt i{font:normal 13px var(--mono);color:#57554f;text-align:center}
+.palOpt small{display:block;color:var(--muted);font-size:12px}
+.palOpt em{font:normal 11px var(--mono);color:var(--muted)}
+.palFoot{display:flex;gap:14px;height:32px;align-items:center;padding:0 14px;border-top:1px solid #efede8;font-size:12px;color:var(--muted);background:var(--bg)}
+
+@media(min-width:1180px){
+  .work{flex-direction:row}
+  .queue{flex:1 1 auto;border-right:1px solid var(--line)}
+  .splitter{display:none}
+  .detail{flex:0 0 min(46%,600px)}
+  .scopePop{right:auto;width:520px}
+}
 </style>
 </head>
 <body>
-<main class="shell">
+<main class="shell" id="shell">
   <header class="topbar">
-    <div class="brand"><span class="brandMark">GW</span><strong id="deskName">desk</strong><span class="repo" id="repoLabel">…</span></div>
+    <div class="brand"><span class="brandMark">GW</span><strong id="deskName">desk</strong>
+      <button class="scopeBtn" id="scopeBtn" aria-expanded="false" title="Cosa guarda il desk: i repo dello scope, e quali hanno un clone locale"><b id="scopeName">…</b><span id="scopeCount"></span></button>
+      <span class="repo" id="repoLabel">…</span></div>
     <div class="topStats">
       <span><b id="cPrs">—</b> PR</span><span><b id="cIssues">—</b> issue</span>
-      <span id="chatState" class="chatState" hidden title="Una chat è collegata al desk: i bottoni non-triage vengono eseguiti nella conversazione, e lì presentano l'esito. Il triage resta su un agente indipendente.">💬 chat collegata</span>
+      <span id="chatState" class="chatState" hidden title="Una chat è collegata al desk: i bottoni non-triage vengono eseguiti nella conversazione, e lì presentano l'esito. Il triage resta su un agente indipendente.">chat collegata</span>
       <button class="btn sync" id="btnFetch" title="Rilegge il provider ignorando la cache"><i></i><span id="syncLabel">avvio…</span></button>
-      <button class="btn" id="btnTest" title="Verifica desk, file JSON e agente on-demand">🧪</button>
-      <button class="btn" id="btnStop" title="Ferma il server del desk">⏻</button>
+      <button class="btn icon" id="btnPalette" title="Comandi (⌘K)" aria-label="Comandi">⌘K</button>
+      <button class="btn icon" id="btnTest" title="Verifica desk, file JSON e agente on-demand" aria-label="Modalità test">✓?</button>
+      <button class="btn icon" id="btnStop" title="Ferma il server del desk" aria-label="Ferma il desk">⏻</button>
     </div>
   </header>
+  <nav class="modeTabs" id="modeTabs" aria-label="Viste"></nav>
+  <div class="scopePop" id="scopePop" hidden></div>
 
   <section class="summary">
     <div class="summaryLead"><span class="eyebrow" id="leadEyebrow">coda review</span><strong id="leadTitle">carico…</strong><small id="leadSub">&nbsp;</small></div>
@@ -242,7 +344,6 @@ h2{margin:0 0 7px}
   </section>
 
   <div class="workingBar" id="workingBar"></div>
-  <div class="pickBar" id="pickBar"></div>
   <div class="banner err" id="errBox"></div>
   <div class="banner warn" id="agentBox"></div>
   <div class="jobPanel" id="jobPanel"></div>
@@ -250,21 +351,32 @@ h2{margin:0 0 7px}
   <div class="testBox" id="testBox"></div>
   <div class="feed" id="feedBox"></div>
 
-  <section class="queue">
-    <div class="queueTools">
-      <div class="tabs" id="tabs"></div>
-      <div class="tools">
-        <button class="btn" id="btnTriage"></button>
-        <button class="btn" id="btnRun"></button>
-        <label class="search"><span>⌕</span><input id="q" placeholder="Filtra numero, titolo, autore…"></label>
+  <div class="work" id="work">
+    <section class="queue" id="queue">
+      <div class="queueTools">
+        <div class="tabs" id="tabs"></div>
+        <div class="tools">
+          <button class="btn" id="btnTriage"></button>
+          <button class="btn primary" id="btnRun"></button>
+          <label class="search"><span>⌕</span><input id="q" placeholder="Filtra…" aria-label="Filtra numero, titolo, autore, repo"></label>
+        </div>
       </div>
+      <div class="tableWrap" id="tableWrap"><table><thead id="thead"></thead><tbody id="tbody"></tbody></table>
+        <div class="empty" id="empty" style="display:none"></div></div>
+      <div class="chaseWrap" id="chaseWrap"></div>
+      <div class="threadsWrap" id="threadsWrap"></div>
+    </section>
+    <div class="splitter" id="splitter" aria-hidden="true" title="Trascina per dare più spazio alla lista o al dettaglio"></div>
+    <section class="detail" id="detail"></section>
+  </div>
+  <div class="pickBar" id="pickBar"></div>
+  <div class="palette" id="palette" hidden>
+    <div class="palBox" role="dialog" aria-label="Comandi">
+      <label><span aria-hidden="true">⌕</span><input id="palInput" placeholder="Cerca un comando, una vista, una persona…" aria-label="Comando"></label>
+      <div class="palList" id="palList"></div>
+      <div class="palFoot"><span>↑↓ scegli</span><span>↵ esegui</span><span style="margin-left:auto">esc chiudi</span></div>
     </div>
-    <div class="tableWrap" id="tableWrap"><table><thead id="thead"></thead><tbody id="tbody"></tbody></table>
-      <div class="empty" id="empty" style="display:none"></div></div>
-    <div class="chaseWrap" id="chaseWrap"></div>
-  </section>
-
-  <section class="detail" id="detail"></section>
+  </div>
 </main>
 <script>
 "use strict";
@@ -276,7 +388,9 @@ const MARK={ready:"✓",attention:"!",waiting:"○",decision:"◆",reply:"✎",u
 const STATE_LABEL={ready:"mergeable",attention:"mossa tua",waiting:"in attesa",decision:"decisione tua",reply:"da rispondere",untriaged:"senza verdetto"};
 const AUTORUN_TIP="Cosa può fare pr-loop da solo: A1 merge (tua PR approvata e CLEAN) · A2 edit banale chiesto dal reviewer · A3 riallineo del branch · asks richiede una decisione · yours decisione solo tua · - tocca ad altri";
 
-let meta={},writeToken="",DESK="pr",prs=[],issues=[],chase={},replies={},grid=null,shortlist=null,session=null;
+let meta={},writeToken="",DESK="pr",deskKind=null,prs=[],issues=[],issueOthers=[],chase={},replies={},grid=null,shortlist=null,session=null;
+let threads={groups:[],people:{},total:0},scope={name:"",members:[]},labels={},multi=false;
+let hiddenRepos=new Set(),personFilter=null;
 let loaded=false,view="todo",query="",stateFilter=null,agentReady=true;
 let issuesTruncated=null,issuesWithPr=0,issuesTaken=0,triageComplete=false,ranked=false,gates={};
 let selected=null,tab="quadro",sort={key:"created",dir:-1},acting={},truncated=null,pendingMerge=false;
@@ -289,12 +403,16 @@ let flows={};
 let jobRecords={},runs={},runOpen=true,runHidden=null;
 let pendingClicks={},pendingTick=null;
 let agentPoll=null;
-let workingOn=null;
-let picked=new Set();   // the rows chosen by hand for the next loop
+let workingOn=null,workings=[];
+let picked=new Set();   // the rows chosen by hand for the next loop, by key
 let lastPick=null;      // anchor for a shift-click range, as in a mail client
 let askBatch=false;     // ▶ pressed on a multi-row pick: one at a time, or in parallel?
 const MAX_BATCH=4;      // one decision group holds four readable proposals
-const onNow=n=>!!workingOn&&(workingOn.ns||[workingOn.n]).includes(n);
+/* A row is a repository's PR or issue: `owner/repo#n` is its name, a bare
+   number is not one once a desk covers several repositories. */
+const rk=r=>r?`${r.repo||""}#${r.n}`:null;
+const refOf=r=>r.label||`#${r.n}`;
+const onNow=r=>workings.some(w=>(!w.repo||w.repo===r.repo)&&(w.ns||[w.n]).includes(r.n));
 
 /* ---------- helpers ---------- */
 function ageDays(d){return Math.max(0,Math.round((Date.now()-new Date(d))/864e5));}
@@ -312,13 +430,14 @@ function localFeed(msg){
   const box=$("feedBox");box.classList.add("on");
   box.insertAdjacentHTML("afterbegin",`<div><b>${new Date().toTimeString().slice(0,8)}</b>${esc(msg)}</div>`);
 }
+const repoLabel=repo=>labels[repo]||String(repo||"").split("/").pop();
 const STAGE_LABEL={queued:"in coda",starting:"avvio",working:"al lavoro",
   inspecting:"lettura",testing:"verifica",waiting:"in attesa",
   finalizing:"chiusura",done:"completato","needs-input":"serve una decisione",error:"errore"};
 function jobUiKey(job){
   const req=job.request||{},flow=req.flow;
   if(flow&&flow!=="order")return "flow:"+flow;
-  if(req.n!==undefined)return (job.kind==="issue-analyze"?"i":"p")+req.n;
+  if(req.n!==undefined)return (job.kind==="issue-analyze"?"i":"p")+`${req.repo||""}#${req.n}`;
   return "job:"+job.id;
 }
 function rememberJob(job){
@@ -357,9 +476,9 @@ function pendingCard(entry){
     <div class="jobCurrent">richiesta inviata al desk — legge il provider e avvia il processo</div></div>`;
 }
 function jobTitle(job){
-  const req=job.request||{};
-  if(req.flow)return req.flow+(req.ns&&req.ns.length?" · "+req.ns.map(n=>"#"+n).join(" "):req.n?" · #"+req.n:"");
-  return (job.kind||"job")+(req.n?" · #"+req.n:"");
+  const req=job.request||{},where=multi&&req.repo?repoLabel(req.repo)+" ":"";
+  if(req.flow)return req.flow+(req.ns&&req.ns.length?" · "+where+req.ns.map(n=>"#"+n).join(" "):req.n?" · "+where+"#"+req.n:"");
+  return (job.kind||"job")+(req.n?" · "+where+"#"+req.n:"");
 }
 function lastRun(){
   const rows=Object.entries(runs||{}).filter(([,r])=>r&&r.report);
@@ -429,9 +548,16 @@ async function loadDesk(refetch){
   }
 }
 function applyDesk(d){
-  meta=d.meta||meta;writeToken=meta.write_token||writeToken;DESK=meta.desk||"pr";timings=d.timings||{};
+  meta=d.meta||meta;writeToken=meta.write_token||writeToken;timings=d.timings||{};
+  // the server's kind opens the page on its view; after that the view is his
+  if(meta.desk!==deskKind){deskKind=meta.desk;DESK=meta.desk||"pr";}
+  scope=meta.scope||{name:meta.repo,members:[{repo:meta.repo,clone:true}]};
+  multi=(scope.members||[]).length>1;
+  labels=Object.fromEntries((scope.members||[]).map(m=>[m.repo,m.label||String(m.repo).split("/").pop()]));
   agentReady=meta.detached!==false;
-  prs=d.queue.rows;issues=d.issues.rows;chase=d.queue.chase||{};replies=d.queue.replies||{};
+  prs=d.queue.rows;issues=d.issues.rows;issueOthers=d.issues.others||[];
+  chase=d.queue.chase||{};replies=d.queue.replies||{};
+  threads=d.threads||threads;
   session=d.queue.session;lastGenerated=d.generated;lastPaintAt=Date.now();
   truncated=d.queue.truncated?d.queue.total:null;
   issuesTruncated=d.issues.truncated?d.issues.total:null;issuesWithPr=d.issues.excluded_with_pr||0;issuesTaken=d.issues.excluded_taken||0;
@@ -448,8 +574,8 @@ function applyDesk(d){
   providerRefresh=(d.state&&d.state.provider_refresh&&d.state.provider_refresh.token)||null;
   applyState(d.state);
   loaded=true;
-  if(DESK!=="issue"&&view==="todo"&&prs.some(r=>r.triage_status!=="current"))view="untriaged";
-  if(DESK!=="issue"&&view==="untriaged"&&triageComplete)view="todo";
+  if(DESK==="pr"&&view==="todo"&&prs.some(r=>r.triage_status!=="current"))view="untriaged";
+  if(DESK==="pr"&&view==="untriaged"&&triageComplete)view="todo";
   // a merged PR, a filter, a desk switch: the old selection may be gone
   if(!selectedRow())selectFirst();
 }
@@ -459,7 +585,7 @@ function applyState(st){
   // matching fingerprints is the server's job and it does it once, in
   // /api/queue. A new stamp means the desk has rows to repaint.
   const stamp=(st.triage&&st.triage.generated)||null;
-  if(DESK!=="issue"&&stamp!==triageStamp){
+  if(stamp!==triageStamp){
     triageStamp=stamp;
     if(loaded)loadDesk(false);
   }
@@ -481,14 +607,16 @@ function applyState(st){
     if(job.status==="running"&&!liveIds.has(job.id))forgetJob(job,jobUiKey(job));
   if(agent.busy&&!agentPoll)agentPoll=setInterval(pollState,1000);
   if(!agent.busy&&agentPoll){clearInterval(agentPoll);agentPoll=null;}
-  const wasOn=workingOn&&(workingOn.ns||[workingOn.n]).join(",");
+  const wasOn=workings.map(w=>(w.repo||"")+(w.ns||[w.n]).join(",")).join("|");
   workingOn=st.working||null;
-  if(workingOn&&(workingOn.ns||[workingOn.n]).join(",")!==wasOn)followWorking=true;
+  workings=st.workings||(workingOn?[workingOn]:[]);
+  const isOn=workings.map(w=>(w.repo||"")+(w.ns||[w.n]).join(",")).join("|");
+  if(isOn&&isOn!==wasOn)followWorking=true;
   runs=st.runs||runs;
   const feed=st.feed||[];
   const box=$("feedBox");
   box.classList.toggle("on",feed.length>0);
-  if(feed.length)box.innerHTML=feed.slice(-8).reverse().map(f=>`<div><b>${esc(f.at)}</b>${f.pr?`<b>#${f.pr}</b> `:""}${esc(f.msg)}</div>`).join("");
+  if(feed.length)box.innerHTML=feed.slice(-8).reverse().map(f=>`<div><b>${esc(f.at)}</b>${f.pr?`<b>${multi&&f.repo?esc(repoLabel(f.repo))+" ":""}#${f.pr}</b> `:""}${esc(f.msg)}</div>`).join("");
 }
 let stateEtag=null;
 async function pollState(){
@@ -502,29 +630,34 @@ async function pollState(){
 }
 
 /* ---------- selection ---------- */
-function rows(){return DESK==="issue"?visibleIssues():visiblePrs();}
-function selectFirst(){const r=rows();selected=r.length?r[0].n:null;tab="quadro";}
-function select(n){if(selected!==n){selected=n;tab="quadro";}render();}
-function nowMsg(n){
-  return (workingOn&&(workingOn.items||{})[String(n)])||(workingOn&&workingOn.msg)||"in corso";
+function rows(){return DESK==="issue"?visibleIssues():DESK==="threads"?[]:visiblePrs();}
+function allRows(){return DESK==="issue"?issues.concat(issueOthers):prs;}
+function rowByKey(k){return allRows().find(r=>rk(r)===k)||null;}
+function keyFor(x){return x&&typeof x==="object"?rk(x):x;}
+function selectFirst(){const r=rows();selected=r.length?rk(r[0]):null;tab="quadro";}
+function select(x){const k=keyFor(x);if(selected!==k){selected=k;tab="quadro";}render();}
+function nowMsg(r){
+  const w=workings.find(w=>(!w.repo||w.repo===r.repo)&&(w.ns||[w.n]).includes(r.n));
+  return (w&&(w.items||{})[String(r.n)])||(w&&w.msg)||"in corso";
 }
 /* A plain click moves the cursor and NEVER drops the picks: reading a row's
    detail must not cost the four he chose. cmd/ctrl toggles one, shift takes
    the stretch from the cursor. */
-function rowClick(n,ev){
+function rowClick(k,ev){
   // the checkbox owns picking; a click on the row only ever opens it
   if(ev&&ev.target&&ev.target.classList&&ev.target.classList.contains("pick"))return;
-  select(n);
+  select(k);
 }
 function pickCell(r){
-  return `<td class="pickCol"><input type="checkbox" class="pick" data-pick="${r.n}"
-    ${picked.has(r.n)?"checked":""} aria-label="scegli #${r.n}"
+  const k=rk(r);
+  return `<td class="pickCol"><input type="checkbox" class="pick" data-pick="${esc(k)}"
+    ${picked.has(k)?"checked":""} aria-label="scegli ${esc(refOf(r))}"
     title="Scegli questa per il prossimo loop. Selezionare non lancia niente: l'azione è nella striscia in basso."></td>`;
 }
 function pickHead(list){
   // the third state (some but not all) is set on the node in wirePicks:
   // `indeterminate` is a property, not an attribute, so markup cannot carry it
-  const all=list.length&&list.every(r=>picked.has(r.n));
+  const all=list.length&&list.every(r=>picked.has(rk(r)));
   return `<th class="pickCol"><input type="checkbox" class="pick" id="pickAll" ${all?"checked":""}
     aria-label="scegli tutte le righe di questa vista"
     title="${all?"Togli la scelta da tutte le righe di questa vista"
@@ -533,47 +666,52 @@ function pickHead(list){
 function wirePicks(list){
   const all=$("pickAll");
   if(all){
-    const every=list.length&&list.every(r=>picked.has(r.n));
-    all.indeterminate=!every&&list.some(r=>picked.has(r.n));
+    const every=list.length&&list.every(r=>picked.has(rk(r)));
+    all.indeterminate=!every&&list.some(r=>picked.has(rk(r)));
     all.onclick=ev=>{
       ev.stopPropagation();
-      if(every)list.forEach(r=>picked.delete(r.n));
-      else list.forEach(r=>picked.add(r.n));
+      if(every)list.forEach(r=>picked.delete(rk(r)));
+      else list.forEach(r=>picked.add(rk(r)));
       askBatch=false;render();
     };
   }
   document.querySelectorAll("[data-pick]").forEach(box=>{
     box.onclick=ev=>{
       ev.stopPropagation();           // ticking must not open the row
-      const n=+box.dataset.pick;
+      const k=box.dataset.pick;
       // shift extends from the last box touched, the way a mail client does
-      if(ev.shiftKey&&lastPick!==null&&lastPick!==n)pickRange(lastPick,n,box.checked);
-      else box.checked?picked.add(n):picked.delete(n);
-      lastPick=n;askBatch=false;render();
+      if(ev.shiftKey&&lastPick!==null&&lastPick!==k)pickRange(lastPick,k,box.checked);
+      else box.checked?picked.add(k):picked.delete(k);
+      lastPick=k;askBatch=false;render();
     };
   });
 }
-function togglePick(n){
-  picked.has(n)?picked.delete(n):picked.add(n);
+function togglePick(x){
+  const k=keyFor(x);
+  picked.has(k)?picked.delete(k):picked.add(k);
   askBatch=false;render();
 }
 function pickRange(from,to,on){
-  const list=rows(),a=list.findIndex(r=>r.n===from),b=list.findIndex(r=>r.n===to);
+  const list=rows(),a=list.findIndex(r=>rk(r)===from),b=list.findIndex(r=>rk(r)===to);
   if(a<0||b<0)return togglePick(to);
   for(let i=Math.min(a,b);i<=Math.max(a,b);i++)
-    on?picked.add(list[i].n):picked.delete(list[i].n);
+    on?picked.add(rk(list[i])):picked.delete(rk(list[i]));
 }
 function clearPicks(){picked.clear();askBatch=false;render();}
-function selectedRow(){
-  const list=DESK==="issue"?issues:prs;
-  return list.find(r=>r.n===selected)||null;
-}
+function selectedRow(){return selected===null?null:rowByKey(selected);}
 function moveSelection(delta){
   const r=rows();if(!r.length)return;
-  const i=r.findIndex(x=>x.n===selected);
+  const i=r.findIndex(x=>rk(x)===selected);
   const next=r[Math.max(0,Math.min(r.length-1,(i<0?0:i+delta)))];
-  selected=next.n;tab="quadro";render();
+  selected=rk(next);tab="quadro";render();
   const tr=document.querySelector("tr.selected");if(tr)tr.scrollIntoView({block:"nearest"});
+}
+function setMode(mode,keep){
+  if(DESK===mode&&!keep)return;
+  DESK=mode;stateFilter=null;personFilter=null;picked.clear();askBatch=false;
+  view=mode==="issue"?"all":mode==="threads"?"threads":(triageComplete?"todo":"untriaged");
+  if(!keep)selectFirst();
+  render();
 }
 
 /* ---------- filtering ---------- */
@@ -581,8 +719,9 @@ function matches(r,fields){
   const q=query.trim().toLowerCase();
   return !q||fields.filter(Boolean).join(" ").toLowerCase().includes(q);
 }
+const shown=r=>!hiddenRepos.has(r.repo);
 function visiblePrs(){
-  let list=prs.filter(r=>matches(r,[r.n,r.title,r.author,r.todo,r.base]));
+  let list=prs.filter(r=>shown(r)&&matches(r,[r.n,r.label,r.title,r.author,r.todo,r.base]));
   if(stateFilter)list=list.filter(r=>r.state===stateFilter);
   else if(view==="untriaged")list=list.filter(r=>r.triage_status!=="current");
   else if(view==="todo")list=list.filter(r=>r.triage_status==="current"&&!AWAY.includes(r.state));
@@ -590,7 +729,9 @@ function visiblePrs(){
   return sortRows(list);
 }
 function visibleIssues(){
-  let list=issues.filter(r=>matches(r,[r.n,r.title,r.author,(r.labels||[]).join(" "),r.type]));
+  const source=view==="withpr"?issueOthers.filter(r=>r.excluded==="with_pr")
+    :view==="taken"?issueOthers.filter(r=>r.excluded==="taken"):issues;
+  let list=source.filter(r=>shown(r)&&matches(r,[r.n,r.label,r.title,r.author,(r.labels||[]).join(" "),r.type]));
   if(view==="free")list=list.filter(r=>!r.assignees.length);
   if(view==="shortlist")list=list.filter(r=>r.in_shortlist);
   return sortRows(list);
@@ -600,7 +741,7 @@ const SORTERS={
   state:r=>["untriaged","attention","decision","ready","reply","waiting"].indexOf(r.state),
   merge:r=>r.merge||"",unresolved:r=>r.unresolved||0,decision:r=>r.decision||"",
   todo:r=>r.todo||"",autorun:r=>r.autorun||"",type:r=>r.type||"",
-  comments:r=>r.comments||0,assignees:r=>(r.assignees||[]).join(","),
+  comments:r=>r.comments||0,assignees:r=>(r.assignees||[]).join(","),repo:r=>r.repo||"",
 };
 function sortRows(list){
   const get=SORTERS[sort.key]||SORTERS.created;
@@ -612,10 +753,12 @@ function setSort(key){
 }
 
 /* ---------- header / tabs ---------- */
-const VIEWS=()=>DESK==="issue"?[
+const VIEWS=()=>DESK==="threads"?[]:DESK==="issue"?[
+  {id:"all",label:"Da prendere",count:loaded?issues.length:"—",tip:"Le issue ancora da prendere: libere o tue, e nessuna PR aperta le cita"},
   {id:"shortlist",label:"Shortlist",count:shortlist?shortlist.rows.length:"—",tip:"Le 10 issue più recenti che nessuno ha preso e su cui non hai ancora scritto, senza PR aperte: la calcola il desk. ↻ ordina shortlist le mette in ordine di risoluzione"},
   {id:"free",label:"Unassigned",count:issues.filter(r=>!r.assignees.length).length,tip:"Le candidate per issue-loop: nessuno le ha ancora prese"},
-  {id:"all",label:"Tutte",count:loaded?issues.length:"—",tip:"Le issue ancora da prendere: libere o tue, e nessuna PR aperta le cita"},
+  {id:"withpr",label:"Con PR",count:issueOthers.filter(r=>r.excluded==="with_pr").length,tip:"Issue che una PR aperta chiude o cita: il lavoro è già partito, si segue dai Filoni"},
+  {id:"taken",label:"Di altri",count:issueOthers.filter(r=>r.excluded==="taken").length,tip:"Issue assegnate a qualcun altro: nel workflow Softwell non si lavora su una issue di altri"},
 ]:[
   {id:"untriaged",label:"Senza verdetto",count:prs.filter(r=>r.triage_status!=="current").length,tip:"PR aperte che non sono mai passate da pr-triage né da un analyze"},
   {id:"todo",label:"Da fare",count:prs.filter(r=>r.triage_status==="current"&&!AWAY.includes(r.state)).length,tip:"Le PR triagiate dove la prossima mossa è tua, e non è solo un commento"},
@@ -624,9 +767,26 @@ const VIEWS=()=>DESK==="issue"?[
   {id:"blocks",label:"Blocks",count:grid?grid.blocks.filter(b=>b.rows.length).length:"—",tip:"I cinque blocchi pubblicati dall'ultimo pr-triage esplicito"},
   {id:"chase",label:"Chase",count:Object.keys(chase).length+Object.keys(replies).length,tip:"Un messaggio pronto per ogni persona da sollecitare, e le risposte che devi"},
 ];
+function renderModeTabs(){
+  const mine=prs.filter(r=>r.triage_status==="current"&&!AWAY.includes(r.state)).length;
+  const items=[["pr","Pull request",loaded?prs.length:"—",mine],
+               ["issue","Issue",loaded?issues.length:"—",0],
+               ["threads","Filoni",loaded?threads.total||0:"—",0]];
+  const html=items.map(([id,label,count,hot])=>
+    `<button data-mode="${id}" aria-selected="${DESK===id}">${label} ${hot?`<b class="hot" title="aspettano una mossa tua">${hot}</b>`:`<b>${count}</b>`}</button>`).join("");
+  if(paint($("modeTabs"),html))
+    $("modeTabs").querySelectorAll("button").forEach(b=>b.onclick=()=>setMode(b.dataset.mode));
+}
+/* Rebuilt only when it changed: a poll that replaces the button between
+   mousedown and mouseup swallows the click. */
+function paint(el,html){
+  if(el.dataset.painted===html)return false;
+  el.innerHTML=html;el.dataset.painted=html;return true;
+}
 function renderTabs(){
-  $("tabs").innerHTML=VIEWS().map(v=>`<button class="${view===v.id?"active":""}" data-v="${v.id}" title="${esc(v.tip)}">${v.label} <b>${v.count}</b></button>`).join("");
-  $("tabs").querySelectorAll("button").forEach(b=>b.onclick=()=>{view=b.dataset.v;stateFilter=null;selectFirst();render();});
+  renderModeTabs();
+  if(paint($("tabs"),VIEWS().map(v=>`<button class="${view===v.id?"active":""}" data-v="${v.id}" title="${esc(v.tip)}">${v.label} <b>${v.count}</b></button>`).join("")))
+    $("tabs").querySelectorAll("button").forEach(b=>b.onclick=()=>{view=b.dataset.v;stateFilter=null;selectFirst();render();});
   const onIssue=DESK==="issue";
   const tri=$("btnTriage");
   const triFlow=onIssue?"issue-triage":"pr-triage";
@@ -639,23 +799,29 @@ function renderTabs(){
     :(triOut?"in corso · ":"↻ ")+triFlow+` · ${untriaged||"✓"}`;
   tri.title=(onIssue
     ?"La shortlist la calcola il desk da solo a ogni lettura. Questo bottone fa leggere a un agente one-shot (issue-triage) le issue in shortlist ancora senza ordine: urgenza U1–U4, da quali dipendono, e l'ordine in cui risolverle."
-    :"Rilegge il provider, pubblica i verdetti freschi e avvia un agente one-shot solo per gli artefatti mancanti.");
+    :"Rilegge il provider, pubblica i verdetti freschi e avvia un agente one-shot solo per gli artefatti mancanti.")
+    +(multi?` Lo fa su ognuno dei ${scope.members.length} repo dello scope.`:"");
   tri.disabled=!agentReady||triOut||!loaded;
   tri.classList.toggle("locked",!!triOut);
   const run=$("btnRun");
   const runFlow=onIssue?"issue-loop":"pr-loop";
   const runOut=flowOut(flows[runFlow]);
   const nPicked=picked.size;
+  run.hidden=DESK==="threads";
   run.textContent=(runOut?(flows[runFlow]&&flows[runFlow].via==="chat"?"in chat · ":"in corso · "):"▶ ")+runFlow+(nPicked?` · ${nPicked} scelte`:"");
   run.title=nPicked
-    ?`Lancia ${runFlow} SOLO su ${[...picked].map(n=>"#"+n).join(" ")}, in quest'ordine, e poi si ferma. Il resto della coda non lo tocca.`
+    ?`Lancia ${runFlow} SOLO su ${pickedLabels().join(" ")}, in quest'ordine, e poi si ferma. Il resto della coda non lo tocca.`
     :onIssue
     ?"Avvia issue-loop come processo one-shot sulle righe scelte; quando serve una nuova decisione si ferma e la riporta."
     :"Avvia pr-loop come processo one-shot: esegue le mosse già autorizzate e si ferma quando serve una nuova decisione.";
-  run.disabled=!agentReady||runOut;
+  run.disabled=!agentReady||runOut||(!nPicked&&multi);
+  if(!nPicked&&multi)run.title="Su uno scope di più repo il loop parte sulle righe scelte: spunta quelle da lavorare.";
   run.classList.toggle("locked",!!runOut);
   renderPick(runFlow,runOut);
   document.querySelectorAll(".metric").forEach(m=>m.classList.toggle("on",stateFilter===m.dataset.filter));
+}
+function pickedLabels(){
+  return [...picked].map(k=>{const r=rowByKey(k);return r?refOf(r):k;});
 }
 /* The picks, and the one question the desk asks: several rows chosen and ▶
    pressed can mean two different runs — one at a time, or all of them in
@@ -665,7 +831,7 @@ function renderPick(runFlow,runOut){
   const bar=$("pickBar"),n=picked.size;
   bar.classList.toggle("on",n>0);
   if(!n)return;
-  const ns=[...picked],label=ns.map(x=>"#"+x).join(" ");
+  const label=pickedLabels().join(" ");
   if(askBatch&&n>1){
     const size=Math.min(n,MAX_BATCH);
     bar.innerHTML=`<b>${n} scelte</b><span>${esc(label)} — una alla volta, o tutte insieme?</span>
@@ -678,32 +844,51 @@ function renderPick(runFlow,runOut){
     $("pCancel").onclick=()=>{askBatch=false;render();};
     return;
   }
+  const sollecito=chaseForPicked();
   bar.innerHTML=`<b>${n} scelt${n===1?"a":"e"}</b><span>${esc(label)}</span>
-    <span style="color:var(--muted)">shift-clic su una casella per un tratto · <span class="kbd">x</span> per la riga sotto il cursore</span>
     <span class="grow">
-      <button class="btn" id="pRun" ${agentReady&&!runOut?"":"disabled"}
-        title="Lancia ${esc(runFlow)} solo su queste, e poi si ferma.">▶ ${esc(runFlow)} su queste</button>
-      <button class="btn" id="pClear">svuota</button></span>`;
+      ${sollecito?`<button class="btn primary" id="pChase" title="Un messaggio per chi deve muoversi su queste, pronto da incollare">Copia sollecito <span class="kbd">s</span></button>`:""}
+      <button class="btn${sollecito?"":" primary"}" id="pRun" ${agentReady&&!runOut?"":"disabled"}
+        title="Lancia ${esc(runFlow)} solo su queste, e poi si ferma.">▶ ${esc(runFlow)} su queste <span class="kbd">l</span></button>
+      <button class="btn" id="pClear">svuota <span class="kbd">esc</span></button></span>`;
   $("pClear").onclick=clearPicks;
   const go=$("pRun");
   if(go)go.onclick=()=>{if(picked.size>1){askBatch=true;render();}else runPicked(runFlow,1);};
+  const ch=$("pChase");
+  if(ch)ch.onclick=()=>copyText(ch,sollecito);
+}
+/* The chase of the picked rows: his own PRs waiting on somebody, one
+   message per person, the same rule as the Chase tab. */
+function chaseForPicked(){
+  if(DESK!=="pr")return "";
+  const per={};
+  for(const k of picked){
+    const r=rowByKey(k);
+    if(!r||r.state!=="waiting"||r.author!==meta.me||!r.waiting_on)continue;
+    (per[r.waiting_on]=per[r.waiting_on]||[]).push(r);
+  }
+  return Object.entries(per).map(([who,list])=>`@${who} — ${list.length} PR ferm${list.length===1?"a":"e"} su di te:\n`+
+    list.map(r=>`${refOf(r)} (${r.created}) ${r.title}`).join("\n")).join("\n\n");
 }
 let followWorking=false;
 function renderWorking(){
   const bar=$("workingBar");
-  bar.classList.toggle("on",!!workingOn);
-  if(!workingOn)return;
-  const ns=workingOn.ns||[workingOn.n];
-  const list=(DESK==="issue"?issues:prs);
+  bar.classList.toggle("on",workings.length>0);
+  if(!workings.length)return;
+  const w=workings[0],ns=w.ns||[w.n],where=multi&&w.repo?repoLabel(w.repo)+" ":"";
+  const list=w.repo?prs.concat(issues,issueOthers).filter(r=>r.repo===w.repo):(DESK==="issue"?issues:prs);
   const row=list.find(r=>r.n===ns[0]);
-  const many=ns.length>1;
-  bar.innerHTML=`<span class="spin"></span><b>${ns.map(n=>"#"+n).join(" ")}</b>
-    <span>${esc(many?`${ns.length} in parallelo — ${workingOn.msg||"in lavorazione"}`
-                    :nowMsg(ns[0]))}</span>
-    <span style="color:var(--muted)">dalle ${esc(workingOn.at||"")}</span>
+  const many=ns.length>1||workings.length>1;
+  bar.innerHTML=`<span class="spin"></span><b>${esc(where)}${ns.map(n=>"#"+n).join(" ")}${workings.length>1?` +${workings.length-1} repo`:""}</b>
+    <span>${esc(many?`${ns.length} in parallelo — ${w.msg||"in lavorazione"}`
+                    :row?nowMsg(row):(w.msg||"in corso"))}</span>
+    <span style="color:var(--muted)">dalle ${esc(w.at||"")}</span>
     ${row?`<button class="btn" id="goWorking" style="margin-left:auto">${many?"Vai alla prima":"Vai alla riga"}</button>`:""}`;
   const go=$("goWorking");
-  if(go)go.onclick=()=>{stateFilter=null;query="";$("q").value="";view="all";select(ns[0]);scrollToWorking();};
+  if(go)go.onclick=()=>{
+    const mode=issues.concat(issueOthers).includes(row)?"issue":"pr";
+    if(DESK!==mode)setMode(mode,true);
+    stateFilter=null;query="";$("q").value="";view="all";select(row);scrollToWorking();};
 }
 function scrollToWorking(){
   const tr=document.querySelector("tr.working")||document.querySelector("tr.selected");
@@ -734,61 +919,61 @@ function th(key,label,extra){
   const arrow=sort.key===key?`<span class="dir">${sort.dir>0?"▲":"▼"}</span>`:"";
   return `<th data-sort="${key}" ${extra||""}>${label} ${arrow}</th>`;
 }
-function triageChip(r){
-  if(r.triage_status==="current")return "";
-  return `<small class="triageChip" title="Questa PR non è ancora passata da pr-triage">? senza verdetto</small>`;
+const repoChip=r=>multi?`<span class="repoChip">${esc(repoLabel(r.repo))}</span>`:"";
+function closesLine(r){
+  const c=r.closes||[];
+  if(!c.length)return "";
+  return `<span title="issue che questa PR chiude">→ ${c.map(x=>`${x.repo&&x.repo!==r.repo?esc(repoLabel(x.repo))+" ":""}#${x.issue}`).join(" ")}</span>`;
 }
 function renderTable(){
   const tb=$("tbody"),head=$("thead");
-  const onChase=view==="chase",onBlocks=view==="blocks";
-  $("tableWrap").style.display=(onChase||onBlocks)?"none":"";
+  const onChase=view==="chase"&&DESK!=="threads",onBlocks=view==="blocks"&&DESK!=="threads",onThreads=DESK==="threads";
+  $("tableWrap").style.display=(onChase||onBlocks||onThreads)?"none":"";
   $("chaseWrap").classList.toggle("on",onChase||onBlocks);
-  if(onChase||onBlocks){
+  $("threadsWrap").classList.toggle("on",onThreads);
+  if(onChase||onBlocks||onThreads){
     // drop the hidden table: stale checkboxes keep live handlers bound to the
     // previous view's list, and a select-all would then pick the wrong rows
     head.innerHTML="";tb.innerHTML="";
-    (onChase?renderChase:renderBlocks)();
+    (onThreads?renderThreads:onChase?renderChase:renderBlocks)();
     return;
   }
   if(!loaded){
     head.innerHTML="";
-    tb.innerHTML=`<tr><td colspan="10" class="skel">${"<div></div>".repeat(6)}</td></tr>`;
+    tb.innerHTML=`<tr><td colspan="5" class="skel">${"<div></div>".repeat(6)}</td></tr>`;
     $("empty").style.display="none";return;
   }
   const list=rows();
   if(DESK==="issue"){
-    head.innerHTML=`<tr>${pickHead(list)}<th class="markCol"></th>${th("n","#")}${th("title","issue")}${th("type","tipo",'title="DEFECT bug reale · REQUEST nuova funzione · QUESTION domanda · DOCS documentazione"')}${th("author","autore")}<th>label</th>${th("assignees","assignees")}${th("comments","commenti",'class="num"')}${th("created","età",'class="num"')}</tr>`;
+    head.innerHTML=`<tr>${pickHead(list)}<th class="markCol"></th>${th("title","issue")}${th("assignees","assignee",'class="moveCol"')}</tr>`;
     tb.innerHTML=list.map(r=>{
-      return `<tr data-n="${r.n}" class="${r.assignees.length?"waiting":"attention"}${selected===r.n?" selected":""}${picked.has(r.n)?" picked":""}${onNow(r.n)?" working":""}">
+      const k=rk(r),cls=r.excluded==="with_pr"?"waiting":r.assignees.length?"waiting":"attention";
+      return `<tr data-n="${r.n}" data-k="${esc(k)}" class="${cls}${selected===k?" selected":""}${picked.has(k)?" picked":""}${onNow(r)?" working":""}">
         ${pickCell(r)}
         <td class="mark"><span title="${r.assignees.length?"presa":"libera"}">${r.assignees.length?"○":"!"}</span></td>
-        <td class="mono">#${r.n}</td>
-        <td class="prTitle"><span>${esc(r.title)}</span>${issueMark(r)}${onNow(r.n)?'<span class="nowChip"><i></i>ora</span>':""}</td>
-        <td><span class="tag ${esc(r.type)}">${esc(r.type)}</span></td>
-        <td><span class="avatar">${esc((r.author||"??").slice(0,2).toUpperCase())}</span>${esc(r.author)}</td>
-        <td class="next">${(r.labels||[]).map(l=>`<span class="tag">${esc(l)}</span>`).join(" ")||"—"}</td>
-        <td>${esc(r.assignees.join(", ")||"—")}</td>
-        <td class="num">${r.comments||"—"}</td>
-        <td class="num mono">${ageDays(r.created)}g</td></tr>`;}).join("");
+        <td class="prTitle"><div class="l1">${repoChip(r)}<b class="num">#${r.n}</b><span class="tag ${esc(r.type)}">${esc(r.type)}</span>${(r.labels||[]).slice(0,2).map(l=>`<span class="tag">${esc(l)}</span>`).join("")}${onNow(r)?'<span class="nowChip"><i></i>ora</span>':""}<span class="grow">${r.comments?`${r.comments} comm. · `:""}${ageDays(r.created)}g</span></div>
+          <div class="l2"><span>${esc(r.title)}</span>${issueMark(r)}</div></td>
+        <td class="moveCol"><span class="movePill">${esc(r.assignees.join(", ")||(r.excluded==="with_pr"?"PR aperta":"nessuno"))}</span></td></tr>`;}).join("");
   }else{
-    head.innerHTML=`<tr>${pickHead(list)}<th class="markCol"></th>${th("title","pull request")}${th("author","autore")}${th("decision","review")}${th("merge","merge")}${th("unresolved","unresolved",'class="num" title="Thread di review non risolti"')}<th>base</th>${th("todo","prossima mossa")}${th("autorun","autorun",`title="${esc(AUTORUN_TIP)}"`)}</tr>`;
-    tb.innerHTML=list.map(r=>`<tr data-n="${r.n}" class="${r.state}${selected===r.n?" selected":""}${picked.has(r.n)?" picked":""}${onNow(r.n)?" working":""}">
+    head.innerHTML=`<tr>${pickHead(list)}<th class="markCol"></th>${th("title","pull request")}${th("todo","prossima mossa",'class="moveCol"')}</tr>`;
+    tb.innerHTML=list.map(r=>{
+      const k=rk(r);
+      return `<tr data-n="${r.n}" data-k="${esc(k)}" class="${r.state}${selected===k?" selected":""}${picked.has(k)?" picked":""}${onNow(r)?" working":""}">
       ${pickCell(r)}
       <td class="mark"><span title="${STATE_LABEL[r.state]}">${MARK[r.state]}</span></td>
-      <td class="prTitle"><b>#${r.n}</b><span>${esc(r.title)}</span>${r.skill?'<small class="dot" title="analisi disponibile">●</small>':""}${triageChip(r)}${onNow(r.n)?'<span class="nowChip"><i></i>ora</span>':""}<small>${ageDays(r.created)}g</small></td>
-      <td><span class="avatar">${esc((r.author||"??").slice(0,2).toUpperCase())}</span>${esc(r.author)}</td>
-      <td><span class="status ${r.state}">${esc(r.decision||(r.draft?"draft":"no review"))}</span></td>
-      <td><span class="check ${r.merge||"pending"}">●</span> <span class="mono">${esc(r.merge||"…")}</span></td>
-      <td class="num">${r.unresolved||"—"}</td>
-      <td class="mono">${esc(r.base)}</td>
-      <td class="next">${esc(r.todo)}</td>
-      <td class="mono" title="${esc(AUTORUN_TIP)}">${esc(r.autorun)}</td></tr>`).join("");
+      <td class="prTitle"><div class="l1">${repoChip(r)}<b class="num">#${r.n}</b>${closesLine(r)}<span class="check ${r.merge||"pending"}" title="merge ${esc(r.merge||"in arrivo")}">●</span>${r.skill?'<small class="dot" title="analisi disponibile">●</small>':""}${onNow(r)?'<span class="nowChip"><i></i>ora</span>':""}<span class="grow">${esc(r.author)} · ${ageDays(r.created)}g</span></div>
+        <div class="l2"><span>${esc(r.title)}</span></div></td>
+      <td class="moveCol"><span class="movePill" title="${esc(AUTORUN_TIP)} — autorun ${esc(r.autorun)}">${esc(r.todo)}</span></td></tr>`;}).join("");
   }
   head.querySelectorAll("[data-sort]").forEach(el=>el.onclick=()=>setSort(el.dataset.sort));
-  tb.querySelectorAll("tr[data-n]").forEach(tr=>tr.onclick=ev=>rowClick(+tr.dataset.n,ev));
+  tb.querySelectorAll("tr[data-k]").forEach(tr=>tr.onclick=ev=>rowClick(tr.dataset.k,ev));
   wirePicks(list);
   $("empty").style.display=list.length?"none":"flex";
   $("empty").innerHTML=`<b>Niente in questa vista</b><span>Prova un altro tab, azzera il filtro o rileggi il provider con ⟳.</span>`;
+}
+function goTo(mode,k){
+  if(DESK!==mode)setMode(mode,true);
+  view="all";stateFilter=null;select(k);
 }
 function renderBlocks(){
   const wrap=$("chaseWrap");
@@ -797,13 +982,12 @@ function renderBlocks(){
     if(!b.rows.length)
       return `<div class="chaseCard"><h2>${esc(b.title)}</h2><p style="color:var(--muted);margin:6px 0 0">vuoto</p></div>`;
     return `<div class="chaseCard"><h2>${esc(b.title)} (${b.rows.length})</h2>
-      ${b.rows.slice(0,14).map(r=>`<div class="signal" data-n="${r.n}" style="cursor:pointer">
-        <b class="mono">#${r.n}</b><span>${esc((r.what||"").slice(0,54))}</span>
+      ${b.rows.slice(0,14).map(r=>`<div class="signal" data-n="${r.n}" data-k="${esc(rk(r))}" style="cursor:pointer">
+        <b class="mono">${multi&&r.repo?esc(repoLabel(r.repo))+" ":""}#${r.n}</b><span>${esc((r.what||"").slice(0,54))}</span>
         <span class="mono">${esc(r.autorun||"")}</span></div>`).join("")}
       ${b.rows.length>14?`<p style="color:var(--muted);margin:6px 0 0">…e altre ${b.rows.length-14}</p>`:""}
       </div>`;}).join("");
-  wrap.querySelectorAll("[data-n]").forEach(el=>el.onclick=()=>{
-    view="all";stateFilter=null;select(+el.dataset.n);});
+  wrap.querySelectorAll("[data-k]").forEach(el=>el.onclick=()=>goTo("pr",el.dataset.k));
 }
 
 /* One card per person, and nothing else: a message to paste, not a task.
@@ -832,48 +1016,122 @@ function renderChase(){
       }).join("")
     + owed.map(w=>`<div class="chaseCard reply">
         <h2>@${esc(w)} <span class="chaseCount">aspetta una tua risposta · ${replies[w].length} PR</span></h2>
-        ${replies[w].map(r=>`<div class="signal" data-n="${r.n}" style="cursor:pointer">
-          <b class="mono">#${r.n}</b><span>${esc((r.title||"").slice(0,70))}</span>
+        ${replies[w].map(r=>`<div class="signal" data-n="${r.n}" data-k="${esc(rk(r))}" style="cursor:pointer">
+          <b class="mono">${esc(r.label||"#"+r.n)}</b><span>${esc((r.title||"").slice(0,70))}</span>
           <span class="mono">${esc(r.created||"")}</span></div>`).join("")}</div>`).join("");
   wrap.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>copyText(b,b.dataset.copy));
-  wrap.querySelectorAll(".reply [data-n]").forEach(el=>el.onclick=()=>{
-    view="all";stateFilter=null;select(+el.dataset.n);});
+  wrap.querySelectorAll(".reply [data-k]").forEach(el=>el.onclick=()=>goTo("pr",el.dataset.k));
+}
+
+/* ---------- threads: every issue with the PR that closes it ---------- */
+const GROUP_LABEL=g=>g.id==="me"?"Tocca a te":g.id==="untriaged"?"PR senza verdetto"
+  :g.id==="nobody"?"Di nessuno":`In attesa di ${g.id}`;
+const GROUP_HINT=g=>g.id==="untriaged"?"↻ pr-triage dà loro un verdetto":g.id==="nobody"?"senza assignee né mossa di qualcuno":"";
+const refKey=ref=>ref;
+const refName=ref=>{const i=ref.lastIndexOf("#"),repo=ref.slice(0,i);
+  return (multi||repo!==scope.name?(labels[repo]||repo)+" ":"")+ref.slice(i);};
+function threadRepos(t){return [t.issue&&t.issue.repo].concat(t.prs.map(p=>p.repo)).filter(Boolean);}
+function threadShown(t){
+  if(threadRepos(t).every(r=>hiddenRepos.has(r)))return false;
+  if(personFilter&&t.group!==personFilter)return false;
+  const q=query.trim().toLowerCase();
+  if(!q)return true;
+  return [t.key,t.issue&&t.issue.title,...t.prs.map(p=>p.title||""),...t.prs.map(p=>p.author||"")]
+    .filter(Boolean).join(" ").toLowerCase().includes(q);
+}
+function threadCard(t){
+  const issue=t.issue,mark={me:"!",untriaged:"?",nobody:"◇"}[t.group]||"○";
+  const cls={me:"attention",untriaged:"untriaged",nobody:"waiting"}[t.group]||"waiting";
+  const who=issue?(issue.assignees||[]).join(", ")||"nessuno":"";
+  const out=[];
+  if(issue)out.push(`<button class="thrNode" data-goto="issue" data-k="${esc(issue.repo+"#"+issue.n)}">
+      <i>◯</i><span class="ref">${esc(refName(issue.repo+"#"+issue.n))}${issue.type?` <span class="tag ${esc(issue.type)}">${esc(issue.type)}</span>`:""}</span>
+      <span class="who" style="${who==="nessuno"?"color:var(--amber)":""}">${esc(who)}</span>
+      <span class="title">${esc(issue.title)}</span></button>`);
+  for(const p of t.prs){
+    if(p.in_queue===false){
+      out.push(`<div class="thrNode pr stub"><i>└</i><span class="ref">PR ${esc(refName(p.repo+"#"+p.n))}</span><span class="who">fuori dalla tua coda</span></div>`);
+      continue;
+    }
+    out.push(`<button class="thrNode pr" data-goto="pr" data-k="${esc(p.repo+"#"+p.n)}">
+      <i>└</i><span class="ref">PR ${esc(refName(p.repo+"#"+p.n))}</span>
+      <span class="who">${esc(p.author||"")} · ${esc(p.merge||"…")}</span>
+      <span class="title">${esc(p.title||"")}</span></button>`);
+  }
+  if(issue&&!t.prs.length)out.push(`<div class="thrNone">nessuna PR aperta la cita</div>`);
+  const links=[];
+  for(const ref of t.same_title||[])links.push(`<span class="warn">stesso titolo di ${esc(refName(ref))}</span>`);
+  for(const ref of t.cited_by||[])links.push(`<span>citata da ${esc(refName(ref))}</span>`);
+  for(const ref of t.cites||[]){
+    const repo=ref.slice(0,ref.lastIndexOf("#"));
+    if(!labels[repo])links.push(`<span>cita ${esc(ref)} · fuori scope</span>`);
+  }
+  if(issue&&!(issue.assignees||[]).length&&t.prs.length)links.push(`<span class="warn">issue senza assignee: si legge da fare per tutti</span>`);
+  return `<div class="thr ${cls}">${out.join("")}
+    ${links.length?`<div class="thrLinks">${links.join("")}</div>`:""}
+    <div class="thrMove"><span class="mark"><span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;font:700 10px var(--mono);background:var(${cls==="attention"?"--att-bg":cls==="untriaged"?"--warn-bg":"--wait-bg"})">${mark}</span></span><strong>${esc(t.move||"")}</strong></div></div>`;
+}
+function renderThreads(){
+  const wrap=$("threadsWrap");
+  if(!loaded){wrap.innerHTML=`<div class="empty"><b>Carico i filoni…</b></div>`;return;}
+  const people=Object.entries(threads.people||{});
+  const strip=people.length?`<div class="people">${people.map(([id,p])=>{
+      const name=id==="me"?"Tu":id==="nobody"?"Nessuno":id==="untriaged"?"Senza verdetto":id;
+      const bits=[p.prs.length?`${p.prs.length} PR`:"",p.issues.length?`${p.issues.length} issue senza PR`:""].filter(Boolean).join(", ");
+      return `<button class="person${id==="me"?" me":""}${personFilter===id?" on":""}" data-person="${esc(id)}">
+        <span><strong>${esc(name)}</strong><em>${p.threads}</em></span><small>${esc(bits||"—")}</small></button>`;}).join("")}</div>`:"";
+  const groups=(threads.groups||[]).map(g=>({...g,list:g.threads.filter(threadShown)})).filter(g=>g.list.length);
+  wrap.innerHTML=strip+(groups.length?groups.map(g=>{
+    const msg=chase[g.id];
+    return `<div class="thrGroup"><div class="thrHead"><strong>${esc(GROUP_LABEL(g))}</strong>
+      <span class="mono" style="color:var(--muted)">${g.list.length}</span><span class="grow">${esc(GROUP_HINT(g))}</span>
+      ${msg?`<button class="btn" data-copy="${esc(msg)}" title="Le tue PR ferme su ${esc(g.id)}: un messaggio, pronto da incollare">Copia sollecito</button>`:""}</div>
+      ${g.list.map(threadCard).join("")}</div>`;}).join("")
+    :`<div class="empty"><b>Nessun filone in questa vista</b><span>Azzera il filtro o mostra tutti i repo dello scope.</span></div>`);
+  wrap.querySelectorAll("[data-person]").forEach(b=>b.onclick=()=>{
+    personFilter=personFilter===b.dataset.person?null:b.dataset.person;render();});
+  wrap.querySelectorAll("[data-goto]").forEach(b=>b.onclick=()=>goTo(b.dataset.goto,b.dataset.k));
+  wrap.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>copyText(b,b.dataset.copy));
 }
 
 /* ---------- detail panel ---------- */
 const PR_TABS=r=>[["quadro","Quadro"],["analisi","Analisi"],
                   ["thread",`Thread${r.unresolved?" "+r.unresolved:""}`],["bozza","Draft"]];
 const ISSUE_TABS=()=>[["quadro","Quadro"],["analisi","Analisi"]];
+const hostName=()=>{const m=(scope.members||[])[0]||{};return m.provider==="forgejo"?"Forgejo":m.provider==="github"?"GitHub":"provider";};
+function cloneOf(r){return ((scope.members||[]).find(m=>m.repo===r.repo)||{clone:true}).clone!==false;}
 
 function renderDetail(){
-  const box=$("detail");
-  if(view==="chase"){
-    // the unit here is a PERSON, not a PR. A PR's analysis under a column of
-    // chase messages answers a question nobody asked on this tab.
-    box.innerHTML="";box.style.display="none";return;
+  const box=$("detail"),split=$("splitter");
+  if(view==="chase"||DESK==="threads"){
+    // the unit here is a PERSON or a thread, not a PR. A PR's analysis under
+    // a column of chase messages answers a question nobody asked on this tab.
+    box.innerHTML="";box.style.display="none";split.hidden=true;$("queue").classList.add("full");return;
   }
-  box.style.display="";
+  box.style.display="";split.hidden=false;$("queue").classList.remove("full");
   const r=selectedRow();
   if(!r){
     box.innerHTML=`<div class="empty">${loaded
-      ?"<b>Nessuna riga selezionata</b><span>Clicca una riga, o usa <span class=\"kbd\">↑</span> <span class=\"kbd\">↓</span>.</span>"
+      ?"<b>Nessuna riga selezionata</b><span>Clicca una riga, o usa <span class=\"kbd\">j</span> <span class=\"kbd\">k</span>.</span>"
       :"<b>Carico la coda…</b><span>Il desk legge il provider e dipinge; il triage è un bottone, non un'attesa.</span>"}</div>`;
     return;
   }
   const isPr=DESK!=="issue";
   const tabs=isPr?PR_TABS(r):ISSUE_TABS();
   if(!tabs.some(t=>t[0]===tab))tab="quadro";
+  const where=multi?`${esc(r.repo)} · `:"";
   box.innerHTML=`
     <div class="detailHead">
       <div>
         <span class="largeMark ${isPr?r.state:(r.assignees.length?"waiting":"attention")}">${isPr?MARK[r.state]:(r.assignees.length?"○":"!")}</span>
         <span class="detailKicker">${isPr
-          ?`PR #${r.n} · ${esc(r.author)} · aperta ${esc(r.created)} (${ageDays(r.created)}g) · base ${esc(r.base)} · <span class="status ${r.state}">${esc(STATE_LABEL[r.state])}</span>`
-          :`issue #${r.n} · ${esc(r.author)} · aperta ${esc(r.created)} (${ageDays(r.created)}g) · <span class="tag ${esc(r.type)}">${esc(r.type)}</span>`}</span>
+          ?`${where}PR #${r.n} · ${esc(r.author)} · aperta ${esc(r.created)} (${ageDays(r.created)}g) · base ${esc(r.base)} · <span class="status ${r.state}">${esc(STATE_LABEL[r.state])}</span>`
+          :`${where}issue #${r.n} · ${esc(r.author)} · aperta ${esc(r.created)} (${ageDays(r.created)}g) · <span class="tag ${esc(r.type)}">${esc(r.type)}</span>`}</span>
         <h1>${esc(r.title)}</h1>
       </div>
       <div class="detailActions" id="detailActions"></div>
     </div>
+    ${cloneOf(r)?"":`<div class="actionText" style="margin:0 0 10px">${esc(r.repo)} non ha un clone locale: si legge e si analizza, ma lavora, pr-loop e merge restano spenti.</div>`}
     <nav class="detailTabs" id="detailTabs">${tabs.map(([id,label])=>
       `<button data-t="${id}" aria-selected="${tab===id}">${label}</button>`).join("")}</nav>
     <div class="detailGrid" id="detailGrid"></div>`;
@@ -888,22 +1146,25 @@ function requests(r){return r.requests||{};}
 const OUT_STATUS=["preparing","queued","taken","running"];
 function pending(r,kind){const q=requests(r)[kind];return q&&OUT_STATUS.includes(q.status)?q:null;}
 function closed(r,kind){const q=requests(r)[kind];return q&&!OUT_STATUS.includes(q.status)?q:null;}
+const actKey=r=>(DESK==="issue"?"i":"p")+rk(r);
 
 /* The button's own state, from the ledger the SERVER keeps: a lock held in
    the page is lost on reload and in a second tab, and the user presses again
    because nothing visibly happened. */
-function actionButton(id,kind,label,tip,row,primary){
+function actionButton(id,kind,label,tip,row,primary,needsClone){
   const q=pending(row,kind);
   if(q)return `<span class="btn locked" title="Richiesta precedente ancora registrata alle ${esc(q.at)}.">${q.via==="chat"?"in chat":"richiesta precedente"} · ${esc(q.at)}</span>`;
   const done=closed(row,kind);
-  const enabled=agentReady&&!pendingClicks[(DESK==="issue"?"i":"p")+row.n];
+  const enabled=agentReady&&!pendingClicks[actKey(row)]&&(!needsClone||cloneOf(row));
   return `<button class="btn ${primary?"primary":""}" id="${id}" ${enabled?"":"disabled"} title="${esc(tip)}">${done?"↻ ":""}${label}</button>`;
 }
 function actBadge(r){
   const out=[];
-  if(onNow(r.n))
-    out.push(`<div class="actionText" style="color:var(--amber);border-style:solid;border-color:var(--amber)">
-      <span class="nowChip"><i></i>ora</span> il job one-shot sta lavorando questa: ${esc(nowMsg(r.n))} (dalle ${esc(workingOn.at||"")})</div>`);
+  if(onNow(r)){
+    const w=workings.find(w=>(!w.repo||w.repo===r.repo)&&(w.ns||[w.n]).includes(r.n))||{};
+    out.push(`<div class="actionText" style="color:var(--blue);background:#f3f6ff;border-color:#c9d5fa">
+      <span class="nowChip"><i></i>ora</span> il job one-shot sta lavorando questa: ${esc(nowMsg(r))} (dalle ${esc(w.at||"")})</div>`);
+  }
   for(const [kind,q] of Object.entries(requests(r))){
     const name=REQ_LABEL[kind]||kind;
     if(q.status==="preparing")
@@ -919,9 +1180,9 @@ function actBadge(r){
     else if(q.status==="stale")
       out.push(`<div class="actionText" style="color:var(--amber)">⚠ <b>${esc(name)}</b> senza esito — puoi ritentare.</div>`);
     else
-      out.push(`<div class="actionText" style="color:var(--green)">✓ <b>${esc(name)}</b> chiusa${q.closed_at?" alle "+esc(q.closed_at):""}${q.report?`: ${esc(q.report)}`:""}</div>`);
+      out.push(`<div class="actionText" style="color:var(--green);background:var(--ok-bg);border-color:var(--ok-bg)">✓ <b>${esc(name)}</b> chiusa${q.closed_at?" alle "+esc(q.closed_at):""}${q.report?`: ${esc(q.report)}`:""}</div>`);
   }
-  const a=acting[(DESK==="issue"?"i":"p")+r.n];
+  const a=acting[actKey(r)];
   if(a&&a.status==="running")out.push(`<div class="actionText">Agente one-shot in corso${a.progress&&a.progress.detail?`: ${esc(a.progress.detail)}`:"…"}</div>`);
   if(a&&a.status==="error")out.push(`<div class="actionText" style="color:var(--red)">Errore: ${esc(a.error)}</div>`);
   return out.join("");
@@ -930,13 +1191,13 @@ function renderPrActions(r){
   const exec=r.autorun==="A1"?{label:"▶ Merge",tip:"Avvia pr-loop una volta: riverifica i gate freschi e solo allora esegue squash e delete branch."}
            :r.autorun==="A3"?{label:"▶ Merge base",tip:"Avvia pr-loop una volta per riallineare il branch secondo le regole A3."}:null;
   $("detailActions").innerHTML=`
-    ${exec?actionButton("aExec","order",exec.label,exec.tip,r,true):""}
+    ${exec?actionButton("aExec","order",exec.label,exec.tip,r,true,true):""}
     ${actionButton("aAnalyze","analyze","▶ Analizza",
        "Avvia pr-analyze come processo one-shot read-only: legge diff, claim e thread, scrive il risultato JSON e termina.",
        r,!exec)}
     ${r.summary?"":actionButton("aExplain","explain","▶ Spiega",
        "Questa PR non ha descrizione, quindi il desk non può dire da solo cosa risolve: chiede al modello una riga.",r,false)}
-    <a class="btn" href="${r.url}" target="_blank" rel="noreferrer">GitHub ↗</a>`;
+    <a class="btn" href="${r.url}" target="_blank" rel="noreferrer">${hostName()} ↗</a>`;
   const ex=$("aExec");if(ex)ex.onclick=()=>doOrder(r,ex);
   const an=$("aAnalyze");if(an)an.onclick=()=>doAnalyze(r,an);
   const ex2=$("aExplain");if(ex2)ex2.onclick=()=>doExplain(r,ex2);
@@ -946,7 +1207,7 @@ function renderIssueActions(r){
     ${actionButton("aWork","issue-analyze","▶ Analizza",
       "Avvia issue-analyze come processo one-shot read-only, scrive il risultato JSON e termina.",
       r,true)}
-    <a class="btn" href="${r.url}" target="_blank" rel="noreferrer">GitHub ↗</a>`;
+    <a class="btn" href="${r.url}" target="_blank" rel="noreferrer">${hostName()} ↗</a>`;
   const w=$("aWork");if(w)w.onclick=()=>doIssueWork(r,w);
 }
 
@@ -958,12 +1219,18 @@ function renderPrTab(r){
   if(tab==="quadro"){
     const reviews=(r.reviews||[]).map(v=>`<div class="signal"><b>${esc(v.who)}</b><span>${esc(v.state)} · ${esc(v.on)}</span></div>`).join("")
       ||`<div class="signal"><span>ancora nessuna review</span></div>`;
+    const closes=r.closes||[];
     g.innerHTML=`
+      <article class="nextCard"><h2>Prossima mossa</h2><p>${esc(r.todo)}</p>
+        ${currentProblem?`<p style="font-weight:400;font-size:13px">${esc(currentProblem)}</p>`:""}
+        <small>autorun <b>${esc(r.autorun)}</b> — ${esc(AUTORUN_TIP)}</small>${
+        closes.some(c=>Array.isArray(c.assignees)&&!c.assignees.length)
+          ? `<div class="actionText">Issue collegata senza assignee (${closes.filter(c=>Array.isArray(c.assignees)&&!c.assignees.length).map(c=>"#"+c.issue).join(" ")}): nel workflow Softwell legge come da fare a tutti.</div>`:""}</article>
       <article><h2>Cosa risolve</h2>
         ${r.summary?`<p style="margin-bottom:10px">${esc(r.summary)}</p>`
           :sk.what&&!r.what_stale?`<p style="margin-bottom:10px">${esc(sk.what)}</p>`
-          :`<p style="margin-bottom:10px;color:var(--muted)">Nessuna descrizione sulla PR${(r.closes||[]).length?"":" e nessuna issue collegata"} — <b>▶ Spiega</b> la fa riassumere al modello.</p>`}
-        ${(r.closes||[]).length?`<div class="signal"><b>chiude</b><span>${(r.closes||[]).map(c=>`#${c.issue}${c.title?" "+esc(c.title):""}`).join(" · ")}</span></div>`:""}
+          :`<p style="margin-bottom:10px;color:var(--muted)">Nessuna descrizione sulla PR${closes.length?"":" e nessuna issue collegata"} — <b>▶ Spiega</b> la fa riassumere al modello.</p>`}
+        ${closes.length?`<div class="signal"><b>chiude</b><span>${closes.map(c=>`${c.repo&&c.repo!==r.repo?esc(repoLabel(c.repo))+" ":""}#${c.issue}${c.title?" "+esc(c.title):""}`).join(" · ")}</span></div>`:""}
         <h2 style="margin-top:12px">Quadro</h2>
         <dl>
           <div><dt>Review decision</dt><dd>${esc(r.decision||"—")}</dd></div>
@@ -973,16 +1240,10 @@ function renderPrTab(r){
           <div><dt>Thread</dt><dd>${r.unresolved}/${r.threads} unresolved</dd></div>
           <div><dt>Ultimo a parlare</dt><dd>${r.last?esc(`${r.last.who} · ${r.last.ch} · ${r.last.t.slice(0,10)}`):"—"}</dd></div>
           <div><dt>PR triage</dt><dd>${r.triage_status==="current"?"corrente":"mai eseguito"}</dd></div>
-
         </dl>
         ${(r.gate||[]).length?`<h2 style="margin-top:11px">Gate di ${esc(r.base)}</h2>
           <ul>${r.gate.map(g=>`<li>${esc(g)}</li>`).join("")}</ul>`:""}
         ${actBadge(r)}</article>
-      <article class="nextCard"><h2>Prossima mossa</h2><p>${esc(r.todo)}</p>
-        ${currentProblem?`<p style="font-weight:400;font-size:12px">${esc(currentProblem)}</p>`:""}
-        <small>autorun <b>${esc(r.autorun)}</b> — ${esc(AUTORUN_TIP)}</small>${
-        r.closes&&r.closes.some(c=>!c.assignees.length)
-          ? `<div class="actionText">Issue collegata senza assignee (${r.closes.filter(c=>!c.assignees.length).map(c=>"#"+c.issue).join(" ")}): nel workflow Softwell legge come da fare a tutti.</div>`:""}</article>
       <aside><h2>Review</h2>${reviews}</aside>`;
   }else if(tab==="analisi"){
     g.innerHTML=`
@@ -1012,7 +1273,7 @@ function renderPrTab(r){
       <article class="wideArticle"><h2>Review draft</h2>
         ${text?`<div class="draft"><span>DA PR-ANALYZE</span><p>${esc(text)}</p></div>
           <div class="draftActions"><button class="btn" id="bCopy">Copia testo</button>
-            <button class="btn primary" id="bSend" ${agentReady?"":"disabled"} title="Registra l'ordine e avvia pr-loop una volta per questa bozza.">▶ Esegui</button></div>`
+            <button class="btn primary" id="bSend" ${agentReady&&cloneOf(r)?"":"disabled"} title="Registra l'ordine e avvia pr-loop una volta per questa bozza.">▶ Esegui</button></div>`
           :`<div class="tabEmpty">Nessuna bozza. La produce <b>▶ Analizza</b> quando la PR ne ha bisogno.</div>`}
         ${r.action?`<div class="draftActions"><button class="btn" id="bFallback" title="Ultima spiaggia: il testo pronto da incollare a mano">Copia ${r.action.kind==="command"?"comando":"prompt"}</button></div>`:""}
         ${actBadge(r)}</article>
@@ -1037,6 +1298,13 @@ function renderIssueTab(r){
   const g=$("detailGrid"),sk=r.skill||{};
   if(tab==="quadro"){
     g.innerHTML=`
+      <article class="nextCard"><h2>Prossima mossa</h2>
+        <p>${r.excluded==="with_pr"?"una PR aperta la porta già — si segue dai Filoni":r.assignees.includes(meta.me)?"tua: iniziala":r.assignees.length?esc("in mano a "+r.assignees.join(", ")):"da assegnare — candidata per issue-loop"}</p>
+        <small>${r.assignees.includes(meta.me)
+          ?"È assegnata a te: issue-loop la analizza e, al tuo via, la porta in un worktree."
+          :r.assignees.length
+          ?"Nel workflow Softwell non si lavora su una issue di qualcun altro: chiedi prima."
+          :"Un'issue nuova la assegna l'Owner: chiedi, non prenderla — a meno che sia backlog."}</small></article>
       <article><h2>Cosa risolve</h2>
         ${r.summary?`<p style="margin-bottom:10px">${esc(r.summary)}</p>`
           :`<p style="margin-bottom:10px;color:var(--muted)">Nessuna descrizione sulla PR${(r.closes||[]).length?"":" e nessuna issue collegata"} — <b>▶ Spiega</b> la fa riassumere al modello.</p>`}
@@ -1047,17 +1315,13 @@ function renderIssueTab(r){
         <div><dt>Assignees</dt><dd>${esc(r.assignees.join(", ")||"nessuno")}</dd></div>
         <div><dt>Commenti</dt><dd>${r.comments}</dd></div>
         <div><dt>Età</dt><dd>${ageDays(r.created)} giorni</dd></div></dl>${actBadge(r)}</article>
-      <article class="nextCard"><h2>Prossima mossa</h2>
-        <p>${r.assignees.length?esc("in mano a "+r.assignees.join(", ")):"da assegnare — candidata per issue-loop"}</p>
-        <small>${r.assignees.length
-          ?"Nel workflow Softwell non si lavora su una issue di qualcun altro: chiedi prima."
-          :"Un'issue nuova la assegna l'Owner: chiedi, non prenderla — a meno che sia backlog."}</small></article>
       <aside><h2>Cross-check</h2>${(() => {
         const c=r.cross;
         if(!c)return `<div class="tabEmpty">Cross-check non disponibile.</div>`;
         const line=(label,value)=>`<div class="signal"><b>${label}</b><span>${esc(value)}</span></div>`;
+        const elsewhere=c.open_prs_elsewhere||[];
         return line("branch", c.branches.length?c.branches.join(" "):"nessuno")
-          + line("PR aperte", c.open_prs.length?c.open_prs.map(p=>"#"+p).join(" "):"nessuna")
+          + line("PR aperte", c.open_prs.length||elsewhere.length?c.open_prs.map(p=>"#"+p).concat(elsewhere).join(" "):"nessuna")
           + line("già vista da te", c.seen_by_me?"sì, hai commentato":"no")
           + line("assegnata a te", c.mine?"sì":"no")
           + `<div class="evidence" style="margin-top:8px"><code>${esc(c.note||"")}</code>
@@ -1101,20 +1365,20 @@ async function waitJob(jobId,key,label){
   }
 }
 async function handOver(r,btn,path,body,kind,note){
-  const key=(DESK==="issue"?"i":"p")+r.n;
+  const key=actKey(r);
   btn.disabled=true;btn.classList.add("working");
-  startPending(key,`${note} · #${r.n}`);
+  startPending(key,`${note} · ${refOf(r)}`);
   try{
-    const d=await post(path,body);
+    const d=await post(path,Object.assign({repo:r.repo},body));
     endPending(key);
     if(d.order)r.order=d.order;
     if(d.via==="chat"){
-      localFeed(`${note} su #${r.n}: in coda alla chat collegata — l'esito arriva in conversazione`);
+      localFeed(`${note} su ${refOf(r)}: in coda alla chat collegata — l'esito arriva in conversazione`);
       btn.disabled=false;btn.classList.remove("working");
       await loadDesk(false);return;
     }
     if(!d.job)throw new Error("il server non ha creato il job");
-    localFeed(`${note} su #${r.n}: agente one-shot avviato`);
+    localFeed(`${note} su ${refOf(r)}: agente one-shot avviato`);
     await waitJob(d.job,key,note);
   }catch(e){endPending(key);acting[key]={status:"error",error:e.message};}
   render();
@@ -1134,26 +1398,31 @@ async function doFlow(path,flow,note,extra){
   try{
     const d=await post(path,Object.assign({flow},extra||{}));
     endPending(key);
-    if(d.via==="chat"){
+    const parts=d.runs||[d];
+    const queued=parts.filter(p=>p.via==="chat");
+    if(queued.length===parts.length){
       flows[flow]={status:"queued",via:"chat"};
       localFeed(`${flow}: in coda alla chat collegata — l'esito arriva in conversazione`);
       render();return;
     }
-    if(!d.job)throw new Error("il server non ha creato il job");
-    flows[flow]={status:"running",job:d.job};
-    localFeed(note);
+    const ids=(d.jobs||parts.map(p=>p.job)).filter(Boolean);
+    if(!ids.length)throw new Error("il server non ha creato il job");
+    flows[flow]={status:"running",job:ids[0]};
+    localFeed(note+(ids.length>1?` — ${ids.length} job, uno per repo`:""));
     render();
-    await waitJob(d.job,key,flow);
+    await Promise.all(ids.map((id,i)=>waitJob(id,i?`${key}:${i}`:key,flow)));
     delete flows[flow];
   }catch(e){endPending(key);delete flows[flow];banner("errBox",esc(e.message),true);}
   render();
 }
-/* Chosen rows mean: exactly these, in this order, and then stop. */
+/* Chosen rows mean: exactly these, in this order, and then stop — one loop
+   per repository, each in its own clone. */
 function runPicked(flow,batch){
-  const ns=[...picked];
+  const items=[...picked].map(rowByKey).filter(Boolean).map(r=>({repo:r.repo,n:r.n}));
+  const repos=[...new Set(items.map(i=>i.repo))];
   doFlow("/api/run",flow,
-    `${flow} avviato su ${ns.map(n=>"#"+n).join(" ")}${batch>1?` — batch da ${batch}, in parallelo`:" — una alla volta"}`,
-    {ns,batch});
+    `${flow} avviato su ${pickedLabels().join(" ")}${batch>1?` — batch da ${batch}, in parallelo`:" — una alla volta"}`,
+    repos.length>1?{items,batch}:{repo:repos[0],ns:items.map(i=>i.n),batch});
   picked.clear();
 }
 const doTriage=()=>doFlow("/api/triage",DESK==="issue"?"issue-triage":"pr-triage",
@@ -1162,15 +1431,124 @@ const doRun=()=>{
   const flow=DESK==="issue"?"issue-loop":"pr-loop";
   if(picked.size>1){askBatch=true;render();return;}
   if(picked.size===1)return runPicked(flow,1);
-  doFlow("/api/run",flow,"run one-shot avviato");
+  doFlow("/api/run",flow,"run one-shot avviato",{repo:(scope.members[0]||{}).repo});
 };
+
+/* ---------- scope ---------- */
+function renderScope(){
+  const members=scope.members||[];
+  $("scopeName").textContent=scope.name||meta.repo||"…";
+  const hidden=members.filter(m=>hiddenRepos.has(m.repo)).length;
+  $("scopeCount").textContent=multi?`${members.length} repo${hidden?` · ${hidden} nascosti`:""}`:(meta.provider||"");
+  const pop=$("scopePop");
+  if(pop.hidden)return;
+  pop.innerHTML=`<h2>Cosa guarda il desk</h2>
+    ${members.map(m=>`<label class="scopeRow">
+      <input type="checkbox" class="pick" data-scope="${esc(m.repo)}" ${hiddenRepos.has(m.repo)?"":"checked"} ${multi?"":"disabled"}>
+      <b>${esc(m.repo)}</b><em>${esc(m.provider||"")}</em>
+      <small class="${m.clone?"":"bare"}">${m.clone?"clone in "+esc(m.cwd||"cartella di lancio"):"nessun clone locale · solo lettura"}</small></label>`).join("")}
+    <div class="scopeFoot">${multi
+      ?"Togliere la spunta nasconde un repo da questa pagina, senza cambiare lo scope. Senza clone il repo si legge e si analizza; lavora, pr-loop e merge restano spenti."
+      :"Un repo solo. Per una org intera rilancia il desk con <code>--org &lt;owner&gt;</code>, o dalla cartella che contiene i clone."}</div>`;
+  pop.querySelectorAll("[data-scope]").forEach(box=>box.onclick=ev=>{
+    ev.stopPropagation();
+    box.checked?hiddenRepos.delete(box.dataset.scope):hiddenRepos.add(box.dataset.scope);
+    if(!selectedRow()||!shown(selectedRow()))selectFirst();
+    render();});
+}
+function toggleScope(open){
+  const pop=$("scopePop"),btn=$("scopeBtn");
+  pop.hidden=open===undefined?!pop.hidden:!open;
+  btn.setAttribute("aria-expanded",String(!pop.hidden));
+  renderScope();
+}
+
+/* ---------- ⌘K: every action of the page, one keystroke away ---------- */
+let palIdx=0,palItems=[];
+function commands(){
+  const out=[],r=DESK==="threads"?null:selectedRow();
+  const add=(group,icon,label,sub,run,key)=>out.push({group,icon,label,sub:sub||"",run,key:key||""});
+  if(picked.size){
+    const flow=DESK==="issue"?"issue-loop":"pr-loop",chaseText=chaseForPicked();
+    if(chaseText)add(`Sulle ${picked.size} scelte`,"@","Copia un sollecito unico","un messaggio per persona, le tue PR ferme su di loro",()=>copyText(null,chaseText),"s");
+    add(`Sulle ${picked.size} scelte`,"▶",`${flow}, una alla volta`,"si ferma alla prima decisione che serve",()=>runPicked(flow,1),"l");
+    if(picked.size>1)add(`Sulle ${picked.size} scelte`,"▶",`${flow} in parallelo`,`un worktree per riga · massimo ${MAX_BATCH}`,()=>runPicked(flow,Math.min(picked.size,MAX_BATCH)));
+    add(`Sulle ${picked.size} scelte`,"✕","Svuota la scelta","",clearPicks,"esc");
+  }
+  if(r){
+    const where=refOf(r);
+    if(DESK==="pr"){
+      add(`Riga ${where}`,"▶","Analizza","pr-analyze, read-only",()=>{const b=$("aAnalyze");if(b&&!b.disabled)b.click();},"a");
+      if($("aExec"))add(`Riga ${where}`,"▶",$("aExec").textContent,"pr-loop riverifica i gate",()=>$("aExec").click());
+    }else add(`Riga ${where}`,"▶","Analizza","issue-analyze, read-only",()=>{const b=$("aWork");if(b&&!b.disabled)b.click();},"a");
+    add(`Riga ${where}`,picked.has(rk(r))?"☐":"☑",picked.has(rk(r))?"Togli dalla scelta":"Aggiungi alla scelta","",()=>togglePick(r),"x");
+    if(r.url)add(`Riga ${where}`,"↗",`Apri su ${hostName()}`,r.url,()=>window.open&&window.open(r.url,"_blank"));
+  }
+  for(const [id,label] of [["pr","Pull request"],["issue","Issue"],["threads","Filoni"]])
+    add("Vai a",id==="threads"?"⌁":id==="pr"?"⇄":"◯",label,id==="threads"?"issue ↔ PR su tutti i repo":"",()=>setMode(id),{pr:"g p",issue:"g i",threads:"g f"}[id]);
+  for(const v of VIEWS())add("Vai a","·",`${DESK==="issue"?"Issue":"PR"} › ${v.label}`,`${v.count}`,()=>{view=v.id;stateFilter=null;selectFirst();render();});
+  for(const [who,text] of Object.entries(chase))
+    add("Chase","@",`Copia il sollecito per @${who}`,text.split("\n")[0],()=>copyText(null,text));
+  add("Desk","↻",DESK==="issue"?"Ordina la shortlist":"pr-triage","",doTriage);
+  add("Desk","⟳","Rileggi il provider","",()=>loadDesk(true));
+  if(multi)for(const m of scope.members)
+    add("Scope",hiddenRepos.has(m.repo)?"☐":"☑",`${hiddenRepos.has(m.repo)?"Mostra":"Nascondi"} ${m.repo}`,m.clone?"":"nessun clone locale",
+        ()=>{hiddenRepos.has(m.repo)?hiddenRepos.delete(m.repo):hiddenRepos.add(m.repo);render();});
+  add("Scope","⌂","Cosa guarda il desk","i repo dello scope e i loro clone",()=>toggleScope(true));
+  return out;
+}
+function renderPalette(){
+  const q=$("palInput").value.trim().toLowerCase();
+  palItems=commands().filter(c=>!q||[c.group,c.label,c.sub].join(" ").toLowerCase().includes(q));
+  palIdx=Math.max(0,Math.min(palIdx,palItems.length-1));
+  let last=null;
+  $("palList").innerHTML=palItems.map((c,i)=>{
+    const head=c.group!==last?`<div class="palGroup">${esc(c.group)}</div>`:"";last=c.group;
+    return `${head}<button class="palOpt${i===palIdx?" on":""}" data-i="${i}"><i>${esc(c.icon)}</i>
+      <span>${esc(c.label)}${c.sub?`<small>${esc(c.sub)}</small>`:""}</span><em>${esc(c.key)}</em></button>`;}).join("")
+    ||`<div class="empty"><b>Nessun comando</b><span>Prova un'altra parola.</span></div>`;
+  $("palList").querySelectorAll("[data-i]").forEach(b=>b.onclick=()=>runCommand(+b.dataset.i));
+}
+function openPalette(){
+  $("palette").hidden=false;$("palInput").value="";palIdx=0;renderPalette();$("palInput").focus();
+}
+function closePalette(){$("palette").hidden=true;}
+function runCommand(i){const c=palItems[i];closePalette();if(c)c.run();}
+$("palInput").oninput=()=>{palIdx=0;renderPalette();};
+$("palInput").addEventListener("keydown",e=>{
+  if(e.key==="Escape"){e.preventDefault();closePalette();}
+  else if(e.key==="ArrowDown"){e.preventDefault();palIdx++;renderPalette();}
+  else if(e.key==="ArrowUp"){e.preventDefault();palIdx--;renderPalette();}
+  else if(e.key==="Enter"){e.preventDefault();runCommand(palIdx);}
+});
+$("palette").onclick=e=>{if(e.target===$("palette"))closePalette();};
+
+/* ---------- the split between list and detail, his to set ---------- */
+(function wireSplitter(){
+  const bar=$("splitter"),work=$("work");
+  try{const saved=localStorage.getItem("gw-split");if(saved)work.style.setProperty("--split",saved);}catch(e){}
+  bar.addEventListener("pointerdown",e=>{
+    const top=work.getBoundingClientRect().top,height=work.getBoundingClientRect().height;
+    const move=ev=>{
+      const pct=Math.max(18,Math.min(82,(ev.clientY-top)/height*100));
+      work.style.setProperty("--split",pct.toFixed(1)+"%");
+    };
+    const up=()=>{
+      document.removeEventListener("pointermove",move);document.removeEventListener("pointerup",up);
+      try{localStorage.setItem("gw-split",work.style.getPropertyValue("--split"));}catch(e){}
+    };
+    document.addEventListener("pointermove",move);document.addEventListener("pointerup",up);
+    e.preventDefault&&e.preventDefault();
+  });
+})();
 
 /* ---------- summary ---------- */
 function renderSummary(){
   $("deskName").textContent=DESK==="issue"?"issue desk":"pr desk";
-  document.title=DESK==="issue"?"Issue desk":"PR desk";
+  document.title=`${scope.name||meta.repo||"Review"} · desk`;
   $("repoLabel").textContent=meta.repo?`${meta.repo} · ${meta.me}`:"…";
   $("leadEyebrow").textContent=DESK==="issue"?"issue aperte":"coda review";
+  renderScope();
   if(!loaded){
     $("leadTitle").textContent="carico la coda…";
     $("leadSub").textContent="il desk legge il provider e dipinge subito; il triage è un bottone";
@@ -1185,7 +1563,7 @@ function renderSummary(){
       el.textContent=["unassigned","defect","tue","in shortlist"][i];});
     $("cIssues").textContent=issues.length;$("cPrs").textContent="—";
     $("leadTitle").textContent=free?`${free} issue senza assignee`:"tutte le issue hanno un assignee";
-    $("leadSub").textContent=`${issues.length} aperte${issuesWithPr?` · ${issuesWithPr} escluse perché una PR aperta le cita`:""}${issuesTaken?` · ${issuesTaken} in mano ad altri`:""} · provider ${meta.provider||"—"}`;
+    $("leadSub").textContent=`${issues.length} da prendere${issuesWithPr?` · ${issuesWithPr} con una PR aperta`:""}${issuesTaken?` · ${issuesTaken} in mano ad altri`:""}`;
   }else{
     const c={ready:0,attention:0,waiting:0,decision:0,reply:0};
     const current=prs.filter(r=>r.triage_status==="current");
@@ -1193,10 +1571,13 @@ function renderSummary(){
     current.forEach(r=>c[r.state]++);
     $("mAttention").textContent=c.attention;$("mDecision").textContent=c.decision;
     $("mWaiting").textContent=c.waiting;$("mReady").textContent=c.ready;
+    document.querySelectorAll(".metric span").forEach((el,i)=>{
+      el.textContent=["mosse tue","decisioni tue","in attesa","mergeable"][i];});
     const mine=c.attention+c.decision+c.ready;
     $("cPrs").textContent=prs.length;$("cIssues").textContent=issues.length;
-    $("leadTitle").textContent=pending?`${pending} pull request senza verdetto`:mine?`${mine} pull request aspettano una mossa tua`:"nessuna PR aspetta una mossa tua";
-    $("leadSub").textContent=`${prs.length} fetched · ${current.length} con triage corrente · ${issues.length} issue · provider ${meta.provider||"—"}`;
+    $("leadTitle").textContent=DESK==="threads"?`${threads.total||0} filoni`
+      :pending?`${pending} pull request senza verdetto`:mine?`${mine} pull request aspettano una mossa tua`:"nessuna PR aspetta una mossa tua";
+    $("leadSub").textContent=`${prs.length} PR · ${current.length} con triage corrente · ${issues.length} issue${multi?` · ${scope.members.length} repo`:""}`;
   }
   const notes=[];
   if(DESK==="issue"){
@@ -1225,7 +1606,8 @@ function renderSummary(){
 
 function render(){
   renderSummary();renderTabs();renderTable();renderWorking();renderJobs();renderDetail();
-  if(followWorking&&workingOn){followWorking=false;scrollToWorking();}
+  if(!$("palette").hidden)renderPalette();
+  if(followWorking&&workings.length){followWorking=false;scrollToWorking();}
 }
 
 /* ---------- wiring ---------- */
@@ -1233,21 +1615,37 @@ $("q").oninput=e=>{query=e.target.value;selectFirst();render();};
 $("btnFetch").onclick=()=>loadDesk(true);
 $("btnTriage").onclick=doTriage;
 $("btnRun").onclick=doRun;
+$("btnPalette").onclick=openPalette;
+$("scopeBtn").onclick=ev=>{ev.stopPropagation();toggleScope();};
 document.querySelectorAll(".metric").forEach(m=>m.onclick=()=>{
   stateFilter=stateFilter===m.dataset.filter?null:m.dataset.filter;
-  if(stateFilter)view="all";
+  if(stateFilter){if(DESK==="threads")setMode("pr",true);view="all";}
   selectFirst();render();});
+let lastKey=null,lastKeyAt=0;
 document.addEventListener("keydown",e=>{
+  if((e.metaKey||e.ctrlKey)&&(e.key==="k"||e.key==="K")){e.preventDefault();$("palette").hidden?openPalette():closePalette();return;}
+  if(!$("palette").hidden)return;
   if(e.target.tagName==="INPUT")     {if(e.key==="Escape")e.target.blur();return;}
+  const chord=lastKey==="g"&&Date.now()-lastKeyAt<900;
+  lastKey=e.key;lastKeyAt=Date.now();
+  if(chord&&(e.key==="p"||e.key==="i"||e.key==="f")){e.preventDefault();setMode({p:"pr",i:"issue",f:"threads"}[e.key]);return;}
   if(e.key==="ArrowDown"||e.key==="j"){e.preventDefault();moveSelection(1);}
   else if(e.key==="ArrowUp"||e.key==="k"){e.preventDefault();moveSelection(-1);}
   else if(e.key==="x"||e.key==="X"){
     e.preventDefault();
     if(selected!==null){togglePick(selected);lastPick=selected;}
   }
+  else if(e.key==="Escape"){if(!$("scopePop").hidden)toggleScope(false);else if(picked.size)clearPicks();}
+  else if(e.key==="s"&&picked.size){const t=chaseForPicked();if(t){e.preventDefault();copyText($("pChase"),t);}}
+  else if(e.key==="l"&&picked.size){e.preventDefault();const b=$("pRun");if(b&&!b.disabled)b.click();}
+  else if(e.key==="a"){const b=$("aAnalyze")||$("aWork");if(b&&!b.disabled){e.preventDefault();b.click();}}
   else if(e.key==="/"){e.preventDefault();$("q").focus();}
   else if(e.key==="Enter"){const b=$("aExec")||$("aAnalyze")||$("aWork");if(b&&!b.disabled)b.click();}
   else if(e.key>="1"&&e.key<="4"){const t=$("detailTabs");if(t&&t.children[+e.key-1])t.children[+e.key-1].click();}
+});
+document.addEventListener("click",e=>{
+  const pop=$("scopePop");
+  if(!pop.hidden&&e.target&&!pop.contains?.(e.target)&&e.target!==$("scopeBtn"))toggleScope(false);
 });
 
 $("btnTest").onclick=runTestMode;
@@ -1274,13 +1672,13 @@ let stopArmed=null;
 $("btnStop").onclick=async()=>{
   const b=$("btnStop");
   if(!stopArmed){
-    b.textContent="confermi?";b.style.color="var(--red)";b.style.borderColor="var(--red)";
-    stopArmed=setTimeout(()=>{stopArmed=null;b.textContent="⏻";b.style.color="";b.style.borderColor="";},4000);
+    b.textContent="confermi?";b.style.color="var(--red)";b.style.borderColor="var(--red)";b.style.width="auto";b.style.padding="0 8px";
+    stopArmed=setTimeout(()=>{stopArmed=null;b.textContent="⏻";b.style.color="";b.style.borderColor="";b.style.width="";b.style.padding="";},4000);
     return;
   }
   clearTimeout(stopArmed);stopArmed=null;b.textContent="fermo…";b.disabled=true;
   try{await post("/api/shutdown",{});}catch(e){}
-  document.body.innerHTML='<div style="padding:40px;font:14px system-ui"><b>Server fermato.</b><br>Per ripartire, avvia <code>pr-desk</code> o <code>issue-desk</code>.</div>';
+  document.body.innerHTML='<div style="padding:40px;font:14px system-ui"><b>Server fermato.</b><br>Per ripartire, avvia <code>git-desk</code>.</div>';
 };
 
 if(typeof location!=="undefined"&&location.protocol==="file:"){

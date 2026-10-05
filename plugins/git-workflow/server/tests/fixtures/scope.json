@@ -1,0 +1,68 @@
+{
+ "me": "fp",
+ "repos": {
+  "acme/acme-engine": {
+   "rows": [
+    {"n": 79, "title": "Title a new document with its type until it is saved", "created": "2026-10-01",
+     "author": "rob", "assignees": [], "base": "main", "base_head": "b1", "head": "h79",
+     "merge": "CLEAN", "decision": "REVIEW_REQUIRED", "req": ["fp"], "reviews": [],
+     "unresolved": 0, "threads": 0, "closes": [{"issue": 78, "source": "body", "assignees": null}],
+     "last": null, "url": "https://forge.example/acme/acme-engine/pulls/79"},
+    {"n": 45, "title": "Build the order print and fix its batch resource", "created": "2026-09-20",
+     "author": "fp", "base": "main", "base_head": "b1", "head": "h45",
+     "merge": "CLEAN", "decision": "REVIEW_REQUIRED", "req": ["rob"], "reviews": [],
+     "unresolved": 0, "threads": 1, "closes": [{"issue": 23, "source": "body", "assignees": null}],
+     "last": null, "url": "https://forge.example/acme/acme-engine/pulls/45"}
+   ],
+   "issues": [
+    {"n": 78, "title": "Title a new document with its type", "created": "2026-10-01", "updated": "2026-10-01T09:00:00Z",
+     "author": "rob", "labels": [], "assignees": [], "comments": 0, "prs": [79], "prs_elsewhere": [], "refs": [],
+     "url": "https://forge.example/acme/acme-engine/issues/78"},
+    {"n": 66, "title": "Remove the dead forms", "created": "2026-09-28", "updated": "2026-09-28T09:00:00Z",
+     "author": "fp", "labels": [], "assignees": ["fp"], "comments": 0, "prs": [], "prs_elsewhere": [],
+     "refs": [{"repo": "other/thing", "n": 1374}], "url": "https://forge.example/acme/acme-engine/issues/66"},
+    {"n": 65, "title": "Remove the dead forms", "created": "2026-09-28", "updated": "2026-09-28T09:00:00Z",
+     "author": "fp", "labels": [], "assignees": [], "comments": 0, "prs": [], "prs_elsewhere": [], "refs": [],
+     "url": "https://forge.example/acme/acme-engine/issues/65"},
+    {"n": 23, "title": "The order print is broken", "created": "2026-09-15", "updated": "2026-09-20T09:00:00Z",
+     "author": "fp", "labels": [], "assignees": ["fp"], "comments": 2, "prs": [45], "prs_elsewhere": [],
+     "refs": [{"repo": null, "n": 19}], "url": "https://forge.example/acme/acme-engine/issues/23"},
+    {"n": 20, "title": "The invoice prints without its transport block", "created": "2026-09-15",
+     "updated": "2026-09-15T09:00:00Z", "author": "fp", "labels": [], "assignees": ["rob"], "comments": 0,
+     "prs": [], "prs_elsewhere": [], "refs": [], "url": "https://forge.example/acme/acme-engine/issues/20"},
+    {"n": 19, "title": "Move the remaining cached prints", "created": "2026-09-14", "updated": "2026-09-30T09:00:00Z",
+     "author": "fp", "labels": [], "assignees": ["fp"], "comments": 3, "prs": [],
+     "prs_elsewhere": [{"repo": "acme/acme-ext", "n": 31}], "refs": [],
+     "url": "https://forge.example/acme/acme-engine/issues/19"}
+   ],
+   "issue_relations": {"commented": [23, 19], "assigned": [66, 23, 19], "complete": true},
+   "branches": ["19-cached-prints"],
+   "default_branch": "main"
+  },
+  "acme/acme-ext": {
+   "rows": [
+    {"n": 31, "title": "Read the cached prints from the engine endpoint", "created": "2026-09-30",
+     "author": "rob", "base": "main", "base_head": "b2", "head": "h31",
+     "merge": "CLEAN", "decision": "REVIEW_REQUIRED", "req": ["fp"], "reviews": [],
+     "unresolved": 0, "threads": 0,
+     "closes": [{"issue": 19, "source": "body", "repo": "acme/acme-engine", "assignees": null}],
+     "last": null, "url": "https://forge.example/acme/acme-ext/pulls/31"},
+    {"n": 29, "title": "fix(shop): align the barcode column with its header", "created": "2026-10-01",
+     "author": "rob", "base": "main", "base_head": "b2", "head": "h29",
+     "merge": "CLEAN", "decision": "APPROVED", "req": [],
+     "reviews": [{"who": "fp", "state": "APPROVED", "on": "2026-10-01", "commit": "h29", "has_text": false}],
+     "unresolved": 0, "threads": 0, "closes": [{"issue": 28, "source": "body", "assignees": null}],
+     "last": {"t": "2026-10-01T10:00:00Z", "who": "fp", "ch": "approved"},
+     "url": "https://forge.example/acme/acme-ext/pulls/29"}
+   ],
+   "issues": [
+    {"n": 28, "title": "The barcode column is misaligned with its header", "created": "2026-10-01",
+     "updated": "2026-10-01T09:00:00Z", "author": "rob", "labels": [], "assignees": ["fp"], "comments": 0,
+     "prs": [29], "prs_elsewhere": [], "refs": [], "url": "https://forge.example/acme/acme-ext/issues/28"}
+   ],
+   "issue_relations": {"commented": [], "assigned": [28], "complete": true},
+   "branches": [],
+   "default_branch": "main"
+  }
+ }
+}

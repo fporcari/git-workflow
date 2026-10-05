@@ -32,8 +32,16 @@ Speed shape (the desk used to be slow for structural reasons, not slow code):
     who may push, "approved + CLEAN + mine" is not the user's merge — the
     old field-only verdict said `A1 → merge it` there and was wrong.
 
-    python3 prdesk.py [--repo owner/repo] [--provider github|forgejo|fixture]
+    python3 prdesk.py [--repo owner/repo]... [--org [host/]owner]...
+                      [--folder DIR] [--clones DIR]...
+                      [--provider github|forgejo|fixture]
                       [--port N] [--me login] [--agent auto|codex|claude]
+
+SCOPE (scope.py). With no flag the desk covers the cwd's repository, as it
+always did; `--org` covers every repository of an owner with something open,
+and a cwd that holds clones without being one covers that folder. Each member
+keeps its own Desk — cache, state file, jobs, click ledger — and ScopeDesk
+merges what they serve: every row carries `repo`, every POST names it.
 
 Ports: without --port the desk takes its default (8399 pr, 8398 issue). When
 that port already serves the SAME repo and desk the new process prints that
@@ -48,6 +56,7 @@ import argparse
 import copy
 import hashlib
 import json
+import os
 import secrets
 import signal
 import sys
@@ -65,8 +74,10 @@ import gate as gatelib
 import issuecheck
 import jobs
 import notify
+import scope as scopelib
+import threads
 import verdicts
-from providers import PROVIDERS, provider_and_repo
+from providers import PROVIDERS, get_provider
 from verdicts import decorate, handoff, issue_handoff, issue_type
 
 STATIC = Path(__file__).resolve().parent / "static"
@@ -169,17 +180,39 @@ def model_tasks(rows, notes, me):
 
 
 class Desk:
-    def __init__(self, provider, repo, me, cwd, chat=False, kind="pr", agent="auto"):
+    """One repository's desk. `clone` False: `cwd` is not a checkout of it,
+    so the desk reads and analyzes but never works in it."""
+
+    def __init__(self, provider, repo, me, cwd, chat=False, kind="pr", agent="auto",
+                 clone=True):
         self.provider = provider
         self.repo = repo
         self.me = me
         self.cwd = cwd
+        self.clone = clone
         self.chat = chat
         self.kind = kind
         self.agent = agent
         self.write_token = secrets.token_urlsafe(32)
         self.timings = {}
         self._default = None
+
+    @property
+    def members(self):
+        return [self]
+
+    def member(self, repo=None):
+        if repo is None or repo.lower() == self.repo.lower():
+            return self
+        raise KeyError("%s non è nello scope di questo desk" % repo)
+
+    def member_info(self):
+        return {"repo": self.repo, "provider": self.provider.name,
+                "host": self.provider.host, "clone": self.clone,
+                "cwd": self.cwd if self.clone else None}
+
+    def scope_info(self):
+        return {"name": self.repo, "members": [self.member_info()]}
 
     # ---- provider reads, all through the disk cache -------------------
 
@@ -256,7 +289,7 @@ class Desk:
         return self._timed(
             "relations",
             lambda: {"relations": self.provider.issue_relations(self.repo, self.me),
-                     "branches": self.provider.remote_branches(self.cwd)},
+                     "branches": self.provider.remote_branches(self.cwd, self.repo)},
             refresh)
 
     def _crosscheck(self, queue_rows, refresh=False):
@@ -423,6 +456,7 @@ class Desk:
         orders = state.get("orders") or {}
         for row in rows:
             row["order"] = orders.get(str(row["n"]))
+            row["repo"] = self.repo
         complete = counts["missing"] == 0
         triaged = [row for row in rows if row["triage_status"] == "current"]
         return {"rows": rows, "total": raw.get("total", len(rows)),
@@ -459,6 +493,7 @@ class Desk:
             row["analysis_stale"] = bool(
                 at and not deskstate.issue_analysis_fresh(record, row.get("updated")))
             row["action"] = issue_handoff(row, self.repo)
+            row["repo"] = self.repo
         deskstate.annotate_issues(rows, state)
         deskstate.annotate_requests(rows, state)
         try:
@@ -482,9 +517,16 @@ class Desk:
         picked = {r["n"] for r in (shortlist or {}).get("rows", [])}
         for row in rows:
             row["in_shortlist"] = row["n"] in picked
+        for row in with_pr:
+            row["excluded"] = "with_pr"
+        for row in taken:
+            row["excluded"] = "taken"
         return {"rows": rows, "total": raw.get("total", len(rows)),
                 "excluded_with_pr": len(with_pr),
                 "excluded_taken": len(taken),
+                # out of the list, not out of the picture: the threads view
+                # pairs every open issue with the PR that closes it
+                "others": with_pr + taken,
                 "truncated": raw.get("truncated", False),
                 "shortlist": shortlist,
                 "ranked": bool(shortlist and any(r.get("impact")
@@ -521,15 +563,20 @@ class Desk:
         # prime() already paid the refresh; these two read the warm cache
         queue = self.queue()
         issues = self.issues(refresh)
+        every_issue = issues["rows"] + issues["others"]
+        threads.link_closes(queue["rows"], every_issue)
         return {"meta": {"repo": self.repo, "me": self.me,
                          "provider": self.provider.name,
                          "chat": False, "detached": True, "desk": self.kind,
-                         "write_token": self.write_token},
-                "queue": queue, "issues": issues, "state": self.live_state(),
+                         "write_token": self.write_token,
+                         "scope": self.scope_info()},
+                "queue": queue, "issues": issues,
+                "threads": threads.build(queue["rows"], every_issue, self.me),
+                "state": self.live_state(),
                 "timings": dict(self.timings),
                 "generated": time.strftime("%H:%M:%S")}
 
-    def run_triage(self):
+    def run_triage(self, flow=None):
         """The explicit triage run, in full: compute the verdicts, PUBLISH the
         keyed grid and the chase blocks, and write the rows file the skill
         reads.
@@ -560,13 +607,14 @@ class Desk:
                 "blocks": verdicts.blocks(rows)}
         chase = verdicts.chase(rows, self.me)
 
-        if self.kind == "pr":       # the issue desk shares the state file and
-            def publish(state):     # must not publish a PR grid nobody ran
+        flow = flow or ("pr-triage" if self.kind == "pr" else "issue-triage")
+        if flow == "pr-triage":     # ordering the shortlist must not publish
+            def publish(state):     # a PR grid nobody ran
                 state["grid"] = grid
                 state["chase"] = chase
             deskstate.update(self.repo, publish)
 
-        issues = self.issues(refresh=self.kind == "issue")
+        issues = self.issues(refresh=flow == "issue-triage")
         tasks = model_tasks(rows, state.get("prs"), self.me)
         payload = {"repo": self.repo, "me": self.me,
                    "generated": grid["generated"],
@@ -580,6 +628,210 @@ class Desk:
         path = deskstate.runtime_path(self.repo, "rows.json")
         path.write_text(json.dumps(payload, indent=1))
         return path
+
+
+def repo_labels(repos):
+    """The short name of each repository on a desk that covers several:
+    the owner goes when they share it, and so does a common name prefix
+    (erpy/erpy-engine, erpy/erpy-ext → engine, ext)."""
+    names = [r.split("/")[1] if len({x.split("/")[0].lower() for x in repos}) == 1 else r
+             for r in repos]
+    prefix = names[0] if names else ""
+    for name in names[1:]:
+        while prefix and not name.startswith(prefix):
+            prefix = prefix[:-1]
+    cut = prefix.rfind("-") + 1 if len(names) > 1 and "-" in prefix else 0
+    return {repo: (name[cut:] or name) for repo, name in zip(repos, names)}
+
+
+class ScopeDesk:
+    """Several repositories behind one desk. Each keeps its own Desk — its
+    own cache, state file, jobs and chat ledger, exactly as if it had a desk
+    of its own — and this merges what they serve: every row says its `repo`,
+    and every action goes to the member it names."""
+
+    def __init__(self, name, desks, me, kind="pr", agent="auto"):
+        self.repo = name
+        self.desks = list(desks)
+        self.me = me
+        self.kind = kind
+        self.agent = agent
+        self.chat = False
+        self.provider = self.desks[0].provider
+        self.write_token = secrets.token_urlsafe(32)
+        self.timings = {}
+        self.labels = repo_labels([d.repo for d in self.desks])
+
+    @property
+    def members(self):
+        return list(self.desks)
+
+    def member(self, repo=None):
+        if repo is None:
+            raise KeyError("questo desk copre %d repo: serve `repo`" % len(self.desks))
+        for desk in self.desks:
+            if desk.repo.lower() == repo.lower():
+                return desk
+        raise KeyError("%s non è nello scope %s" % (repo, self.repo))
+
+    def scope_info(self):
+        return {"name": self.repo,
+                "members": [dict(d.member_info(), label=self.labels[d.repo])
+                            for d in self.desks]}
+
+    def _each(self, work):
+        with ThreadPoolExecutor(max_workers=min(len(self.desks), 8)) as pool:
+            return list(pool.map(work, self.desks))
+
+    def _label(self, rows):
+        for row in rows:
+            row["label"] = "%s #%s" % (self.labels[row["repo"]], row["n"])
+        return rows
+
+    def prime(self, refresh=False):
+        self._each(lambda d: d.prime(refresh))
+
+    def prefetch(self):
+        threading.Thread(target=self._prefetch_quietly, daemon=True).start()
+
+    def _prefetch_quietly(self):
+        try:
+            self.prime()
+        except Exception:
+            pass
+
+    def queue(self, refresh=False):
+        parts = self._each(lambda d: d.queue(refresh))
+        rows = self._label([row for part in parts for row in part["rows"]])
+        rows.sort(key=lambda r: r.get("created") or "", reverse=True)
+        triaged = [row for row in rows if row["triage_status"] == "current"]
+        grids = [part["grid"] for part in parts if part.get("grid")]
+        grid = None
+        if grids:
+            blocks = [{"title": block["title"], "rows": []} for block in grids[0]["blocks"]]
+            for g in grids:
+                for merged, block in zip(blocks, g["blocks"]):
+                    merged["rows"] += block["rows"]
+            grid = {"generated": max(g.get("generated") or "" for g in grids),
+                    "blocks": blocks}
+        counts = {key: sum(part["triage_counts"][key] for part in parts)
+                  for key in ("current", "missing", "stale")}
+        return {"rows": rows,
+                "total": sum(part["total"] for part in parts),
+                "truncated": any(part["truncated"] for part in parts),
+                "mergestate_pending": any(part["mergestate_pending"] for part in parts),
+                "chase": verdicts.chase(triaged, self.me) if triaged else {},
+                "replies": verdicts.replies(triaged, self.me),
+                "session": next((p["session"] for p in parts if p.get("session")), None),
+                "gates": {},
+                "grid": grid,
+                "triage_complete": all(part["triage_complete"] for part in parts),
+                "triage_counts": counts}
+
+    def issues(self, refresh=False):
+        parts = self._each(lambda d: d.issues(refresh))
+        rows = self._label([row for part in parts for row in part["rows"]])
+        others = self._label([row for part in parts for row in part["others"]])
+        rows.sort(key=lambda r: r.get("created") or "", reverse=True)
+        cited = self._cited_across(rows)
+        moved = [row for row in rows if (row["repo"].lower(), row["n"]) in cited]
+        for row in moved:
+            prs = cited[(row["repo"].lower(), row["n"])]
+            row["excluded"] = "with_pr"
+            row["in_shortlist"] = False
+            row["cross"] = dict(row.get("cross") or {}, open_prs_elsewhere=prs,
+                                note="PR aperta: %s" % " ".join(prs))
+        rows = [row for row in rows if row not in moved]
+        others = others + moved
+        shortlists = [part["shortlist"] for part in parts if part.get("shortlist")]
+        shortlist = None
+        if shortlists:
+            gone = {(row["repo"], row["n"]) for row in moved}
+            picked = [row for s in shortlists for row in s["rows"]
+                      if (row["repo"], row["n"]) not in gone]
+            for row in picked:
+                row["label"] = "%s #%s" % (self.labels[row["repo"]], row["n"])
+            shortlist = {"computed": True, "rows": picked}
+        return {"rows": rows, "others": others,
+                "total": sum(part["total"] for part in parts),
+                "excluded_with_pr": sum(part["excluded_with_pr"] for part in parts) + len(moved),
+                "excluded_taken": sum(part["excluded_taken"] for part in parts),
+                "truncated": any(part["truncated"] for part in parts),
+                "shortlist": shortlist,
+                "ranked": any(part["ranked"] for part in parts)}
+
+    def _cited_across(self, issue_rows):
+        """{(repo, n): [label]} of the issues an open PR of ANOTHER member
+        closes or cites: each member's cross-check sees only its own PRs."""
+        by_lower = {d.repo.lower(): d.repo for d in self.desks}
+        cited = {}
+        for desk in self.desks:
+            for row in desk._raw_queue(False)["rows"]:
+                for item in row.get("closes") or []:
+                    if (item.get("repo") or "").lower() in by_lower:
+                        cited.setdefault((item["repo"].lower(), item["issue"]), []).append(
+                            "%s #%s" % (self.labels[desk.repo], row["n"]))
+        for row in issue_rows:
+            for item in row.get("prs_elsewhere") or []:
+                other = by_lower.get(item["repo"].lower())
+                if other:
+                    label = "%s #%s" % (self.labels[other], item["n"])
+                    found = cited.setdefault((row["repo"].lower(), row["n"]), [])
+                    if label not in found:
+                        found.append(label)
+        return cited
+
+    def live_state(self):
+        parts = [(d.repo, d.live_state()) for d in self.desks]
+        feed = [dict(line, repo=repo) for repo, st in parts for line in st["feed"]]
+        feed.sort(key=lambda line: line.get("at") or "")
+        workings = [dict(st["working"], repo=repo) for repo, st in parts if st["working"]]
+        refreshes = [st["provider_refresh"] for _, st in parts if st["provider_refresh"]]
+        stamps = [st["triage"]["generated"] for _, st in parts if st["triage"]["generated"]]
+        chats = [st["chat"] for _, st in parts if st["chat"]["attached"]]
+        jobs_now = [job for _, st in parts for job in st["agent"]["jobs"]]
+        merged = {}
+        for key in ("flows", "runs", "chase"):
+            merged[key] = {}
+            for _, st in parts:
+                merged[key].update(st[key])
+        return {"feed": feed[-50:], "flows": merged["flows"],
+                "chat": {"attached": bool(chats), "at": chats[0]["at"] if chats else None},
+                "runs": merged["runs"],
+                "working": workings[0] if workings else None,
+                "workings": workings,
+                "provider_refresh": max(refreshes, key=lambda r: r.get("token") or "")
+                if refreshes else None,
+                "triage": {"generated": max(stamps) if stamps else None},
+                "chase": merged["chase"],
+                "session": next((st["session"] for _, st in parts if st["session"]), None),
+                "pong": next((st["pong"] for _, st in parts if st["pong"]), None),
+                "agent": {"mode": "on-demand", "selected": self.agent,
+                          "busy": bool(jobs_now), "jobs": jobs_now}}
+
+    def snapshot(self, refresh=False):
+        for desk in self.desks:
+            desk.timings = {}
+        self.prime(refresh)
+        queue = self.queue()
+        issues = self.issues(refresh)
+        every_issue = issues["rows"] + issues["others"]
+        threads.link_closes(queue["rows"], every_issue)
+        self.timings = {}
+        for desk in self.desks:
+            for key, entry in desk.timings.items():
+                if entry["ms"] >= self.timings.get(key, {}).get("ms", -1):
+                    self.timings[key] = entry
+        return {"meta": {"repo": self.repo, "me": self.me,
+                         "provider": self.provider.name,
+                         "chat": False, "detached": True, "desk": self.kind,
+                         "write_token": self.write_token,
+                         "scope": self.scope_info()},
+                "queue": queue, "issues": issues,
+                "threads": threads.build(queue["rows"], every_issue, self.me),
+                "state": self.live_state(),
+                "timings": dict(self.timings),
+                "generated": time.strftime("%H:%M:%S")}
 
 
 DEFAULT_PORTS = {"pr": 8399, "issue": 8398}
@@ -686,6 +938,7 @@ class Handler(BaseHTTPRequestHandler):
                                  "provider": self.desk.provider.name,
                                  "chat": self.desk.chat, "desk": self.desk.kind,
                                  "write_token": self.desk.write_token,
+                                 "scope": self.desk.scope_info(),
                                  "generated": time.strftime("%H:%M:%S")})
             elif url.path == "/api/queue":
                 self._send_tagged(dict(self.desk.queue(refresh),
@@ -694,14 +947,15 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_tagged(dict(self.desk.issues(refresh),
                                        generated=time.strftime("%H:%M:%S")))
             elif url.path == "/api/feed":
-                feed = deskstate.load(self.desk.repo).get("feed") or []
-                self._send(200, {"feed": feed[-50:]})
+                self._send(200, {"feed": self.desk.live_state()["feed"]})
             elif url.path == "/api/state":
                 self._send_tagged(self.desk.live_state())
             elif url.path == "/api/selftest":
                 self._send(200, self._selftest())
             elif url.path.startswith("/api/job/"):
-                job = jobs.get(self.desk.repo, url.path.rsplit("/", 1)[1])
+                job_id = url.path.rsplit("/", 1)[1]
+                job = next((found for found in (jobs.get(d.repo, job_id)
+                                                for d in self.desk.members) if found), None)
                 self._send(200 if job else 404, job or {"error": "unknown job"})
             else:
                 self._send(404, {"error": "not found"})
@@ -714,15 +968,17 @@ class Handler(BaseHTTPRequestHandler):
             out["provider"] = {"ok": True, "login": self.desk.provider.whoami()}
         except Exception as exc:
             out["provider"] = {"ok": False, "error": str(exc)[:200]}
+        first = self.desk.members[0]
         try:
-            deskstate.update(self.desk.repo, lambda state: None)
+            for desk in self.desk.members:
+                deskstate.update(desk.repo, lambda state: None)
             out["state_file"] = {"ok": True,
-                                 "path": str(deskstate.state_path(self.desk.repo))}
+                                 "path": str(deskstate.state_path(first.repo))}
         except Exception as exc:
             out["state_file"] = {"ok": False, "error": str(exc)[:200]}
-        hit = cache.peek(self.desk.repo, "queue")
+        hit = cache.peek(first.repo, "queue")
         out["cache"] = {"ok": bool(hit), "age": round(hit[0]) if hit else None,
-                        "path": str(cache.cache_path(self.desk.repo))}
+                        "path": str(cache.cache_path(first.repo))}
         try:
             out["agent"] = {"ok": True,
                             "selected": jobs.resolve_agent(self.desk.agent),
@@ -750,71 +1006,60 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(400, {"error": "JSON object required"})
                 return
             parts = url.path.strip("/").split("/")
-            if len(parts) == 4 and parts[:2] == ["api", "pr"] and parts[3] == "analyze":
-                self._analyze_pr(int(parts[2]))
-            elif len(parts) == 4 and parts[:2] == ["api", "pr"] and parts[3] == "explain":
+            item = len(parts) == 4 and parts[0] == "api" and parts[1] in ("pr", "issue")
+            desk = None
+            if item:
+                try:
+                    desk = self.desk.member(body.get("repo"))
+                except KeyError as exc:
+                    self._send(400, {"error": str(exc)})
+                    return
+            if item and parts[1] == "pr" and parts[3] == "analyze":
+                self._analyze_pr(desk, int(parts[2]))
+            elif item and parts[1] == "pr" and parts[3] == "explain":
                 # the one line the factual row cannot write: what this PR is
                 # FOR, in the user's language. One row, one sentence — instead
                 # of the whole queue's titles rewritten every refresh.
                 n = int(parts[2])
-                what_key = self._model_key(n, "what")
-                if self._chat_handoff("explain", n, {"what_key": what_key},
-                                      "spiegazione #%s" % n):
+                what_key = self._model_key(desk, n, "what")
+                response = self._chat_handoff(desk, "explain", n, {"what_key": what_key},
+                                              "spiegazione #%s" % n)
+                if response is None:
+                    response = {"job": jobs.explain_pr(
+                        desk.repo, n, desk.me, desk.cwd, desk.agent, what_key)}
+                self._send(202, response)
+            elif item and parts[1] == "pr" and parts[3] == "order":
+                if not self._can_work(desk):
                     return
-                job_id = jobs.explain_pr(
-                    self.desk.repo, n, self.desk.me, self.desk.cwd,
-                    self.desk.agent, what_key)
-                self._send(202, {"job": job_id})
-            elif len(parts) == 4 and parts[:2] == ["api", "pr"] and parts[3] == "order":
                 n = int(parts[2])
-                order = deskstate.add_order(self.desk.repo, n, body.get("propose", ""),
+                order = deskstate.add_order(desk.repo, n, body.get("propose", ""),
                                             body.get("draft"), body.get("instruction", ""))
-                if self._chat_handoff("order", n, {"flow": "order", "n": n},
-                                      "ordine #%s" % n):
-                    return
-                job_id = jobs.operation(
-                    self.desk.repo, "order", {"n": n}, self.desk.me,
-                    self.desk.cwd, self.desk.agent)
-                self._send(202, {"order": order, "job": job_id})
-            elif len(parts) == 4 and parts[:2] == ["api", "issue"] and parts[3] == "analyze":
+                response = self._chat_handoff(desk, "order", n, {"flow": "order", "n": n},
+                                              "ordine #%s" % n)
+                if response is None:
+                    response = {"order": order, "job": jobs.operation(
+                        desk.repo, "order", {"n": n}, desk.me, desk.cwd, desk.agent)}
+                self._send(202, response)
+            elif item and parts[1] == "issue" and parts[3] == "analyze":
                 n = int(parts[2])
-                if self._chat_handoff("issue-analyze", n, {},
-                                      "issue-analyze #%s" % n):
-                    return
-                job_id = jobs.analyze_issue(
-                    self.desk.repo, n, self.desk.me, self.desk.cwd,
-                    self.desk.agent)
-                self._send(202, {"job": job_id})
+                response = self._chat_handoff(desk, "issue-analyze", n, {},
+                                              "issue-analyze #%s" % n)
+                if response is None:
+                    response = {"job": jobs.analyze_issue(
+                        desk.repo, n, desk.me, desk.cwd, desk.agent)}
+                self._send(202, response)
             elif parts == ["api", "fetch"]:
                 # explicit re-read of the provider, on the caller's demand
                 self._send(200, dict(self.desk.snapshot(refresh=True), refetched=True))
             elif parts == ["api", "rows"]:
-                path = self.desk.run_triage()
-                self._send(200, {"path": str(path)})
+                paths = [str(d.run_triage()) for d in self.desk.members]
+                self._send(200, {"path": paths[0], "paths": paths})
             elif parts == ["api", "shutdown"]:
                 self._send(200, {"bye": True})
                 threading.Thread(target=stop_server,
                                  args=(self.server,), daemon=True).start()
             elif parts == ["api", "run"]:
-                flow = body.get("flow", "pr-loop")
-                if flow not in ("pr-loop", "issue-loop"):
-                    self._send(400, {"error": "unknown run flow"})
-                    return
-                # rows chosen by hand: the loop works exactly those, in this
-                # order, and stops. Clamped here too — the page is an input.
-                ns = [int(n) for n in (body.get("ns") or [])]
-                batch = max(1, min(int(body.get("batch") or 1), MAX_BATCH))
-                label = "%s · %d scelte" % (flow, len(ns)) if ns else flow
-                if self._chat_handoff(
-                        "run", None,
-                        {"flow": flow, "ns": ns, "batch": batch}, label,
-                        key="run:%s" % flow):
-                    return
-                job_id = jobs.operation(
-                    self.desk.repo, flow, {"ns": ns, "batch": batch},
-                    self.desk.me, self.desk.cwd, self.desk.agent)
-                self._send(202, {"job": job_id, "flow": flow,
-                                 "ns": ns, "batch": batch, "label": label})
+                self._run(body)
             elif parts == ["api", "ping"]:
                 self._send(200, {"pong": body.get("token") or "",
                                  "mode": "detached"})
@@ -826,56 +1071,110 @@ class Handler(BaseHTTPRequestHandler):
                 # the fresh read and the grid are the job's first phase: they
                 # cost seconds on a real queue, and a click must not hold them
                 # open. The model is asked only for what the export still owes
-                job_id = jobs.triage(
-                    self.desk.repo, flow, self.desk.run_triage, self.desk.me,
-                    self.desk.cwd, self.desk.agent)
-                self._send(202, {"job": job_id})
+                ids = [jobs.triage(d.repo, flow, lambda d=d: d.run_triage(flow), d.me,
+                                   d.cwd, d.agent) for d in self.desk.members]
+                self._send(202, {"job": ids[0], "jobs": ids})
             else:
                 self._send(404, {"error": "not found"})
         except Exception as exc:
             self._send(502, {"error": str(exc)})
 
-    def _analyze_pr(self, n):
+    def _can_work(self, desk):
+        """A write runs in the repository's own clone, or not at all."""
+        if desk.clone:
+            return True
+        self._send(409, {"error": "%s non ha un clone locale: si legge e si analizza, "
+                                  "ma lavora, pr-loop e merge restano spenti" % desk.repo})
+        return False
+
+    def _run_groups(self, body):
+        """The rows chosen by hand, per repository, in the order clicked:
+        `items` [{repo, n}] across the scope, or `ns` on one repository."""
+        if body.get("items"):
+            groups = []
+            for entry in body["items"]:
+                desk = self.desk.member(entry.get("repo"))
+                group = next((g for g in groups if g[0] is desk), None)
+                if group is None:
+                    group = (desk, [])
+                    groups.append(group)
+                group[1].append(int(entry["n"]))
+            return groups
+        return [(self.desk.member(body.get("repo")),
+                 [int(n) for n in (body.get("ns") or [])])]
+
+    def _run(self, body):
+        flow = body.get("flow", "pr-loop")
+        if flow not in ("pr-loop", "issue-loop"):
+            self._send(400, {"error": "unknown run flow"})
+            return
+        try:
+            groups = self._run_groups(body)
+        except KeyError as exc:
+            self._send(400, {"error": str(exc)})
+            return
+        for desk, _ in groups:
+            if not self._can_work(desk):
+                return
+        # rows chosen by hand: the loop works exactly those, in this order,
+        # and stops — one loop per repository, each in its own clone.
+        # Clamped here too: the page is an input.
+        batch = max(1, min(int(body.get("batch") or 1), MAX_BATCH))
+        responses = []
+        for desk, ns in groups:
+            label = "%s · %d scelte" % (flow, len(ns)) if ns else flow
+            response = self._chat_handoff(
+                desk, "run", None, {"flow": flow, "ns": ns, "batch": batch}, label,
+                key="run:%s" % flow)
+            if response is None:
+                response = {"job": jobs.operation(
+                    desk.repo, flow, {"ns": ns, "batch": batch},
+                    desk.me, desk.cwd, desk.agent),
+                    "flow": flow, "ns": ns, "batch": batch, "label": label}
+            responses.append(dict(response, repo=desk.repo))
+        self._send(202, responses[0] if len(responses) == 1 else
+                   {"runs": responses, "flow": flow, "batch": batch})
+
+    def _analyze_pr(self, desk, n):
         # the payload is a callable: an attached chat needs the context in its
         # record, a one-shot job reads it in its own thread, and a click that
         # goes nowhere pays for neither
-        if self._chat_handoff("analyze", n, self._analysis_payload(n),
-                              "pr-analyze #%s" % n):
-            return
-        job_id = jobs.analyze_pr(self.desk.repo, n, self.desk.me,
-                                 self.desk.cwd, self.desk.agent,
-                                 lambda: self._analysis_inputs(n))
-        self._send(202, {"job": job_id})
+        response = self._chat_handoff(desk, "analyze", n, self._analysis_payload(desk, n),
+                                      "pr-analyze #%s" % n)
+        if response is None:
+            response = {"job": jobs.analyze_pr(desk.repo, n, desk.me, desk.cwd, desk.agent,
+                                               lambda: self._analysis_inputs(desk, n))}
+        self._send(202, response)
 
-    def _analysis_payload(self, n):
+    def _analysis_payload(self, desk, n):
         def build():
-            keys, context = self._analysis_inputs(n)
+            keys, context = self._analysis_inputs(desk, n)
             return {"analysis_keys": keys, "context": context}
         return build
 
-    def _analysis_inputs(self, n):
-        row = next((row for row in self.desk.queue()["rows"]
+    def _analysis_inputs(self, desk, n):
+        row = next((row for row in desk.queue()["rows"]
                     if row["n"] == n), None)
         if not row:
             return {}, {"probe": None}
         keys = row.get("model_keys") or {}
         if keys.get("analysis") is None:
-            rows, _, _, gates = self.desk._queue_facts(complete_gates=True)
-            decorate(rows, self.desk.me, gates)
+            rows, _, _, gates = desk._queue_facts(complete_gates=True)
+            decorate(rows, desk.me, gates)
             row = next((item for item in rows if item["n"] == n), row)
             keys = row.get("model_keys") or {}
         try:
-            probe = self.desk.provider.analysis_probe(self.desk.repo, n)
+            probe = desk.provider.analysis_probe(desk.repo, n)
         except Exception as exc:
             probe = {"fresh": False, "error": str(exc)[:160]}
         if (probe and probe.get("fresh") and probe.get("head")
                 and probe["head"] != row.get("head")):
-            rows, _, _, gates = self.desk._queue_facts(
+            rows, _, _, gates = desk._queue_facts(
                 refresh=True, complete_gates=True)
-            decorate(rows, self.desk.me, gates)
+            decorate(rows, desk.me, gates)
             row = next((item for item in rows if item["n"] == n), row)
             keys = row.get("model_keys") or {}
-        note = ((deskstate.load(self.desk.repo).get("prs") or {})
+        note = ((deskstate.load(desk.repo).get("prs") or {})
                 .get(str(n)) or {})
         cached_problem = (note.get("problem")
                           if note.get("problem_key") == keys.get("problem")
@@ -893,7 +1192,7 @@ class Handler(BaseHTTPRequestHandler):
         }
         return keys, context
 
-    def _chat_handoff(self, kind, n, payload, label, key=None):
+    def _chat_handoff(self, desk, kind, n, payload, label, key=None):
         """Route the click to the attached chat instead of a one-shot agent.
 
         Triage never comes through here: its artifacts are the desk's own
@@ -908,55 +1207,79 @@ class Handler(BaseHTTPRequestHandler):
         record is enqueued as `preparing` at once and a thread fills it in,
         so the click is answered in milliseconds here as it is for a job.
 
-        Returns the response sent, or None when no chat is listening and the
-        caller must start the job as before."""
+        The click lands in the ledger of the repository it is about, so a
+        chat listening to a whole scope claims it there.
+
+        Returns the response to send, or None when no chat is listening and
+        the caller must start the job as before."""
         key = key or deskstate.request_key(kind, n)
-        deskstate.reclaim_request(self.desk.repo, key)
-        if not deskstate.chat_listening(self.desk.repo, desk=self.desk.kind):
+        deskstate.reclaim_request(desk.repo, key)
+        if not deskstate.chat_listening(desk.repo, desk=desk.kind):
             return None
         lazy = callable(payload)
         record, created = deskstate.request(
-            self.desk.repo, key, kind, n, label, via="chat",
+            desk.repo, key, kind, n, label, via="chat",
             payload=None if lazy else payload,
-            status="preparing" if lazy else "queued", desk=self.desk.kind)
+            status="preparing" if lazy else "queued", desk=desk.kind)
         if record is None:
             return None
         if created:
-            notify.notify(self.desk.repo,
+            notify.notify(desk.repo,
                           "%s → in coda alla chat collegata" % label, n)
             if lazy:
                 threading.Thread(target=self._prepare_request,
-                                 args=(key, payload, record["id"]), daemon=True).start()
-        response = {"queued": True, "via": "chat", "request": key,
-                    "created": created, "at": record["at"]}
-        self._send(202, response)
-        return response
+                                 args=(desk, key, payload, record["id"]),
+                                 daemon=True).start()
+        return {"queued": True, "via": "chat", "request": key,
+                "created": created, "at": record["at"]}
 
-    def _prepare_request(self, key, build, request_id):
+    def _prepare_request(self, desk, key, build, request_id):
         try:
             payload = build()
         except Exception as exc:
-            deskstate.close_request(self.desk.repo, key, "failed",
+            deskstate.close_request(desk.repo, key, "failed",
                                     "contesto non letto: %s" % str(exc)[:160],
                                     request_id=request_id)
             return
-        deskstate.ready_request(self.desk.repo, key, payload, request_id)
+        deskstate.ready_request(desk.repo, key, payload, request_id)
 
-    def _model_key(self, n, artifact):
-        row = next((row for row in self.desk.queue()["rows"]
+    def _model_key(self, desk, n, artifact):
+        row = next((row for row in desk.queue()["rows"]
                     if row["n"] == n), None)
         key = (row or {}).get("model_keys", {}).get(artifact)
         if key is not None or artifact != "analysis":
             return key
-        rows, _, _, gates = self.desk._queue_facts(complete_gates=True)
-        decorate(rows, self.desk.me, gates)
+        rows, _, _, gates = desk._queue_facts(complete_gates=True)
+        decorate(rows, desk.me, gates)
         row = next((row for row in rows if row["n"] == n), None)
         return (row or {}).get("model_keys", {}).get(artifact)
 
 
+def held_elsewhere(repos, kind):
+    """The member repositories another live server already serves as this
+    kind of desk: two desks registering on one ledger would steal each
+    other's clicks and close each other's chat ears."""
+    held = []
+    for repo in repos:
+        state = deskstate.load(repo)
+        mark = (state.get("desks") or {}).get(kind) or {}
+        if kind in deskstate.live_desks(repo, state) and mark.get("pid") != os.getpid():
+            held.append((repo, mark.get("port")))
+    return held
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--repo", help="[host/]owner/repo (default: the origin of the cwd)")
+    parser.add_argument("--repo", action="append", default=[],
+                        help="[host/]owner/repo, repeatable (default: the origin of the cwd)")
+    parser.add_argument("--org", action="append", default=[], metavar="[HOST/]OWNER",
+                        help="every repository of the owner with an open issue or PR, "
+                             "repeatable")
+    parser.add_argument("--folder", metavar="DIR",
+                        help="every clone directly under DIR (the default when the cwd "
+                             "is a folder of clones and not a checkout)")
+    parser.add_argument("--clones", action="append", default=[], metavar="DIR",
+                        help="where else to look for the members' clones")
     parser.add_argument("--provider", choices=tuple(PROVIDERS),
                         help="force the service; default: the one the origin's host names")
     parser.add_argument("--desk", default="pr", choices=("pr", "issue"),
@@ -981,22 +1304,47 @@ def main():
                              "of reading the provider again (offline work)")
     args = parser.parse_args()
 
-    provider, repo = provider_and_repo(args)
-    me = args.me or provider.whoami()
-    server, running = open_server(args.desk, repo, args.port)
+    name, members = scopelib.build(repos=args.repo, orgs=args.org, folder=args.folder,
+                                   clone_roots=args.clones, provider=args.provider,
+                                   get_provider=get_provider)
+    launch = str(Path.cwd())
+    if len(members) == 1 and not members[0]["cwd"]:
+        members[0]["cwd"] = launch      # one repository: the cwd is its checkout
+    providers = {}
+
+    def provider_of(member):
+        key = (member["provider"], member["host"])
+        if key not in providers:
+            providers[key] = get_provider(*key)
+        return providers[key]
+
+    me = args.me or provider_of(members[0]).whoami()
+    repos = [m["repo"] for m in members]
+    server, running = open_server(args.desk, name, args.port)
     if running:
         sys.stderr.write("%s desk already running for %s\n%s desk on %s\n"
-                         % (args.desk, repo, args.desk, running))
+                         % (args.desk, name, args.desk, running))
         return
+    held = held_elsewhere(repos, args.desk) if len(repos) > 1 else []
+    if held:
+        server.server_close()
+        raise SystemExit("%s: un %s desk è già aperto su %s — chiudilo prima di aprire "
+                         "lo scope %s" % (", ".join(r for r, _ in held), args.desk,
+                                          " ".join("http://127.0.0.1:%s" % p for _, p in held),
+                                          name))
     port = server.server_address[1]
     swept = deskstate.sweep_legacy()
-    jobs.reconcile(repo)
-    if not args.keep_state:
-        deskstate.reset(repo)
-    cache_action = "kept" if args.keep_cache else cache.reset(repo)
+    for repo in repos:
+        jobs.reconcile(repo)
+        if not args.keep_state:
+            deskstate.reset(repo)
+    cache_action = ("kept" if args.keep_cache else
+                    ",".join(sorted({cache.reset(repo) for repo in repos})))
 
-    desk = Desk(provider, repo, me, str(Path.cwd()), chat=False,
-                kind=args.desk, agent=args.agent)
+    desks = [Desk(provider_of(m), m["repo"], me, m["cwd"] or launch, chat=False,
+                  kind=args.desk, agent=args.agent, clone=bool(m["cwd"]))
+             for m in members]
+    desk = desks[0] if len(desks) == 1 else ScopeDesk(name, desks, me, args.desk, args.agent)
     Handler.desk = desk
     Handler.last_request = time.monotonic()
     stopping = threading.Event()
@@ -1010,7 +1358,7 @@ def main():
     def idle_watch():
         while not stopping.wait(60):
             if idle_expired(Handler.last_request, time.monotonic(),
-                            args.idle_exit, jobs.active(repo)):
+                            args.idle_exit, [j for r in repos for j in jobs.active(r)]):
                 sys.stderr.write("%s desk idle for %d min with no job running, "
                                  "exiting\n" % (args.desk, args.idle_exit // 60))
                 request_stop()
@@ -1020,10 +1368,16 @@ def main():
     threading.Thread(target=idle_watch, daemon=True).start()
     if not args.no_prefetch:
         desk.prefetch()
-    deskstate.register_desk(repo, args.desk, port)
+    for repo in repos:
+        deskstate.register_desk(repo, args.desk, port)
+    if len(repos) > 1:
+        deskstate.register_scope(name, args.desk, port,
+                                 [{"repo": d.repo, "cwd": d.cwd if d.clone else None,
+                                   "clone": d.clone} for d in desks])
     sys.stderr.write("%s desk on http://127.0.0.1:%s  repo=%s me=%s provider=%s "
-                     "cache=%s\n"
-                     % (args.desk, port, repo, me, provider.name, cache_action))
+                     "cache=%s%s\n"
+                     % (args.desk, port, name, me, desk.provider.name, cache_action,
+                        "  repos=%s" % ",".join(repos) if len(repos) > 1 else ""))
     if swept:
         sys.stderr.write("swept %d session file(s) the old layout left in "
                          "~/.local/state\n" % swept)
@@ -1033,7 +1387,8 @@ def main():
     finally:
         jobs.shutdown()
         server.server_close()
-        deskstate.desk_stopped(repo, args.desk)
+        for repo in repos:
+            deskstate.desk_stopped(repo, args.desk)
 
 
 if __name__ == "__main__":

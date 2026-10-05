@@ -15,6 +15,20 @@ class Packaging(unittest.TestCase):
     def manifest(self, host):
         return json.loads((PLUGIN / (".%s-plugin" % host) / "plugin.json").read_text())
 
+    def test_codex_runtime_names_native_tools_and_respects_merge_instructions(self):
+        runtime = (PLUGIN / 'refs/runtime.md').read_text()
+        for tool in ('mcp__codex_app__open_in_codex', 'mcp__codex_app__set_thread_title',
+                     'mcp__codex_app__list_projects', 'mcp__codex_app__create_thread'):
+            self.assertIn(tool, runtime)
+        self.assertIn('read `git-workflow.md`', runtime)
+        self.assertIn('needs-input', runtime)
+        desk = (PLUGIN / 'skills/git-desk/SKILL.md').read_text()
+        self.assertIn('--timeout 50', desk)
+        self.assertIn('resume that same process', desk)
+        self.assertNotIn('--timeout 540', desk)
+        loop = (PLUGIN / 'skills/pr-loop/SKILL.md').read_text()
+        self.assertLess(loop.index('mandatory confirmation'), loop.index('# Lane A'))
+
     def test_host_manifests_share_identity_and_base_version(self):
         claude = self.manifest("claude")
         codex = self.manifest("codex")
@@ -50,7 +64,7 @@ class Packaging(unittest.TestCase):
 
     def test_background_delegation_is_not_a_codex_task(self):
         runtime = (PLUGIN / "refs" / "runtime.md").read_text()
-        desk = (PLUGIN / "skills" / "review-desk" / "SKILL.md").read_text()
+        desk = (PLUGIN / "skills" / "git-desk" / "SKILL.md").read_text()
         self.assertIn("Codex's collaboration/subagent tool", runtime)
         self.assertIn("Codex task/thread", runtime)
         self.assertNotIn("Codex: a task", desk)
@@ -81,7 +95,7 @@ class Packaging(unittest.TestCase):
         skills must say the pane is the deliverable."""
         runtime = (PLUGIN / "refs" / "runtime.md").read_text()
         self.assertIn("mcp__Claude_Browser__preview_start", runtime)
-        for name in ("pr-desk", "issue-desk", "review-desk"):
+        for name in ("git-desk",):
             text = (PLUGIN / "skills" / name / "SKILL.md").read_text()
             self.assertIn("Browser pane", text, name)
             self.assertIn("link", text, name)
@@ -89,7 +103,7 @@ class Packaging(unittest.TestCase):
     def test_the_desks_title_their_chat_and_mark_it_closed(self):
         """A desk chat is found again by its title — kind, repo, date and
         time — and read as spent once the desk is gone."""
-        for name in ("pr-desk", "issue-desk", "review-desk"):
+        for name in ("git-desk",):
             text = (PLUGIN / "skills" / name / "SKILL.md").read_text()
             self.assertIn("<YYYY-MM-DD HH:MM>", text, name)
             self.assertIn("` · closed`", text, name)
@@ -184,7 +198,7 @@ class Packaging(unittest.TestCase):
         """Both are the desk's: computed on every read (shortlist) or
         published on the press (grid). A model copy of either was one more
         thing to keep in sync, and it drifted."""
-        for name in ("issue-triage", "issue-desk", "pr-triage", "review-desk"):
+        for name in ("issue-triage", "git-desk", "pr-triage"):
             text = (PLUGIN / "skills" / name / "SKILL.md").read_text()
             self.assertNotIn('"shortlist": {', text, name)
             self.assertNotIn('"grid": {', text, name)
@@ -214,7 +228,7 @@ class Packaging(unittest.TestCase):
     def test_desks_stay_attached_unless_the_user_opts_out(self):
         """The desk is the remote, the launching chat is the workplace: every
         click except triage is executed where the user reads it."""
-        for name in ("pr-desk", "issue-desk"):
+        for name in ("git-desk",):
             text = (PLUGIN / "skills" / name / "SKILL.md").read_text()
             self.assertIn("attached by\ndefault", text, name)
             self.assertIn("Detached (opt-in)", text, name)
@@ -224,7 +238,7 @@ class Packaging(unittest.TestCase):
 
     def test_the_monitor_expiry_dozes_instead_of_closing_the_desk(self):
         """The Monitor dies at 30 minutes; the desk must not die with it."""
-        for name in ("pr-desk", "issue-desk", "review-desk"):
+        for name in ("git-desk",):
             text = (PLUGIN / "skills" / name / "SKILL.md").read_text()
             self.assertIn("chatdesk.py doze", text, name)
             self.assertIn("run_in_background", text, name)
@@ -233,15 +247,11 @@ class Packaging(unittest.TestCase):
             self.assertIn("desk already attached to session", flat, name)
             self.assertIn("never `close`", flat, name)
 
-    def test_the_pr_loop_hook_ships_for_claude_and_stays_out_of_codex(self):
-        """Claude Code loads hooks/hooks.json; Codex ignores the directory, so
-        the guard costs it nothing and the skills stay host-agnostic."""
+    def test_the_model_guard_keeps_its_skill_matcher(self):
+        """Only the Claude Skill matcher remains after body rewrites were enabled."""
         hooks = json.loads((PLUGIN / "hooks" / "hooks.json").read_text())
-        entry, bash_entry = hooks["hooks"]["PreToolUse"]
+        entry, = hooks["hooks"]["PreToolUse"]
         self.assertEqual(entry["matcher"], "Skill")
-        self.assertEqual(bash_entry["matcher"], "Bash")
-        self.assertIn("${CLAUDE_PLUGIN_ROOT}/hooks/no-pr-body-rewrite.py",
-                      bash_entry["hooks"][0]["command"])
         self.assertIn("${CLAUDE_PLUGIN_ROOT}/hooks/require-opus-skill.py",
                       entry["hooks"][0]["command"])
         self.assertNotIn("hooks", self.manifest("codex"))
@@ -263,59 +273,11 @@ class Packaging(unittest.TestCase):
             self.assertEqual(run("git-workflow:pr-loop", None), 2)
             self.assertEqual(run("git-workflow:pr-analyze", "claude-sonnet-5"), 0)
 
-    def test_the_body_rewrite_hook_blocks_the_gesture_and_nothing_else(self):
-        """A review is answered in a comment or thread; the PR description is
-        the author's record as opened (genropy#1054 lost it to a rewrite)."""
-        script = PLUGIN / "hooks" / "no-pr-body-rewrite.py"
-
-        def run(command):
-            payload = json.dumps({"tool_input": {"command": command}})
-            return subprocess.run([sys.executable, str(script)], input=payload,
-                                  capture_output=True, text=True).returncode
-        blocked = (
-            "gh pr edit 1054 --body 'new text'",
-            "gh pr edit 1054 -b 'new text'",
-            "gh pr edit 1054 --body-file /tmp/b.md",
-            "gh pr edit 1054 -F /tmp/b.md --title t",
-            "gh pr edit 1054 --body='x'",
-            "cd /x && gh pr edit 1054 --body-file b.md",
-            "gh api repos/o/r/pulls/1054 -X PATCH -f title=t",
-            "gh api --method PATCH repos/o/r/pulls/1054 -f body=x",
-            "gh api repos/o/r/pulls/1054 -f body=x",
-            "gh api repos/o/r/pulls/1054 --input body.json",
-            "gw api repos/{repo}/pulls/1054 -X PATCH -f body=x",
-            "gh api graphql -f query='mutation{updatePullRequest(input:{pullRequestId:\"x\",body:\"y\"}){clientMutationId}}'",
-        )
-        passed = (
-            "gh pr comment 1054 --body-file /tmp/c.md",
-            "gw pr comment 1054 --body-file /tmp/c.md",
-            "gw pr edit 1054 --add-reviewer cgabriel",
-            "gh pr edit 1054 --add-reviewer cgabriel",
-            "gh pr edit 1054 --title 'better title'",
-            "gh pr view 1054 --json body",
-            "gh api repos/o/r/pulls/1054",
-            "gh api repos/o/r/pulls/1054/comments -f body=x",
-            "gh api repos/o/r/pulls/1054/reviews/7/comments -f body=x",
-            "gh api repos/o/r/issues/1054/comments -f body=x",
-            "gh issue edit 12 --body 'issues are not guarded here'",
-            "gh pr review 1054 --approve --body-file f",
-            "echo 'gh pr edit 1 --body x' > notes.txt",
-            "git commit -m 'gh pr edit --body'",
-        )
-        prefixes = (
-            "gw --repo github.com/o/r", "gw --repo=github.com/o/r",
-            "gw -R github.com/o/r", "gw -Rgithub.com/o/r", "gw -R=github.com/o/r",
-            "gw --provider github --repo o/r", "gw --repo o/r --provider=github",
-        )
-        for prefix in prefixes:
-            self.assertEqual(run(prefix + " api repos/{repo}/pulls/1054 -X PATCH -f body=x"), 2, prefix)
-            self.assertEqual(run(prefix + " pr comment 1054 --body text"), 0, prefix)
-            self.assertEqual(run(prefix + " pr edit 1054 --add-reviewer bob"), 0, prefix)
-            self.assertEqual(run(prefix + " api repos/{repo}/pulls/1054 -X GET"), 0, prefix)
-        for command in blocked:
-            self.assertEqual(run(command), 2, command)
-        for command in passed:
-            self.assertEqual(run(command), 0, command)
+    def test_body_rewrites_follow_review_history_and_authorship(self):
+        self.assertFalse((PLUGIN / "hooks" / "no-pr-body-rewrite.py").exists())
+        loop = (PLUGIN / "skills" / "pr-loop" / "SKILL.md").read_text()
+        self.assertIn("make existing review comments read as nonsense", loop)
+        self.assertIn("Rewriting the description of a PR the user did not author", loop)
 
 
 if __name__ == "__main__":

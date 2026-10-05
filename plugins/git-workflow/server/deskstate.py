@@ -275,6 +275,40 @@ def register_desk(repo, kind, port):
     return update(repo, mutate)
 
 
+def scope_path(name):
+    slug = "".join(c if c.isalnum() or c in "-_." else "_" for c in name)
+    return STATE_DIR / "scopes" / ("%s.json" % slug)
+
+
+def register_scope(name, kind, port, members):
+    """A desk over several repositories says which ones, and where each is
+    cloned: the chat's ear listens to all of them by the scope's name, and
+    runs a click in the clone of the repository it names.
+    `members` [{repo, cwd, clone}]."""
+    path = scope_path(name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    def mutate(record):
+        record.update(name=name, repos=[m["repo"] for m in members],
+                      members=[{"repo": m["repo"], "cwd": m.get("cwd"),
+                                "clone": bool(m.get("clone"))} for m in members])
+        record.setdefault("desks", {})[kind] = {
+            "pid": os.getpid(), "port": port, "since": time.strftime("%Y-%m-%d %H:%M")}
+        return dict(record)
+    return safejson.update(path, mutate, indent=1)
+
+
+def scope_members(name):
+    record = safejson.read(scope_path(name))
+    if not record.get("members"):
+        raise ValueError("nessun desk ha mai aperto lo scope %s" % name)
+    return list(record["members"])
+
+
+def scope_repos(name):
+    return [m["repo"] for m in scope_members(name)]
+
+
 def desk_stopped(repo, kind):
     def mutate(state):
         mark = (state.get("desks") or {}).get(kind)

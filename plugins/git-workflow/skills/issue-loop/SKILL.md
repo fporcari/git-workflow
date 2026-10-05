@@ -64,7 +64,7 @@ can be wasted.
 
 **From an attached desk click**, the request record supplies `ns` and `batch`
 with the same meaning as the typed list; execute here, in the conversation,
-and publish the operation JSON with `chatdesk.py result` (review-desk skill).
+and publish the operation JSON with `chatdesk.py result` (git-desk skill).
 
 **From a detached desk button**, the launch prompt supplies `ns` and `batch`.
 `ns` is the rows he picked by hand and means exactly what the typed list
@@ -296,6 +296,6 @@ One feed line per action, in plain words, throughout. **The semantics of
 those flags** — why a batch marker is a set, why marking one member refines
 it instead of collapsing it, why the loop closes ONE request however wide its
 batches, and when `--failed` is the wrong word — are in
-`<PLUGIN_ROOT>/skills/review-desk/SKILL.md` §3, *Say which rows you
+`<PLUGIN_ROOT>/skills/git-desk/SKILL.md` §3, *Say which rows you
 are on* and *Close the request when you are done*. That file is the protocol;
 this one only uses it.

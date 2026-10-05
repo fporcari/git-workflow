@@ -121,6 +121,9 @@ EFFORTS = {"low", "medium", "high", "xhigh", "max"}
 
 # Claude aliases only: Codex keeps its configured defaults unless the env says
 DEFAULT_PROFILES = {
+    "codex": {"ANALYZE": ("gpt-5.6-sol", "high"),
+              "TRIAGE": ("gpt-5.6-sol", "medium"),
+              "OPERATION": ("gpt-6-astra", "high")},
     "claude": {"ANALYZE": ("opus", "high"),
                "TRIAGE": ("opus", "medium"),
                "OPERATION": ("opus", "high")},

@@ -51,6 +51,13 @@ the buttons enqueue, and the pair of commands here is its whole contract:
 
 Both result and fail heartbeat on the way out: the chat is about to run wait
 again, and the seconds in between must not hand a click to a one-shot agent.
+
+A desk over several repositories (prdesk.py --org, a folder of clones)
+registers its scope by name: listen, doze, wait and close then take
+`--scope <name>` instead of `--repo`, heartbeat every member, and hand back
+each click tagged with the `repo` it belongs to and the `cwd` of its clone
+(None when there is none). result, fail and detach keep `--repo`: the one the
+click named.
 """
 
 import argparse
@@ -73,7 +80,8 @@ LISTEN_POLL = 1
 def command_for(record):
     """The click as the command the user would have typed: what the chat
     shows before doing it, so a reader sees `/pr-loop 1099 1055 batch=4`
-    and not a request key."""
+    and not a request key. A click claimed off a scope names its
+    repository, the one the command must run against."""
     kind = record.get("kind")
     n = record.get("n")
     payload = record.get("payload") or {}
@@ -83,26 +91,41 @@ def command_for(record):
         parts += [str(x) for x in payload.get("ns") or []]
         if (payload.get("batch") or 1) > 1:
             parts.append("batch=%s" % payload["batch"])
-        return " ".join(parts)
-    if kind == "order":
-        return "/pr-loop order #%s" % n
-    if kind == "analyze":
-        return "/pr-analyze %s" % n
-    if kind == "explain":
-        return "/pr-explain %s" % n
-    if kind == "issue-analyze":
-        return "/issue-analyze %s" % n
-    return "/%s %s" % (kind, n if n is not None else "")
+        command = " ".join(parts)
+    elif kind == "order":
+        command = "/pr-loop order #%s" % n
+    elif kind == "analyze":
+        command = "/pr-analyze %s" % n
+    elif kind == "explain":
+        command = "/pr-explain %s" % n
+    elif kind == "issue-analyze":
+        command = "/issue-analyze %s" % n
+    else:
+        command = "/%s %s" % (kind, n if n is not None else "")
+    return command + (" --repo %s" % record["repo"] if record.get("repo") else "")
+
+
+def _repos(repo):
+    """One repository, or the members of a scope (names, or the registry's
+    {repo, cwd} records): every function below takes either, and a scope's
+    clicks come back tagged with their repo."""
+    if isinstance(repo, str):
+        return [repo]
+    return [m["repo"] if isinstance(m, dict) else m for m in repo]
+
+
+def _name(repo):
+    return repo if isinstance(repo, str) else " + ".join(_repos(repo))
 
 
 def closed_record(repo):
-    return {"closed": True, "repo": repo}
+    return {"closed": True, "repo": _name(repo)}
 
 
 @contextmanager
 def listener(repo, session):
     identity = hashlib.sha256(session.encode()).hexdigest()
-    path = deskstate.runtime_path(repo, "listener-%s.lock" % identity)
+    path = deskstate.runtime_path(_repos(repo)[0], "listener-%s.lock" % identity)
     with path.open("a") as handle:
         try:
             fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -114,8 +137,55 @@ def listener(repo, session):
             fcntl.flock(handle, fcntl.LOCK_UN)
 
 
+def _heartbeat(repos, session, desk):
+    for repo in repos:
+        deskstate.chat_heartbeat(repo, session, desk)
+
+
+def _detach(repos, session):
+    for repo in repos:
+        deskstate.chat_detach(repo, session)
+
+
+def _tagged(record, repo, tag):
+    """A click claimed off a scope says its repository and the clone the
+    command must run in (None: read only, no checkout)."""
+    if not tag:
+        return record
+    return dict(record, repo=repo, cwd=(tag.get(repo) or {}).get("cwd"))
+
+
+def _claim(repos, session, desk, tag):
+    for repo in repos:
+        record = deskstate.claim_request(repo, session, desk)
+        if record:
+            return _tagged(record, repo, tag)
+    return None
+
+
+def _waiting(repos, session, desk, tag):
+    for repo in repos:
+        record = deskstate.request_waiting(repo, session, desk)
+        if record:
+            return _tagged(record, repo, tag)
+    return None
+
+
+def _tags(repo):
+    """{} for one repository; for a scope, its members by repo."""
+    if isinstance(repo, str):
+        return {}
+    return {(m["repo"] if isinstance(m, dict) else m): (m if isinstance(m, dict) else {"repo": m})
+            for m in repo}
+
+
+def _closed(repos, desk):
+    return all(deskstate.desks_closed(repo, desk=desk) for repo in repos)
+
+
 def listen(repo, session, timeout=None, out=sys.stdout, desk="pr"):
-    deskstate.chat_heartbeat(repo, session, desk)
+    repos, tag = _repos(repo), _tags(repo)
+    _heartbeat(repos, session, desk)
     deadline = time.time() + timeout if timeout else None
     last_beat = 0
 
@@ -126,17 +196,17 @@ def listen(repo, session, timeout=None, out=sys.stdout, desk="pr"):
         while True:
             now = time.time()
             if now - last_beat >= HEARTBEAT_EVERY:
-                deskstate.chat_heartbeat(repo, session, desk)
+                _heartbeat(repos, session, desk)
                 last_beat = now
-            record = deskstate.claim_request(repo, session, desk)
+            record = _claim(repos, session, desk, tag)
             if record:
-                out.write("\u25b6 %s  \u00b7 richiesta %s\n"
+                out.write("▶ %s  · richiesta %s\n"
                           % (command_for(record), record["key"]))
                 out.write(json.dumps(record, ensure_ascii=False) + "\n")
                 out.flush()
                 continue
-            if deskstate.desks_closed(repo, desk=desk):
-                out.write("■ desk chiuso · %s\n" % repo)
+            if _closed(repos, desk):
+                out.write("■ desk chiuso · %s\n" % _name(repo))
                 out.write(json.dumps(closed_record(repo)) + "\n")
                 out.flush()
                 return
@@ -144,7 +214,7 @@ def listen(repo, session, timeout=None, out=sys.stdout, desk="pr"):
                 return
             time.sleep(LISTEN_POLL)
     finally:
-        deskstate.chat_detach(repo, session)
+        _detach(repos, session)
 
 
 def doze(repo, session, out=sys.stdout, desk="pr"):
@@ -152,6 +222,8 @@ def doze(repo, session, out=sys.stdout, desk="pr"):
     desk that died with it was dying under the user's hands: this keeps the
     chat attached with no deadline, claims nothing, and returns as soon as a
     click is queued for it — the cue to arm `listen` again, which takes it."""
+    repos, tag = _repos(repo), _tags(repo)
+
     def bye(*_):
         raise SystemExit(0)
     signal.signal(signal.SIGTERM, bye)
@@ -160,34 +232,35 @@ def doze(repo, session, out=sys.stdout, desk="pr"):
         while True:
             now = time.time()
             if now - last_beat >= HEARTBEAT_EVERY:
-                deskstate.chat_heartbeat(repo, session, desk)
+                _heartbeat(repos, session, desk)
                 last_beat = now
-            record = deskstate.request_waiting(repo, session, desk)
+            record = _waiting(repos, session, desk, tag)
             if record:
-                out.write("\u23f0 sveglia · %s\n" % command_for(record))
+                out.write("⏰ sveglia · %s\n" % command_for(record))
                 out.flush()
                 return
-            if deskstate.desks_closed(repo, desk=desk):
-                deskstate.chat_detach(repo, session)
-                out.write("■ desk chiuso · %s\n" % repo)
+            if _closed(repos, desk):
+                _detach(repos, session)
+                out.write("■ desk chiuso · %s\n" % _name(repo))
                 out.write(json.dumps(closed_record(repo)) + "\n")
                 out.flush()
                 return
             time.sleep(LISTEN_POLL)
     except SystemExit:
-        deskstate.chat_detach(repo, session)
+        _detach(repos, session)
         raise
 
 
 def wait(repo, timeout, session, desk="pr"):
+    repos, tag = _repos(repo), _tags(repo)
     deadline = time.time() + timeout
     while True:
-        deskstate.chat_heartbeat(repo, session, desk)
-        record = deskstate.claim_request(repo, session, desk)
+        _heartbeat(repos, session, desk)
+        record = _claim(repos, session, desk, tag)
         if record:
             return record
-        if deskstate.desks_closed(repo, desk=desk):
-            deskstate.chat_detach(repo, session)
+        if _closed(repos, desk):
+            _detach(repos, session)
             return closed_record(repo)
         if time.time() >= deadline:
             return None
@@ -196,40 +269,52 @@ def wait(repo, timeout, session, desk="pr"):
 
 def close(repo, session, desk="both", out=sys.stdout, grace=5):
     """A dead ear is a dead desk: SIGTERM the servers this listener covered,
-    detach, and report. The server's own handler records the stop."""
-    state = deskstate.load(repo)
+    detach, and report. The server's own handler records the stop. One
+    server behind a whole scope is registered in every member: it is
+    stopped once, and kept when another live chat listens to any of them."""
+    repos = _repos(repo)
     kinds = ("pr", "issue") if desk == "both" else (desk,)
-    live = deskstate.live_desks(repo, state)
-    stopped, kept = [], []
-    for kind in kinds:
-        if kind not in live:
+    targets, kept = {}, []
+    for member in repos:
+        state = deskstate.load(member)
+        live = deskstate.live_desks(member, state)
+        for kind in kinds:
+            if kind not in live:
+                continue
+            # a desk another live chat listens to is that chat's, not ours to kill
+            owner = deskstate.chat_attached(member, state, desk=kind)
+            pid = ((state.get("desks") or {}).get(kind) or {}).get("pid")
+            if owner and owner.get("session") != session:
+                kept.append((kind, owner["session"], pid))
+                continue
+            targets.setdefault(pid, kind)
+    stopped = []
+    for pid, kind in targets.items():
+        if any(pid == held for _, _, held in kept):
             continue
-        # a desk another live chat listens to is that chat's, not ours to kill
-        owner = deskstate.chat_attached(repo, state, desk=kind)
-        if owner and owner.get("session") != session:
-            kept.append((kind, owner["session"]))
-            continue
-        pid = ((state.get("desks") or {}).get(kind) or {}).get("pid")
         try:
             os.kill(int(pid), signal.SIGTERM)
         except (OSError, TypeError, ValueError):
             continue
         stopped.append(kind)
     deadline = time.time() + grace
-    survivors = stopped
+
+    def still_up():
+        return sorted({kind for member in repos for kind in deskstate.live_desks(member)}
+                      & set(stopped))
+    survivors = still_up() if stopped else []
     while survivors and time.time() < deadline:
-        survivors = sorted(set(stopped) & set(deskstate.live_desks(repo)))
-        if survivors:
-            time.sleep(0.2)
-    deskstate.chat_detach(repo, session)
-    for kind, owner in kept:
+        time.sleep(0.2)
+        survivors = still_up()
+    _detach(repos, session)
+    for kind, owner in dict.fromkeys((k, o) for k, o, _ in kept):
         out.write("%s desk lasciato aperto: lo ascolta la sessione %s\n" % (kind, owner))
-    out.write("\u25a0 desk chiuso \u00b7 %s%s\n"
-              % (repo, " \u00b7 " + " ".join(stopped) if stopped else ""))
+    out.write("■ desk chiuso · %s%s\n"
+              % (_name(repo), " · " + " ".join(sorted(set(stopped))) if stopped else ""))
     if survivors:
         out.write("ancora vivi dopo SIGTERM: %s\n" % " ".join(survivors))
     out.flush()
-    return stopped
+    return sorted(set(stopped))
 
 
 def _persist(repo, record, result, state):
@@ -319,7 +404,11 @@ def main():
     parser.add_argument("action",
                         choices=("listen", "doze", "wait", "result", "fail",
                                  "detach", "close"))
-    parser.add_argument("--repo", required=True)
+    where = parser.add_mutually_exclusive_group(required=True)
+    where.add_argument("--repo", help="owner/repo: one repository's desk, or the member "
+                                      "a scope click named (result, fail, detach)")
+    where.add_argument("--scope", help="listen, doze, wait, close: every repository of "
+                                       "the desk opened on this scope")
     parser.add_argument("--timeout", type=int, default=None,
                         help="wait: seconds before {\"idle\": true} "
                              "(default 540); listen: stop after this many "
@@ -332,16 +421,19 @@ def main():
                         help="result: the JSON file, or - for stdin; "
                              "fail: the reason")
     args = parser.parse_args()
+    if args.scope and args.action in ("result", "fail", "detach"):
+        parser.error("%s needs --repo, the repository the click named" % args.action)
+    ear = deskstate.scope_members(args.scope) if args.scope else args.repo
     if args.action == "listen":
-        with listener(args.repo, args.session):
-            listen(args.repo, args.session, args.timeout, desk=args.desk)
+        with listener(ear, args.session):
+            listen(ear, args.session, args.timeout, desk=args.desk)
     elif args.action == "doze":
-        with listener(args.repo, args.session):
-            doze(args.repo, args.session, desk=args.desk)
+        with listener(ear, args.session):
+            doze(ear, args.session, desk=args.desk)
     elif args.action == "wait":
         timeout = 540 if args.timeout is None else args.timeout
-        with listener(args.repo, args.session):
-            record = wait(args.repo, timeout, args.session, args.desk)
+        with listener(ear, args.session):
+            record = wait(ear, timeout, args.session, args.desk)
         print(json.dumps(record if record else {"idle": True}, indent=1))
     elif args.action == "result":
         if not (args.request and args.path and args.request_id):
@@ -352,7 +444,7 @@ def main():
             parser.error("fail needs --request, --request-id and a reason")
         fail(args.repo, args.request, args.path, args.session, args.request_id)
     elif args.action == "close":
-        close(args.repo, args.session, args.desk)
+        close(ear, args.session, args.desk)
     else:
         deskstate.chat_detach(args.repo, args.session)
 

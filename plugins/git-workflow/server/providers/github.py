@@ -334,6 +334,17 @@ class GitHubProvider(Provider):
     def api(self, endpoint, method="GET", fields=None):
         return self._rest(endpoint, method, fields)
 
+    def scope_repos(self, owner):
+        """The repositories of `owner` with an open issue or PR, from the
+        search API: the qualifier is org: or user: by the owner's type."""
+        kind = _gh("api", "users/%s" % owner, "--jq", ".type").strip()
+        qualifier = "org" if kind == "Organization" else "user"
+        out = _gh("api", "-X", "GET", "search/issues", "-f",
+                  "q=%s:%s is:open archived:false" % (qualifier, owner),
+                  "-f", "per_page=100", "--paginate", "--jq", ".items[].repository_url")
+        found = {url.rsplit("/repos/", 1)[-1] for url in out.split() if "/repos/" in url}
+        return sorted(found, key=str.lower)
+
     @staticmethod
     def _merge(pr):
         if pr.get("merged"):

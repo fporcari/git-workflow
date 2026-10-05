@@ -33,7 +33,7 @@ from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 
 from .base import (Provider, REVIEW_STATES, brief_row, closes_from_body, decision_from, detail_row,
-                   issue_row, login, logins, review_row, verification_result)
+                   issue_row, login, logins, refs_from_body, review_row, verification_result)
 
 STATE_MAP = {"REQUEST_CHANGES": "CHANGES_REQUESTED", "COMMENT": "COMMENTED"}
 KEYCHAIN_SERVICE = "FORGEJO_TOKEN"
@@ -221,7 +221,7 @@ class ForgejoProvider(Provider):
             "reviews": reviews,
             "unresolved": 0,
             "threads": sum(r.get("comments_count") or 0 for r in revs),
-            "closes": [],
+            "closes": [dict(c, assignees=None) for c in closes_from_body(pr.get("body"))],
             "last": spoke[-1] if spoke else None,
             "url": pr.get("html_url") or "%s/%s/pulls/%s" % (self.base, repo, pr["number"]),
         }
@@ -229,24 +229,41 @@ class ForgejoProvider(Provider):
     CITING = ("pull_ref", "comment_ref")
 
     def _open_prs_on(self, repo, n):
-        """Open PRs of this repository whose body or comments cite the issue.
-        Forgejo has no batch form of this: one timeline read per issue."""
-        prs = set()
+        """Open PRs whose body or comments cite the issue: this repository's
+        by number, any other repository's as {repo, n} — an org's small repos
+        close each other's issues. Forgejo has no batch form of this: one
+        timeline read per issue."""
+        prs, elsewhere = set(), []
         for event in self._get_all("/repos/%s/issues/%s/timeline" % (repo, n)):
             ref = event.get("ref_issue") or {}
-            if (event.get("type") in self.CITING and ref.get("pull_request")
-                    and ref.get("state") == "open"
-                    and ((ref.get("repository") or {}).get("full_name") or "").lower()
-                    == repo.lower()):
+            if not (event.get("type") in self.CITING and ref.get("pull_request")
+                    and ref.get("state") == "open"):
+                continue
+            where = (ref.get("repository") or {}).get("full_name") or ""
+            if where.lower() == repo.lower():
                 prs.add(ref["number"])
-        return sorted(prs)
+            elif where and {"repo": where, "n": ref["number"]} not in elsewhere:
+                elsewhere.append({"repo": where, "n": ref["number"]})
+        return sorted(prs), elsewhere
+
+    def scope_repos(self, owner):
+        """The repositories of `owner` with an open issue or PR, from one
+        cross-repo search: listing an organization's repositories needs a
+        read:organization token, and a repository with nothing open has
+        nothing to show."""
+        found = []
+        for item in self._get_all("/repos/issues/search", owner=owner, state="open"):
+            name = (item.get("repository") or {}).get("full_name")
+            if name and name not in found:
+                found.append(name)
+        return sorted(found, key=str.lower)
 
     def issues(self, repo):
         issues = self._get_all("/repos/%s/issues" % repo, state="open", type="issues")
         with ThreadPoolExecutor(max_workers=6) as pool:
             cited = list(pool.map(lambda i: self._open_prs_on(repo, i["number"]), issues))
         rows = []
-        for issue, prs in zip(issues, cited):
+        for issue, (prs, elsewhere) in zip(issues, cited):
             rows.append({
                 "n": issue["number"],
                 "title": issue["title"],
@@ -258,6 +275,8 @@ class ForgejoProvider(Provider):
                 "comments": issue.get("comments") or 0,
                 "url": issue.get("html_url") or "%s/%s/issues/%s" % (self.base, repo, issue["number"]),
                 "prs": prs,
+                "prs_elsewhere": elsewhere,
+                "refs": refs_from_body(issue.get("body")),
             })
         rows.sort(key=lambda r: r["created"], reverse=True)
         return {"rows": rows, "total": len(rows), "truncated": False}

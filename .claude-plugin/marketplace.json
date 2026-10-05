@@ -9,7 +9,7 @@
     {
       "name": "git-workflow",
       "source": "./plugins/git-workflow",
-      "description": "PR and issue workflow toolkit: triage skills plus a local review-desk dashboard with pluggable git hosting providers (GitHub, Forgejo)."
+      "description": "PR and issue workflow toolkit: triage skills plus a local git-desk dashboard with pluggable git hosting providers (GitHub, Forgejo)."
     }
   ]
 }

@@ -15,15 +15,15 @@ This is the short version. Pick the page that matches what you need.
 
 ## Pull requests
 
-### `pr-desk`
+### `git-desk`
 
-- **Use when:** you want the PR dashboard.
-- **Starts:** a local server and opens a small web application in the browser.
-- **Does:** fetches and groups the PR queue at startup and reload; web-app buttons send selected work to the current chat.
+- **Use when:** you want the PR or issue dashboard.
+- **Starts:** a local server and opens a small web application in the browser, with Pull request, Issue and Filoni as tabs.
+- **Does:** fetches and groups the PR queue and cross-checks issues, branches and PRs at startup and reload; web-app buttons send selected work to the current chat.
 - **Highlights:** PRs whose triage is missing or stale after their provider facts change.
 - **Does not:** publish a triage until its button is pressed, analyze every diff, or act by itself.
 
-![PR desk](02-pr-desk.webp)
+![Git desk](02-pr-desk.webp)
 
 ### `pr-triage`
 
@@ -53,15 +53,6 @@ This is the short version. Pick the page that matches what you need.
 ![PR loop](05-pr-loop.webp)
 
 ## Issues
-
-### `issue-desk`
-
-- **Use when:** you want the issue dashboard.
-- **Starts:** a local server and opens a small web application in the browser.
-- **Does:** cross-checks issues, branches, and PRs; web-app buttons send selected work to the current chat.
-- **Does not:** analyze every issue at startup.
-
-![Issue desk](06-issue-desk.webp)
 
 ### `issue-triage`
 
@@ -100,15 +91,6 @@ This is the short version. Pick the page that matches what you need.
 - **Does not:** take an issue already assigned to somebody else.
 
 ![Issue work](10-issue-work.webp)
-
-### `review-desk`
-
-- **Use when:** you want the PR and issue dashboards together.
-- **Starts:** two local desk servers and opens their small web applications in the browser.
-- **Does:** routes web-app actions such as analyze, run, and triage to the current chat.
-- **Keeps:** selected rows and request state synchronized between the web frontends and the chat.
-
-![Review desk](11-review-desk.webp)
 
 ## Shared behavior
 

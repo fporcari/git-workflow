@@ -48,7 +48,8 @@ def collect(relations, branches, queue_rows):
     open_prs = {}
     for row in queue_rows:
         for closes in row.get("closes") or []:
-            open_prs.setdefault(str(closes["issue"]), []).append(row["n"])
+            if not closes.get("repo"):
+                open_prs.setdefault(str(closes["issue"]), []).append(row["n"])
     return {"commented": sorted(relations.get("commented") or []),
             "commented_complete": bool(relations.get("complete", True)),
             "assigned_to_me": sorted(relations.get("assigned") or []),
@@ -111,10 +112,11 @@ def shortlist(issue_rows, limit=10):
 
 
 def shortlist_export(issue_rows, limit=10):
-    """The issue-desk shortlist. Computed on every read — a filter is not a
+    """The issue shortlist. Computed on every read — a filter is not a
     verdict, and a model copy of it was one more thing to keep in sync."""
     return {"computed": True,
-            "rows": [{"n": r["n"], "date": r.get("created"), "author": r.get("author"),
+            "rows": [{"n": r["n"], "repo": r.get("repo"), "date": r.get("created"),
+                      "author": r.get("author"),
                       "type": r.get("type"), "title": r.get("title"),
                       "impact": r.get("impact"),
                       "urgency": r.get("urgency"), "after": r.get("after") or [],

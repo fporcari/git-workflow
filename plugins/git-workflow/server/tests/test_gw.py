@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import gw                          # noqa: E402
-import prdesk                      # noqa: E402
+import scope                       # noqa: E402
 from providers import detect       # noqa: E402
 from providers import base         # noqa: E402
 from providers import forgejo      # noqa: E402
@@ -43,6 +43,12 @@ def setUpModule():
 
 def tearDownModule():
     _NO_KEYCHAIN.stop()
+
+
+def desk_provider(repo=None):
+    """The provider and repo the desk launches on, through its own scope."""
+    _, members = scope.build(repos=[repo] if repo else [], get_provider=detect.get_provider)
+    return detect.get_provider(members[0]["provider"], members[0]["host"]), members[0]["repo"]
 
 
 def run(*argv, fixture=FIXTURE):
@@ -89,7 +95,7 @@ class DetectTest(unittest.TestCase):
         with mock.patch.dict(os.environ, {"FORGEJO_URL": "https://hub.example", "FORGEJO_TOKEN": "t"}), \
              mock.patch.object(detect, "origin_url", side_effect=AssertionError("origin read")), \
              mock.patch.object(ForgejoProvider, "default_branch", return_value="main"):
-            p, repo = prdesk.provider_and_repo(mock.Mock(repo="hub.example/acme/widgets", provider=None))
+            p, repo = desk_provider("hub.example/acme/widgets")
             code, out, err = run("--repo", "hub.example/acme/widgets", "repo", "info")
         self.assertEqual((p.base, repo), ("https://hub.example", "acme/widgets"))
         self.assertEqual(code, 0, err)
@@ -98,7 +104,7 @@ class DetectTest(unittest.TestCase):
     def test_the_forgejo_base_keeps_the_scheme_and_port_of_forgejo_url(self):
         with mock.patch.dict(os.environ, {"FORGEJO_URL": "http://localhost:3000", "FORGEJO_TOKEN": "t"}), \
              mock.patch.object(detect, "origin_url", return_value="http://localhost:3000/acme/widgets.git"):
-            p, repo = prdesk.provider_and_repo(mock.Mock(repo=None, provider=None))
+            p, repo = desk_provider()
         self.assertEqual((p.base, repo), ("http://localhost:3000", "acme/widgets"))
 
     def test_a_new_provider_is_one_class_and_one_registry_entry(self):
@@ -112,7 +118,7 @@ class DetectTest(unittest.TestCase):
         with mock.patch.dict(detect.PROVIDERS, {"gitlab": GitLabProvider}), \
              mock.patch.object(detect, "origin_url", return_value="git@gitlab.example:acme/widgets.git"):
             self.assertEqual(detect.resolve(), ("gitlab", "acme/widgets", "gitlab.example"))
-            p, repo = prdesk.provider_and_repo(mock.Mock(repo=None, provider=None))
+            p, repo = desk_provider()
             self.assertEqual(detect.resolve("acme/widgets", "gitlab"), ("gitlab", "acme/widgets", "gitlab.example"))
         self.assertEqual((type(p), p.host, repo), (GitLabProvider, "gitlab.example", "acme/widgets"))
 
@@ -131,9 +137,8 @@ class DetectTest(unittest.TestCase):
     def test_the_desk_no_longer_defaults_to_github(self):
         with mock.patch.object(detect, "origin_url", return_value="ssh://git@hub.genro.com/erpy/x.git"), \
              mock.patch.dict(os.environ, {"FORGEJO_URL": ""}):
-            args = mock.Mock(repo=None, provider=None)
             with self.assertRaises(SystemExit):
-                prdesk.provider_and_repo(args)
+                desk_provider()
 
 
 class FixtureVerbsTest(unittest.TestCase):

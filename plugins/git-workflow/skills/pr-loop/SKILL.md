@@ -33,6 +33,10 @@ nobody merged, a `DIRTY` branch, a review request sitting on him, a
 
 ## The mandate
 
+Apply the global and repository merge instructions first, per `refs/runtime.md`.
+A mandatory confirmation immediately before each merge overrides Lane A and
+previous batch approval; a detached process returns `needs-input` instead.
+
 Read the numbers, batch size and scope note from the user's invocation text.
 The invocation mechanism is host-specific; the meaning is identical everywhere.
 
@@ -53,7 +57,7 @@ and the closing report says so rather than pretending the queue was drained.
 
 **From an attached desk click**, the request record supplies `ns` and `batch`
 with the same meaning as the typed list; execute here, in the conversation,
-and publish the operation JSON with `chatdesk.py result` (review-desk skill).
+and publish the operation JSON with `chatdesk.py result` (git-desk skill).
 
 **From a detached desk button**, the launch prompt supplies `ns` and `batch`.
 `ns` is the rows he picked by hand and means what the typed list means. Do not
@@ -164,7 +168,7 @@ gh api repos/<owner/repo>/pulls/<n>/reviews --jq '.[]|"\(.user.login) \(.state) 
 
 Before Lane A, read `orders` in
 `~/.local/state/git-workflow/<owner>__<repo>.json`. Each `"status": "pending"`
-entry is a decision the user already took in the review-desk dashboard: the
+entry is a decision the user already took in the git desk: the
 pr-analyze block was shown to him and he clicked go — with an optional
 instruction typed in. That click is the authorization, like invoking this
 skill is for Lane A: execute the order first, without re-asking.
@@ -249,13 +253,13 @@ simplification autonomously is the one way this operation does damage. If a
 premise does not hold, do not implement and do not argue in a vacuum — move the
 PR to Lane B with what you found.
 
-**The PR body is never the place for the answer.** It is the author's record
-of the change as opened, and the reviewers approved against it; a body
-rewritten to fit a comment leaves a description that matches neither what was
-reviewed nor, later, what merged (genropy#1054). Answer in the comment or in
-the thread. If the approach really moved and the body is now wrong, say so in
-the comment and leave the edit to the user, by hand — on Claude Code a hook
-blocks `gh pr edit --body` outright.
+**The answer goes in the comment or in the thread.** The body may be
+rewritten when the approach really moved and it no longer says what lands
+(`gh pr edit <n> --body-file <f>`). Before rewriting, check whether it would
+make existing review comments read as nonsense — a reviewer quoting a
+sentence that disappears, an objection to text no longer there. If it
+would, tell the user before editing; otherwise edit it and say so in the
+comment.
 
 Then: implement, run the narrowest check plus the linter, push, and answer in the
 thread. Quote the reviewer's own sentence as a blockquote with a permalink to the
@@ -353,8 +357,7 @@ and if the PR was approved, re-request and comment as in A2.
   the command.
 - Opening issues, marking a draft ready, closing a PR, changing assignees on
   somebody else's PR.
-- Rewriting a PR's description, own or not. The body is the record as opened;
-  answers go in comments and threads.
+- Rewriting the description of a PR the user did not author.
 - Anything a reviewer asked for that needs a decision about design or scope.
 
 ## Between the lanes
@@ -650,7 +653,7 @@ python3 <PLUGIN_ROOT>/server/notify.py --repo <owner/repo> \
 **The semantics of those flags** — why a batch marker is a set, why marking one
 member refines it instead of collapsing it, why the loop closes ONE request
 however wide its batches, and when `--failed` is the wrong word — are in
-`<PLUGIN_ROOT>/skills/review-desk/SKILL.md` §3, *Say which rows you are
+`<PLUGIN_ROOT>/skills/git-desk/SKILL.md` §3, *Say which rows you are
 on* and *Close the request when you are done*. That file is the protocol; this
 one only uses it.
 

@@ -1,6 +1,6 @@
 ---
 name: issue-analyze
-description: Analyze ONE issue in a fresh context — verify the root cause in the actual code (DEFECT), walk the reuse ladder (REQUEST), find the proving line (QUESTION/DOCS) — and return a typed verdict with the minimal change and a verification plan. Read-only, never branches or comments. Run as a step of issue-loop in a virgin chat/agent, from the review-desk button, or standalone on a single issue.
+description: Analyze ONE issue in a fresh context — verify the root cause in the actual code (DEFECT), walk the reuse ladder (REQUEST), find the proving line (QUESTION/DOCS) — and return a typed verdict with the minimal change and a verification plan. Read-only, never branches or comments. Run as a step of issue-loop in a virgin chat/agent, from the git desk button, or standalone on a single issue.
 ---
 
 # Issue analyze — one issue, fresh eyes
