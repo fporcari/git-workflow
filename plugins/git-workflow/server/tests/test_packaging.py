@@ -203,6 +203,20 @@ class Packaging(unittest.TestCase):
             self.assertNotIn('"shortlist": {', text, name)
             self.assertNotIn('"grid": {', text, name)
 
+    def test_the_row_and_request_protocol_lives_where_the_loops_point(self):
+        """The loops defer the notify.py flags to the desk skill; the
+        sections they name vanished once without anybody noticing."""
+        desk = (PLUGIN / "skills" / "git-desk" / "SKILL.md").read_text()
+        for heading in ("## Rows and requests", "### Say which rows you are on",
+                        "### Close the request when you are done"):
+            self.assertIn(heading, desk, heading)
+        for path in (PLUGIN / "skills" / "pr-loop" / "SKILL.md",
+                     PLUGIN / "skills" / "issue-loop" / "SKILL.md",
+                     PLUGIN / "refs" / "pr-verification-WHY.md"):
+            flat = " ".join(path.read_text().split())
+            self.assertIn("git-desk/SKILL.md` → *Rows and requests*", flat, path.name)
+            self.assertNotIn("§3", flat, path.name)
+
     def test_the_verification_checklist_keeps_its_cases(self):
         why = (PLUGIN / "refs" / "pr-verification-WHY.md").read_text()
         self.assertIn("claim, not evidence", why)

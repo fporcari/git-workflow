@@ -296,6 +296,7 @@ One feed line per action, in plain words, throughout. **The semantics of
 those flags** — why a batch marker is a set, why marking one member refines
 it instead of collapsing it, why the loop closes ONE request however wide its
 batches, and when `--failed` is the wrong word — are in
-`<PLUGIN_ROOT>/skills/git-desk/SKILL.md` §3, *Say which rows you
-are on* and *Close the request when you are done*. That file is the protocol;
+`<PLUGIN_ROOT>/skills/git-desk/SKILL.md` → *Rows and requests*,
+*Say which rows you are on* and *Close the request when you are
+done*. That file is the protocol;
 this one only uses it.

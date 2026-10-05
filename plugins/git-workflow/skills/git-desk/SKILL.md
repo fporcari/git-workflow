@@ -276,6 +276,76 @@ authorization it would have given the one-shot agent — analysis is read-only,
 an order or run click authorizes the named operation, and a merge is never
 autonomous beyond what the skill already allows.
 
+## Rows and requests
+
+**This section is the protocol. `pr-loop` and `issue-loop` point here rather
+than restating it — it encodes exact flags, and three copies of exact flags
+drift.**
+
+### Say which rows you are on
+
+Any work on PRs or issues — a `run` above all, but also an `analyze` — marks
+them while it lasts, so the desk highlights those rows and the user sees where
+the needle is without reading the feed:
+
+```bash
+# one at a time
+python3 <PLUGIN_ROOT>/server/notify.py --repo <owner/repo> \
+  --pr <n> --working "cosa stai facendo, in una riga"
+
+# a batch: every row it is working glows, not just the first
+python3 <PLUGIN_ROOT>/server/notify.py --repo <owner/repo> \
+  --batch 1145,1128,1059 --working "in parallelo, un worktree per PR"
+```
+
+Setting a number the marker does not hold **moves** it: that is the loop
+walking to the next one. Setting one the live batch **does** hold refines
+that item and leaves the set standing — which is how per-item progress
+reaches the desk without collapsing N glowing rows back to one.
+
+`--idle` drops the marker, and so does closing a request with
+`--done`/`--failed`. A marker nobody updates for a quarter of an hour is
+dropped by the desk itself: a row left glowing after the session died reads
+as work in progress, which is worse than no highlight. That is a backstop,
+not a substitute for `--idle`.
+
+### Close the request when you are done — always
+
+Every button press is recorded in the desk's ledger and **locks that button**
+until it is closed: without a lock the user presses again because nothing
+visibly happened. The lock is also the only place the outcome shows up.
+
+A click claimed by the attached chat closes with `chatdesk.py result` or
+`fail` and its `--request-id` (*Attached chat*). A loop invoked by hand closes
+its key with `notify.py`:
+
+```bash
+python3 <PLUGIN_ROOT>/server/notify.py --repo <owner/repo> \
+  --done analyze:1145 "nessuna risposta da dare: il claim regge"
+#            ^^^^^^^^^^^^ <kind>:<number>, or <kind>:<flow> for triage/run
+# --failed instead of --done when it did not work out, with why
+```
+
+Keys: `analyze:<n>`, `explain:<n>`, `order:<n>`, `issue-analyze:<n>`,
+`triage:<flow>`, `run:<flow>`. A request never closed goes stale after half an
+hour so a dead session cannot wedge the button forever — a backstop, not a
+substitute for closing it.
+
+**One request per loop, not per item.** `run:<flow>` stays a single request
+however wide the loop's batches: closing it per item would re-arm the ▶
+button mid-loop. What a batch changes is the *report*, which names every
+item — a group of four with one failure is three successes and one failure,
+said in four names:
+
+```bash
+python3 <PLUGIN_ROOT>/server/notify.py --repo <owner/repo> \
+  --done run:pr-loop "2 merge (#1145 #1059), 1 fallita (#1128: conflitto in un file che la base ha riscritto), 3 non raggiunte"
+```
+
+Use `--failed` only when **nothing** was accomplished. A loop that merged two
+and lost one did its job and says so in the report; marking the whole run
+failed would hide the two that landed.
+
 ## Scope
 
 One desk may cover several repositories: an organization (`--org
