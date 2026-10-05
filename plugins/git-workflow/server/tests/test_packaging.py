@@ -217,6 +217,22 @@ class Packaging(unittest.TestCase):
             self.assertIn("git-desk/SKILL.md` → *Rows and requests*", flat, path.name)
             self.assertNotIn("§3", flat, path.name)
 
+    def test_a_batch_runs_in_background_and_comes_back_as_a_digest(self):
+        """The user launches a batch and turns away: two interruptions, the
+        digest and the outcome, and nothing in between."""
+        batch = " ".join((PLUGIN / "refs" / "batch.md").read_text().split())
+        for phrase in ("chatdesk.py park", "at most four running at once",
+                       "**Pronte**", "**A mano**", "**Niente da fare**",
+                       "never inside a code fence", "does **not** interrupt"):
+            self.assertIn(phrase, batch, phrase)
+        for name in ("pr-loop", "issue-loop"):
+            text = (PLUGIN / "skills" / name / "SKILL.md").read_text()
+            self.assertIn("refs/batch.md", text, name)
+            self.assertNotIn("1..4", text, name)
+        runtime = (PLUGIN / "refs" / "runtime.md").read_text()
+        self.assertIn("## Telling the user", runtime)
+        self.assertIn("PushNotification", runtime)
+
     def test_the_verification_checklist_keeps_its_cases(self):
         why = (PLUGIN / "refs" / "pr-verification-WHY.md").read_text()
         self.assertIn("claim, not evidence", why)

@@ -82,8 +82,8 @@ from verdicts import decorate, handoff, issue_handoff, issue_type
 
 STATIC = Path(__file__).resolve().parent / "static"
 
-# one decision group holds four options: a wider batch becomes hard to scan
-MAX_BATCH = 4
+# a batch is one digest line per item; the loop caps its parallel agents itself
+MAX_BATCH = 20
 
 
 # the fields a verdict is a function of, and nothing else: hashing the whole

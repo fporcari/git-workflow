@@ -194,11 +194,14 @@ def busy_ttl(kind):
 
 def expired(record, now=None):
     """True when an open record has outlived its budget: a queued click
-    after REQUEST_STALE, a taken one after the busy TTL of its kind."""
+    after REQUEST_STALE, a taken or parked one after the busy TTL of its kind."""
     status = record.get("status")
     now = now or time.time()
     if status == "taken":
         return now - record.get("taken_epoch", record.get("epoch", 0)) > busy_ttl(
+            record.get("kind"))
+    if status == "running":
+        return now - record.get("running_epoch", record.get("epoch", 0)) > busy_ttl(
             record.get("kind"))
     if status in ("queued", "preparing"):
         return now - record.get("epoch", 0) > REQUEST_STALE
@@ -485,7 +488,7 @@ def request(repo, key, kind, n=None, label="", via="agent", payload=None,
         ledger = state.setdefault("requests", {})
         existing = ledger.get(key)
         if existing and existing.get("status") in ("queued", "taken",
-                                                    "preparing"):
+                                                    "preparing", "running"):
             if not expired(existing):
                 return existing, False
             existing["status"] = "stale"

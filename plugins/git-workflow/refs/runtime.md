@@ -142,6 +142,20 @@ Codex's collaboration/subagent tool. The subagent reports back to the
 supervising session and shares its working context. Do not create a user-owned
 Codex task/thread for this internal work.
 
+## Telling the user
+
+A batch interrupts the user twice (`refs/batch.md`): when its digest is ready
+and when its work is done. Each time, reach him where he is:
+
+- Claude Code: `PushNotification`, a deferred tool — load it with ToolSearch
+  before the call. One short line: the loop's tag and what waits for him
+  (`PR · digest pronto: 3 da decidere`).
+- Codex: no push tool; the chat message and the desk feed line are the
+  notice.
+
+Never for anything else: a notification per agent is the noise the batch
+exists to remove.
+
 ## Dedicated work
 
 A desk click requesting a dedicated issue session is the user's explicit

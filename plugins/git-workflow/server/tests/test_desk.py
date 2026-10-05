@@ -2530,6 +2530,7 @@ class DetachedButtons(unittest.TestCase):
         self.assertEqual(payload["batch"], prdesk.MAX_BATCH)
         self.assertEqual(operation.call_args.args[2],
                          {"ns": [1145, 1128], "batch": prdesk.MAX_BATCH})
+        self.assertGreater(prdesk.MAX_BATCH, 4, "a batch is a digest, not one answer box")
 
     def test_issue_analysis_is_an_explicit_read_only_job(self):
         with mock.patch.object(jobs, "analyze_issue", return_value="issue-job") as analyze:
@@ -2694,7 +2695,7 @@ class AttachedChat(unittest.TestCase):
         self.assertEqual((status, payload["via"]), (202, "chat"))
 
     def _cli(self, *args, **kw):
-        if args[0] in ("result", "fail"):
+        if args[0] in ("result", "fail", "park"):
             key = args[args.index("--request") + 1]
             record = deskstate.load(REPO)["requests"][key]
             args += ("--request-id", record["id"])
@@ -2779,6 +2780,46 @@ class AttachedChat(unittest.TestCase):
         self.assertEqual(state["runs"]["order:1145"]["report"],
                          "merged e branch cancellato")
         self.assertIn("provider_refresh", state)
+
+    def test_a_parked_run_frees_the_chat_and_keeps_its_button_locked(self):
+        """A batch handed to background agents must not hold the next click
+        hostage: the run reads `running`, the chat claims the next request,
+        and the parked one is still the chat's to close."""
+        deskstate.chat_heartbeat(REPO, "test-chat")
+        deskstate.request(REPO, "run:pr-loop", "run", None, via="chat", session="test-chat",
+                          payload={"flow": "pr-loop", "ns": [1145, 1128], "batch": 2})
+        deskstate.claim_request(REPO, "test-chat")
+        deskstate.request(REPO, "run:issue-loop", "run", None, via="chat", session="test-chat",
+                          payload={"flow": "issue-loop", "ns": [7], "batch": 1})
+        self.assertIsNone(deskstate.claim_request(REPO, "test-chat"),
+                          "a taken run keeps the chat busy")
+        out = self._cli("park", "--repo", REPO, "--request", "run:pr-loop",
+                        "2 analisi in background")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        parked = deskstate.load(REPO)["requests"]["run:pr-loop"]
+        self.assertEqual((parked["status"], parked["report"]),
+                         ("running", "2 analisi in background"))
+        _, created = deskstate.request(REPO, "run:pr-loop", "run", None, via="chat",
+                                       session="test-chat")
+        self.assertFalse(created, "a parked run keeps its button locked")
+        claimed = deskstate.claim_request(REPO, "test-chat")
+        self.assertEqual(claimed["key"], "run:issue-loop")
+        with tempfile.NamedTemporaryFile("w", suffix=".json",
+                                         delete=False) as handle:
+            json.dump({"status": "needs-input", "report": "digest: 2 pronte",
+                       "provider_changed": False}, handle)
+        out = self._cli("result", "--repo", REPO,
+                        "--request", "run:pr-loop", handle.name)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(deskstate.load(REPO)["requests"]["run:pr-loop"]["status"],
+                         "needs-input")
+
+    def test_a_parked_run_expires_on_the_operation_budget(self):
+        record = {"kind": "run", "status": "running",
+                  "running_epoch": time.time() - deskstate.OPERATION_TIMEOUT - 1}
+        self.assertTrue(deskstate.expired(record))
+        record["running_epoch"] = time.time()
+        self.assertFalse(deskstate.expired(record))
 
     def test_detach_hands_the_buttons_back_to_the_agents(self):
         deskstate.chat_heartbeat(REPO, "test-chat")
@@ -2947,7 +2988,7 @@ class ListeningChat(unittest.TestCase):
         deskstate.save(REPO, state)
 
     def _cli(self, *args, **kw):
-        if args[0] in ("result", "fail"):
+        if args[0] in ("result", "fail", "park"):
             key = args[args.index("--request") + 1]
             record = deskstate.load(REPO)["requests"][key]
             args += ("--request-id", record["id"])

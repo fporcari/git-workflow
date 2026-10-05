@@ -406,8 +406,6 @@ let agentPoll=null;
 let workingOn=null,workings=[];
 let picked=new Set();   // the rows chosen by hand for the next loop, by key
 let lastPick=null;      // anchor for a shift-click range, as in a mail client
-let askBatch=false;     // ▶ pressed on a multi-row pick: one at a time, or in parallel?
-const MAX_BATCH=4;      // one decision group holds four readable proposals
 /* A row is a repository's PR or issue: `owner/repo#n` is its name, a bare
    number is not one once a desk covers several repositories. */
 const rk=r=>r?`${r.repo||""}#${r.n}`:null;
@@ -672,7 +670,7 @@ function wirePicks(list){
       ev.stopPropagation();
       if(every)list.forEach(r=>picked.delete(rk(r)));
       else list.forEach(r=>picked.add(rk(r)));
-      askBatch=false;render();
+      render();
     };
   }
   document.querySelectorAll("[data-pick]").forEach(box=>{
@@ -682,14 +680,14 @@ function wirePicks(list){
       // shift extends from the last box touched, the way a mail client does
       if(ev.shiftKey&&lastPick!==null&&lastPick!==k)pickRange(lastPick,k,box.checked);
       else box.checked?picked.add(k):picked.delete(k);
-      lastPick=k;askBatch=false;render();
+      lastPick=k;render();
     };
   });
 }
 function togglePick(x){
   const k=keyFor(x);
   picked.has(k)?picked.delete(k):picked.add(k);
-  askBatch=false;render();
+  render();
 }
 function pickRange(from,to,on){
   const list=rows(),a=list.findIndex(r=>rk(r)===from),b=list.findIndex(r=>rk(r)===to);
@@ -697,7 +695,7 @@ function pickRange(from,to,on){
   for(let i=Math.min(a,b);i<=Math.max(a,b);i++)
     on?picked.add(rk(list[i])):picked.delete(rk(list[i]));
 }
-function clearPicks(){picked.clear();askBatch=false;render();}
+function clearPicks(){picked.clear();render();}
 function selectedRow(){return selected===null?null:rowByKey(selected);}
 function moveSelection(delta){
   const r=rows();if(!r.length)return;
@@ -708,7 +706,7 @@ function moveSelection(delta){
 }
 function setMode(mode,keep){
   if(DESK===mode&&!keep)return;
-  DESK=mode;stateFilter=null;personFilter=null;picked.clear();askBatch=false;
+  DESK=mode;stateFilter=null;personFilter=null;picked.clear();
   view=mode==="issue"?"all":mode==="threads"?"threads":(triageComplete?"todo":"untriaged");
   if(!keep)selectFirst();
   render();
@@ -808,7 +806,8 @@ function renderTabs(){
   const runOut=flowOut(flows[runFlow]);
   const nPicked=picked.size;
   run.hidden=DESK==="threads";
-  run.textContent=(runOut?(flows[runFlow]&&flows[runFlow].via==="chat"?"in chat · ":"in corso · "):"▶ ")+runFlow+(nPicked?` · ${nPicked} scelte`:"");
+  const runRec=flows[runFlow]||{};
+  run.textContent=(runOut?(runRec.status==="running"&&runRec.via==="chat-session"?"in background · ":runRec.via==="chat"?"in chat · ":"in corso · "):"▶ ")+runFlow+(nPicked?` · ${nPicked} scelte`:"");
   run.title=nPicked
     ?`Lancia ${runFlow} SOLO su ${pickedLabels().join(" ")}, in quest'ordine, e poi si ferma. Il resto della coda non lo tocca.`
     :onIssue
@@ -823,37 +822,23 @@ function renderTabs(){
 function pickedLabels(){
   return [...picked].map(k=>{const r=rowByKey(k);return r?refOf(r):k;});
 }
-/* The picks, and the one question the desk asks: several rows chosen and ▶
-   pressed can mean two different runs — one at a time, or all of them in
-   parallel worktrees. Guessing it would be guessing how much he has already
-   decided, so the strip asks instead. */
+/* Several rows picked are one batch, never a question: the loop analyzes
+   them in background agents and comes back once, with a digest. */
 function renderPick(runFlow,runOut){
   const bar=$("pickBar"),n=picked.size;
   bar.classList.toggle("on",n>0);
   if(!n)return;
   const label=pickedLabels().join(" ");
-  if(askBatch&&n>1){
-    const size=Math.min(n,MAX_BATCH);
-    bar.innerHTML=`<b>${n} scelte</b><span>${esc(label)} — una alla volta, o tutte insieme?</span>
-      <span class="grow">
-        <button class="btn" id="pOne" title="Le propone una per volta, nell'ordine in cui le hai scelte: leggi, rispondi, passa alla prossima.">Una alla volta</button>
-        <button class="btn primary" id="pBatch" title="Ti propone ${size} in un colpo e le esegue in parallelo, ogni fix nel suo worktree.${n>MAX_BATCH?` Le altre ${n-size} dopo, nello stesso giro.`:""}">Batch da ${size}</button>
-        <button class="btn" id="pCancel">annulla</button></span>`;
-    $("pOne").onclick=()=>{askBatch=false;runPicked(runFlow,1);};
-    $("pBatch").onclick=()=>{askBatch=false;runPicked(runFlow,size);};
-    $("pCancel").onclick=()=>{askBatch=false;render();};
-    return;
-  }
   const sollecito=chaseForPicked();
   bar.innerHTML=`<b>${n} scelt${n===1?"a":"e"}</b><span>${esc(label)}</span>
     <span class="grow">
       ${sollecito?`<button class="btn primary" id="pChase" title="Un messaggio per chi deve muoversi su queste, pronto da incollare">Copia sollecito <span class="kbd">s</span></button>`:""}
       <button class="btn${sollecito?"":" primary"}" id="pRun" ${agentReady&&!runOut?"":"disabled"}
-        title="Lancia ${esc(runFlow)} solo su queste, e poi si ferma.">▶ ${esc(runFlow)} su queste <span class="kbd">l</span></button>
+        title="Lancia ${esc(runFlow)} solo su queste, e poi si ferma.${n>1?" Le analizza in background, un agente per riga, e torna con un digest delle proposte.":""}">▶ ${esc(runFlow)} su queste <span class="kbd">l</span></button>
       <button class="btn" id="pClear">svuota <span class="kbd">esc</span></button></span>`;
   $("pClear").onclick=clearPicks;
   const go=$("pRun");
-  if(go)go.onclick=()=>{if(picked.size>1){askBatch=true;render();}else runPicked(runFlow,1);};
+  if(go)go.onclick=()=>runPicked(runFlow,picked.size);
   const ch=$("pChase");
   if(ch)ch.onclick=()=>copyText(ch,sollecito);
 }
@@ -1173,6 +1158,8 @@ function actBadge(r){
       out.push(`<div class="actionText">📨 <b>${esc(name)}</b> ${q.via==="chat"?"in coda alla chat collegata":"richiesta"} alle ${esc(q.at)}.</div>`);
     else if(q.status==="taken")
       out.push(`<div class="actionText">💬 <b>${esc(name)}</b> in lavorazione nella chat collegata${q.taken_at?" dalle "+esc(q.taken_at):""} — l'esito arriva in conversazione.</div>`);
+    else if(q.status==="running")
+      out.push(`<div class="actionText">⏳ <b>${esc(name)}</b> in background per la chat collegata${q.running_at?" dalle "+esc(q.running_at):""}${q.report?`: ${esc(q.report)}`:""}</div>`);
     else if(q.status==="needs-input")
       out.push(`<div class="actionText" style="color:var(--amber)">⚠ <b>${esc(name)}</b> serve una decisione${q.report?`: ${esc(q.report)}`:""}</div>`);
     else if(q.status==="failed")
@@ -1421,7 +1408,7 @@ function runPicked(flow,batch){
   const items=[...picked].map(rowByKey).filter(Boolean).map(r=>({repo:r.repo,n:r.n}));
   const repos=[...new Set(items.map(i=>i.repo))];
   doFlow("/api/run",flow,
-    `${flow} avviato su ${pickedLabels().join(" ")}${batch>1?` — batch da ${batch}, in parallelo`:" — una alla volta"}`,
+    `${flow} avviato su ${pickedLabels().join(" ")}${batch>1?" — in background, poi un digest delle proposte":""}`,
     repos.length>1?{items,batch}:{repo:repos[0],ns:items.map(i=>i.n),batch});
   picked.clear();
 }
@@ -1429,8 +1416,7 @@ const doTriage=()=>doFlow("/api/triage",DESK==="issue"?"issue-triage":"pr-triage
   "provider riletto e triage pubblicato — agente avviato solo per il giudizio ancora dovuto");
 const doRun=()=>{
   const flow=DESK==="issue"?"issue-loop":"pr-loop";
-  if(picked.size>1){askBatch=true;render();return;}
-  if(picked.size===1)return runPicked(flow,1);
+  if(picked.size)return runPicked(flow,picked.size);
   doFlow("/api/run",flow,"run one-shot avviato",{repo:(scope.members[0]||{}).repo});
 };
 
@@ -1471,8 +1457,7 @@ function commands(){
   if(picked.size){
     const flow=DESK==="issue"?"issue-loop":"pr-loop",chaseText=chaseForPicked();
     if(chaseText)add(`Sulle ${picked.size} scelte`,"@","Copia un sollecito unico","un messaggio per persona, le tue PR ferme su di loro",()=>copyText(null,chaseText),"s");
-    add(`Sulle ${picked.size} scelte`,"▶",`${flow}, una alla volta`,"si ferma alla prima decisione che serve",()=>runPicked(flow,1),"l");
-    if(picked.size>1)add(`Sulle ${picked.size} scelte`,"▶",`${flow} in parallelo`,`un worktree per riga · massimo ${MAX_BATCH}`,()=>runPicked(flow,Math.min(picked.size,MAX_BATCH)));
+    add(`Sulle ${picked.size} scelte`,"▶",flow,picked.size>1?"in background, poi un digest delle proposte":"si ferma alla prima decisione che serve",()=>runPicked(flow,picked.size),"l");
     add(`Sulle ${picked.size} scelte`,"✕","Svuota la scelta","",clearPicks,"esc");
   }
   if(r){

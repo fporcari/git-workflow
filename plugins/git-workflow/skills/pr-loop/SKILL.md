@@ -1,6 +1,6 @@
 ---
 name: pr-loop
-description: Loop over the PR queue until the user has nothing left that only he can do — first the moves that need no permission (merge his own fully-approved PRs, answer small named review requests, realign his DIRTY branches), then the rest presented for a go-ahead, one at a time or in a batch. Takes the numbers to work and a batch size, so several can be proposed together and executed in parallel worktrees.
+description: Loop over the PR queue until the user has nothing left that only he can do — first the moves that need no permission (merge his own fully-approved PRs, answer small named review requests, realign his DIRTY branches), then the rest presented for a go-ahead, one at a time — or, for several, analysed by background agents and handed back as one digest, so the user is interrupted only when the proposals are ready and when the work is done. Takes the numbers to work and a batch size; approved work runs in parallel worktrees.
 ---
 
 # PR loop
@@ -43,13 +43,13 @@ The invocation mechanism is host-specific; the meaning is identical everywhere.
 | what he typed | what it means |
 |---|---|
 | `1145,1128,1059` (`#` optional) | **the working set**: exactly those, **in that order**, and then stop. No other PR is read, merged, answered or realigned — including by Lane A |
-| `batch=N` | present N together in Lane B instead of one. Clamped to **1..4** |
+| `batch=N` | N > 1: Lane B runs in background and comes back as one digest (`refs/batch.md`). Clamped to **1..20**; at most four agents run at once |
 | anything else | a scope note, not a filter — say back how you read it |
 
 **Default `batch=1`.** One at a time is the shape that costs nothing when he
-says no; `batch` is him saying *"I have already decided, spend the reads"*.
-Clamped to 4 so one decision remains readable. Use the host's structured
-multi-select when it supports one; otherwise accept a compact typed selection.
+says no; `batch` is him saying *"I have already decided, spend the reads — and
+leave me alone until they are in"*. Several rows picked on the desk arrive as
+a batch of that size: the desk does not ask.
 
 **A named working set narrows Lane A too.** Invoking `pr-loop` with `1145` means that PR
 and no other: an approved PR of his elsewhere in the queue is not touched,
@@ -57,7 +57,8 @@ and the closing report says so rather than pretending the queue was drained.
 
 **From an attached desk click**, the request record supplies `ns` and `batch`
 with the same meaning as the typed list; execute here, in the conversation,
-and publish the operation JSON with `chatdesk.py result` (git-desk skill).
+and publish the operation JSON with `chatdesk.py result` (git-desk skill) —
+with `batch` > 1, park it first and publish at the digest (`refs/batch.md`).
 
 **From a detached desk button**, the launch prompt supplies `ns` and `batch`.
 `ns` is the rows he picked by hand and means what the typed list means. Do not
@@ -76,7 +77,7 @@ repeat:
     read the queue fresh
     do every A1, A2, A3 that qualifies
 until a full pass changes nothing
-then Lane B, one PR at a time (or one batch at a time)
+then Lane B, one PR at a time (or one background batch and its digest)
 report against the goal
 ```
 
@@ -393,15 +394,23 @@ the format is that he holds one decision in his head at a time.
 
 ### With `batch=N`
 
-The four-line block does **not** degrade into a summary: it repeats. Print all
-N blocks separated by a blank line, then ask **once**. Use a host multi-select
-when available, with one option per proposal (`#1145 vai`, `#1128 vai`, …).
-Otherwise ask for a compact typed answer (`1 vai, 2 no, 3 vai`, or `tutte vai`).
-The structured box is a convenience, not the protocol.
+Follow `<PLUGIN_ROOT>/refs/batch.md`: it is the protocol, this section only
+says what is this loop's.
+
+- **Lane A first, in background too.** One agent runs Lane A to its fixed
+  point under this file's rules, scoped to the working set; its table is the
+  digest's *Fatto da solo*. A merge the global rules make you confirm comes
+  back as a *Pronte* line, never as a merge. Lane B's analyses start when it
+  is back: its merges change the queue they would read.
+- **One `pr-analyze` agent per Lane B PR**, read-only, on `opus`, named in
+  the delegation call. Its `propose` is the digest line; its four-line block
+  is what `dimmi di più` prints.
+- **A mano** on a PR means a review that is a real design read, or a decision
+  only he can take; say what to read first.
 
 **A conversation about one does not hold up the others.** The clean `vai`
-proposals start immediately; the one he wants to discuss returns at the head of
-the next batch. Otherwise the batch buys nothing.
+lines start immediately; the one he wants to discuss returns at the head of
+the next digest. Otherwise the batch buys nothing.
 
 ### What can run in parallel, and what cannot
 
@@ -410,7 +419,8 @@ adds where an issue's file list comes from.**
 
 **Never hand an approved batch straight to N agents.** Build the conflict graph
 over the approved set, take its connected components, and run the components in
-parallel while the members of one component run in sequence, in queue order.
+parallel while the members of one component run in sequence, in queue order —
+never more than four agents at once.
 Two items conflict when any of these holds:
 
 - **they touch the same file** — here, intersect

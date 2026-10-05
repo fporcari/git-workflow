@@ -1,6 +1,6 @@
 ---
 name: issue-loop
-description: Work the open issues in a loop — take the most urgent, analyze it in a fresh agent, propose it in four lines, and on a go-ahead fix it in a worktree and open the PR, then the next until the user says stop. Takes the numbers to work and a batch size, so several can be proposed together and fixed in parallel worktrees; `bugfix` reads every eligible bug's plan and builds all the approved PRs after one single go-ahead. Notifies the review desk at every step.
+description: Work the open issues in a loop — take the most urgent, analyze it in a fresh agent, propose it in four lines, and on a go-ahead fix it in a worktree and open the PR, then the next until the user says stop. Takes the numbers to work and a batch size: several are analysed by background agents and handed back as one digest, so the user is interrupted only when the proposals are ready and when the PRs are open; `bugfix` does the same for every eligible bug and builds all the approved PRs after one single go-ahead. Notifies the review desk at every step.
 ---
 
 # Issue loop — the most urgent one, then the next
@@ -19,8 +19,8 @@ build the candidate list, unless he named the numbers
 repeat:
     take the next BATCH (default 1) off the list
         (bugfix: the whole eligible bug set, in one go)
-    analyze them in parallel, in fresh agents
-    propose them, and wait for one answer covering all of them
+    analyze them in parallel, in fresh agents (several: in background)
+    propose them (several: one digest), and wait for one answer covering all
     for the approved ones: claim, fix, open the PR
 until he says basta, or the list is empty
 report against what was done and what remains
@@ -49,7 +49,7 @@ The invocation mechanism is host-specific; the meaning is identical everywhere.
 | what he typed | what it means |
 |---|---|
 | `1145,1128,1059` (`#` optional) | **the working set**: exactly those, **in that order**, and then stop. Skip Step 0 entirely and do not rank — he already chose, his order wins |
-| `batch=N` | propose N together instead of one. Clamped to **1..4** |
+| `batch=N` | N > 1: analysed in background and handed back as one digest (`refs/batch.md`). Clamped to **1..20**; at most four agents run at once |
 | `mine` | restrict the candidate list to issues assigned to him |
 | `bugfix` | **one via for the whole set of bugs** — see Step 2b. Analyse every eligible DEFECT, show all the plans, ask once, then open every approved PR in parallel |
 | anything else | a scope note, not a filter — say back how you read it |
@@ -59,12 +59,13 @@ says no. `batch` is him saying *"I have already decided, spend the reads"* —
 which is why it pairs naturally with a list of numbers, where no analysis
 can be wasted.
 
-**Clamped to 4** so one decision remains readable. More than four numbers with
-`batch=4` is fine — it works them four at a time.
+Several rows picked on the desk arrive as a batch of that size: the desk does
+not ask. More numbers than `batch` is fine — it works them a digest at a time.
 
 **From an attached desk click**, the request record supplies `ns` and `batch`
 with the same meaning as the typed list; execute here, in the conversation,
-and publish the operation JSON with `chatdesk.py result` (git-desk skill).
+and publish the operation JSON with `chatdesk.py result` (git-desk skill) —
+with `batch` > 1, park it first and publish at the digest (`refs/batch.md`).
 
 **From a detached desk button**, the launch prompt supplies `ns` and `batch`.
 `ns` is the rows he picked by hand and means exactly what the typed list
@@ -107,7 +108,8 @@ batch's whole latency win is here, not in the execution. Hand each the issue
 number, the repo and the type; it follows
 `<PLUGIN_ROOT>/skills/issue-analyze/SKILL.md` and returns the typed
 verdict JSON, persisting it to the desk state. Notify:
-`analisi #<n>: <one line>`.
+`analisi #<n>: <one line>`. With `batch` > 1 the agents run in background, at
+most four at once, and the chat ends its turn (`refs/batch.md`).
 
 An analysis that comes back empty or failed does not sink the batch: propose
 the others and say that one could not be read, with why.
@@ -142,15 +144,16 @@ line, the analysis is not finished.
 `procedi` / `si` executes and moves on. Anything else is a conversation
 about THAT issue.
 
-**With `batch=N`**: print all N blocks, separated by a blank line, then ask
-**once**. Use a host multi-select when available, with one option per proposal
-(`#1145 vai`, `#1128 vai`, …). Otherwise ask for a compact typed answer
-(`1 vai, 2 no, 3 vai`, or `tutte vai`). The structured box is a convenience,
-not the protocol.
+**With `batch=N`**: the digest of `<PLUGIN_ROOT>/refs/batch.md`, one line per
+issue, then one question. The block above is what `dimmi di più su #n` prints.
+**A mano** is this loop's main sorting: a WORKFLOW-sized issue, an open
+decision, a design still to make — heavy work he does by hand, offered as a
+dedicated `issue-work` session, never started. The fix agents of Step 4 run in
+background too, and the second digest is the PRs they opened.
 
 **A conversation about one does not hold up the others.** The clean `vai`
-proposals start immediately; the one he wants to discuss returns at the head
-of the next batch. Otherwise the batch buys nothing.
+lines start immediately; the one he wants to discuss returns at the head of
+the next digest. Otherwise the batch buys nothing.
 
 Say plainly when a proposal is not yours to execute: an issue somebody else
 holds (never touch it), a WORKFLOW-sized one that needs phases rather than a
@@ -182,9 +185,10 @@ one line each: `#1204 fuori dal via unico: WORKFLOW`, `#1188 fuori: decisione
 aperta (due nomi possibili per l'hook)`. A set presented as "all the bugs"
 that quietly dropped three is worse than no mode at all.
 
-**How it runs.** Analyse the eligible set in parallel (this is him saying
-*spend the reads*), print every plan in the Step 2 format, say how many there
-are, then ask **once**:
+**How it runs.** Analyse the eligible set in background (this is him saying
+*spend the reads*; `refs/batch.md`), hand it back as one digest — the eligible
+set under *Pronte*, the rest under *A mano* or *Niente da fare* with the
+reason — then ask **once**:
 
 > Otto piani. Vai su tutte, o quali lascio fuori?
 
@@ -192,8 +196,8 @@ are, then ask **once**:
 excludes exactly those and approves the rest. Anything else is a conversation:
 answer it, and re-ask the one question.
 
-The 1..4 clamp of `batch=N` does **not** apply here — it exists to keep a
-host answer box readable, and this answer is typed. What does apply is Step 3:
+The clamp of `batch=N` does **not** apply here: the set is what it is, and
+the answer is typed. What does apply is Step 3:
 the conflict graph over the approved set, and the components run in parallel
 while the members of one component run in sequence. Sixteen bugs are not
 sixteen agents.

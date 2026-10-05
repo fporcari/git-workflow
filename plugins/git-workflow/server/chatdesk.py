@@ -40,6 +40,12 @@ the buttons enqueue, and the pair of commands here is its whole contract:
         --request analyze:1145 --request-id click-id "why"
         Close the request as failed, with the reason the desk shows.
 
+    python3 chatdesk.py park --repo owner/repo --session chat-id
+        --request run:pr-loop --request-id click-id "what runs in background"
+        The work went to background agents: the request reads `running`, its
+        button stays locked, and result or fail close it later — but the chat
+        is free, so the next click is claimed instead of queuing behind it.
+
     python3 chatdesk.py detach --repo owner/repo --session chat-id
         Drop the mark: the very next click goes back to a one-shot agent.
 
@@ -347,7 +353,7 @@ def _record(state, key, session, request_id):
     record = (state.get("requests") or {}).get(key) or {}
     if (record.get("via") != "chat-session" or record.get("session") != session
             or record.get("id") != request_id
-            or record.get("status") not in ("taken", "needs-input")
+            or record.get("status") not in ("taken", "needs-input", "running")
             or deskstate.expired(record)):
         raise ValueError("request is expired, replaced, or belongs to another session")
     return record
@@ -358,10 +364,29 @@ def _release(state, record):
     n = record.get("n")
     if mark and n is not None and int(n) in mark.get("ns", []):
         state.pop("working", None)
+    _free_chat(state, record)
+
+
+def _free_chat(state, record):
     chat = (state.get("chats") or {}).get(record["session"])
     if chat and (chat.get("busy") or {}).get("id") == record["id"]:
         chat.pop("busy", None)
         chat.update(epoch=time.time(), at=time.strftime("%H:%M:%S"))
+
+
+def park(repo, key, note, session, request_id):
+    """The click's work went to background agents. Its button stays locked
+    and the request stays this chat's to close with result or fail, but the
+    chat is free: the next click no longer queues behind a loop it is only
+    waiting on."""
+    def mutate(state):
+        record = _record(state, key, session, request_id)
+        record.update(status="running", report=note,
+                      running_at=time.strftime("%H:%M:%S"),
+                      running_epoch=time.time())
+        _free_chat(state, record)
+        return dict(record, key=key)
+    return deskstate.update(repo, mutate)
 
 
 def result(repo, key, path, session, request_id):
@@ -403,7 +428,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action",
                         choices=("listen", "doze", "wait", "result", "fail",
-                                 "detach", "close"))
+                                 "park", "detach", "close"))
     where = parser.add_mutually_exclusive_group(required=True)
     where.add_argument("--repo", help="owner/repo: one repository's desk, or the member "
                                       "a scope click named (result, fail, detach)")
@@ -419,9 +444,9 @@ def main():
     parser.add_argument("--request", help="result: the request key to close")
     parser.add_argument("path", nargs="?",
                         help="result: the JSON file, or - for stdin; "
-                             "fail: the reason")
+                             "fail: the reason; park: what runs in background")
     args = parser.parse_args()
-    if args.scope and args.action in ("result", "fail", "detach"):
+    if args.scope and args.action in ("result", "fail", "park", "detach"):
         parser.error("%s needs --repo, the repository the click named" % args.action)
     ear = deskstate.scope_members(args.scope) if args.scope else args.repo
     if args.action == "listen":
@@ -443,6 +468,10 @@ def main():
         if not (args.request and args.path and args.request_id):
             parser.error("fail needs --request, --request-id and a reason")
         fail(args.repo, args.request, args.path, args.session, args.request_id)
+    elif args.action == "park":
+        if not (args.request and args.path and args.request_id):
+            parser.error("park needs --request, --request-id and a note")
+        park(args.repo, args.request, args.path, args.session, args.request_id)
     elif args.action == "close":
         close(ear, args.session, args.desk)
     else:

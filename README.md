@@ -89,8 +89,11 @@ go-ahead. `basta` ends it, and what was not reached is listed in queue order.
 /pr-loop 1145,1128,1059 batch=3
 ```
 
-Exactly those, in that order, then stop — proposed together in one answer and
-executed in parallel, each fix in its own worktree.
+Exactly those, in that order, then stop. They are analysed by background
+agents, at most four at a time, while you do something else; you are
+interrupted twice — once with a digest of the proposals (ready, yours by hand,
+nothing to do), answered in one go, and once with the outcome, each fix in its
+own worktree. `refs/batch.md` is the protocol.
 
 **The same three lines on the issue side**: `/issue-triage`, `/issue-loop`,
 `/issue-loop 1156,1149 batch=2`.
@@ -147,7 +150,8 @@ listeners to use the new routing protocol.
 
 Both are **explicit-invocation only**, and both take the same mandate:
 `1145,1128` names the working set (exactly those, in that order, then stop),
-`batch=N` proposes N together instead of one, clamped to 4.
+`batch=N` (N > 1) runs the analyses in background and hands them back as one
+digest, clamped to 20, with at most four agents running at once.
 
 | skill | what it does |
 |---|---|
@@ -243,10 +247,10 @@ fact refreshes do not relaunch triage or spend model tokens.
 
 **Choosing what the loop works.** cmd-click (shift-click for a stretch) picks
 rows; ▶ then runs `pr-loop`/`issue-loop` on **exactly those, in that order,
-and stops**. With more than one picked it asks the one question it cannot
-guess — one at a time, or all of them in parallel worktrees — because that is
-the difference between thinking about them and having already decided. The
-same mandate is typed directly at the skill: `/pr-loop 1145,1128 batch=2`.
+and stops**. More than one picked is a background batch: the chat parks the
+request (`running` on the row), takes the next click while its agents work,
+and comes back with the digest. The same mandate is typed directly at the
+skill: `/pr-loop 1145,1128 batch=2`.
 
 Acting belongs to the skills, which log every action on the PR itself.
 
@@ -326,7 +330,16 @@ invariants (`test_packaging.py`). The UI checks drive the **real**
 so it is the page's own render path that runs.
 `plugins/git-workflow/server/tests/README.md` says what each file is for.
 
-## Codex compatibility update — 0.56.0
+## Codex compatibility update — 0.57.0
+
+A batch no longer asks "one at a time or together": several rows picked are a
+background batch, analysed by at most four agents at once, that interrupts you
+twice — a digest of the proposals, answered once, and the outcome
+(`refs/batch.md`). `chatdesk.py park` frees the attached chat while they work,
+so a `pr-loop` and an `issue-loop` launched from the same desk no longer queue
+behind each other. The protocol for marking rows and closing requests is back
+in `git-desk`, *Rows and requests*.
+
 
 One desk skill, `git-desk`, replaces `pr-desk`, `issue-desk` and
 `review-desk`: the page already served Pull request, Issue and Filoni from one

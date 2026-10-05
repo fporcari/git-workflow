@@ -242,6 +242,10 @@ it in this conversation, by `kind`:
   - `order` → the pr-loop order flow for the order recorded under `orders.<n>`
     (the click was the go-ahead for that displayed proposal);
   - `run` → `pr-loop`/`issue-loop` with the `ns` and `batch` in `payload`.
+    With `batch` > 1 the loop hands its work to background agents and parks
+    the request (`chatdesk.py park`, `refs/batch.md`): the row reads
+    `running`, its button stays locked, and this chat takes the next click
+    while the agents work. The parked request is still this chat's to close.
 
   An analyze request may carry `payload.context`, the same compact desk probe
   a one-shot job receives. Treat it as `<desk_context>` from `pr-analyze`:

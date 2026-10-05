@@ -48,7 +48,7 @@ This is the short version. Pick the page that matches what you need.
 - **Use when:** you want to work through PRs until nothing remains that only you can do.
 - **Does directly:** only actions covered by its safe lane and current gates.
 - **Asks first:** for everything requiring judgment or a user decision.
-- **Accepts:** exact PR numbers and `batch=1..4`; conflicting work is sequenced.
+- **Accepts:** exact PR numbers and `batch=N`; several run in background and come back as one digest; conflicting work is sequenced.
 
 ![PR loop](05-pr-loop.webp)
 
@@ -96,7 +96,7 @@ This is the short version. Pick the page that matches what you need.
 
 ### Batch and worktrees
 
-- A batch is limited to four proposals at a time.
+- A batch runs in background, at most four agents at once, and interrupts you twice: a digest of the proposals, then the outcome.
 - Independent work runs in separate worktrees.
 - Same file, stacked PR, same issue, or unknown overlap means sequential work.
 - Results are reported per item; one failure never hides the others.

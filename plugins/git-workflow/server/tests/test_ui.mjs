@@ -207,9 +207,9 @@ globalThis.fetch = async () => { throw new Error("network is off in this test");
 /* ---- run the page's script ---- */
 const script = html.match(/<script>\n([\s\S]*)\n<\/script>/)[1];
 const page = new Function(`${script}\nreturn {applyDesk,applyState,render,renderSync,loadDesk,renderDetail,select,moveSelection,setSort,visiblePrs,visibleIssues,rk,setMode,openPalette,closePalette,commands,toggleScope,renderThreads,
-  rowClick,togglePick,clearPicks,doRun,MAX_BATCH,pending,closed,startPending,endPending,
+  rowClick,togglePick,clearPicks,doRun,pending,closed,startPending,endPending,
   get state(){return {prs,issues,selected,tab,view,loaded,DESK,truncated,pendingMerge,sort,
-                      picked:[...picked],askBatch};},
+                      picked:[...picked]};},
   set view(v){view=v;}, set query(v){query=v;}, set agent(v){agentReady=v;}};`)();
 
 /* a row's name on the page is repo#n: the numbers the checks pick by are
@@ -680,18 +680,31 @@ ok("the pick bar says which rows and offers to run them", (() => {
   const bar = document.getElementById("pickBar");
   return bar.classList.contains("on") && bar.innerHTML.includes("pRun");
 })());
-ok("▶ on several picked rows asks batch or one at a time, it does not guess",
-   (() => { page.doRun();
-            const bar = document.getElementById("pickBar").innerHTML;
-            return page.state.askBatch && /Batch da 2/.test(bar) &&
-                   /Una alla volta/.test(bar); })());
-ok("the batch it offers never exceeds one answer box", page.MAX_BATCH === 4);
-ok("a single picked row is not asked about", (() => {
-  page.clearPicks(); page.render();
-  boxes().find(b => b.dataset.pick === K(three[0])).click();
-  page.doRun();
-  return !page.state.askBatch;
-})());
+{
+  const sent = [];
+  const offline = globalThis.fetch;
+  globalThis.fetch = async (path, opts) => {
+    sent.push({path, body: JSON.parse(opts.body || "{}")});
+    return {status: 202, headers: {get: () => null}, json: async () => ({runs: [{via: "chat"}]})};
+  };
+  try {
+    page.doRun();
+    await new Promise(r => setTimeout(r, 0));
+    const run = sent.find(p => p.path === "/api/run");
+    ok("▶ on several picked rows runs them as one batch, without asking",
+       run && run.body.batch === 2 && run.body.ns.length === 2 &&
+       !/Una alla volta/.test(document.getElementById("pickBar").innerHTML));
+    sent.length = 0;
+    page.clearPicks(); page.render();
+    boxes().find(b => b.dataset.pick === K(three[0])).click();
+    page.doRun();
+    await new Promise(r => setTimeout(r, 0));
+    const one = sent.find(p => p.path === "/api/run");
+    ok("a single picked row runs alone", one && one.body.batch === 1);
+  } finally {
+    globalThis.fetch = offline;
+  }
+}
 page.clearPicks();
 ok("svuota leaves nothing picked and nothing marked",
    page.state.picked.length === 0 &&
@@ -935,7 +948,6 @@ try {
   page.togglePick(engineRow);
   page.togglePick(extRow);
   page.doRun();
-  document.getElementById("pOne").click();
   await new Promise(r => setTimeout(r, 0));
   const run = posted.find(p => p.path === "/api/run");
   ok("a run across repositories sends each row with its repository",
