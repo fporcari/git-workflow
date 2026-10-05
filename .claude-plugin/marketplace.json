@@ -10,6 +10,11 @@
       "name": "git-workflow",
       "source": "./plugins/git-workflow",
       "description": "PR and issue workflow toolkit: triage skills plus a local git-desk dashboard with pluggable git hosting providers (GitHub, Forgejo)."
+    },
+    {
+      "name": "desk-band",
+      "source": "./plugins/desk-band",
+      "description": "Claude Code mod for the git desk: a band above the prompt with every desk loop tagged PR or ISSUE in its own color — working, in background, queued, waiting for you — a toast when one needs you or finishes, and a guard on a bare \"vai\" when two loops wait for an answer."
     }
   ]
 }

@@ -179,9 +179,30 @@ succeeded.
 |---|---|
 | **`git-desk`** | The detached dashboard (default port 8399, a free one when that is taken), one page with three tabs. *Pull request*: the PR queue. *Issue*: the cross-check and the shortlist computed without a model on every read, only the issues still to take — unassigned or yours, and cited by no open PR (the lead line counts what it leaves out), the resolution order, urgency and dependencies from `issue-triage` shown on every row, an analysis marked *da aggiornare* when its issue has moved since. *Filoni*: PRs and the issues they close, read together. Startup, reload and polling use Python/provider JSON only; the launching chat stays attached by default and executes every click except triage, which — like every click on a detached desk — starts one ephemeral Codex or Claude process. The skill also defines the JSON/job contract. |
 
-`plugins/git-workflow/server/` is the code under all three: a zero-dependency
+`plugins/git-workflow/server/` is the code under it: a zero-dependency
 Python stdlib server that reads the provider, prepares explicit triage work,
 and serves one page.
+
+### `desk-band` — the desk in the chat, Claude Code only
+
+A separate plugin of the same marketplace, a Claude Code mod (function
+hooks), for the chat a desk is attached to:
+
+```bash
+claude plugin install desk-band@fporcari
+```
+
+- **a band above the prompt**, one row per desk request of this chat, tagged
+  `PR` (magenta) or `ISSUE` (green): in coda, in chat ora, in background,
+  **aspetta te** first and in yellow;
+- **a status line** `PR ⏳1 ⏸1 · ISSUE ⏳1`: what works, what waits for you;
+- **a toast** only when a loop starts waiting for you or closes;
+- **a guard on a bare `vai`**: with two loops waiting for an answer it does
+  not enter and asks which one; with one, the chat is told which it answers.
+
+It reads the desk state files under `~/.local/state/git-workflow/` every four
+seconds, re-reading only a file that changed; no model, no network.
+`claude plugin test plugins/desk-band` runs its tests.
 
 ## The dashboard
 
