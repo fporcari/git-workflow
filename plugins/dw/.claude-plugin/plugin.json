@@ -1,0 +1,11 @@
+{
+  "name": "dw",
+  "description": "Deploy workflow: on-demand skills for getting changes to production — the release checklist of what the integration branch carries over the production one, and the acceptance-test page for the people who reported the fixes.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Francesco Porcari",
+    "email": "fporcari@softwell.it"
+  },
+  "homepage": "https://github.com/fporcari/git-workflow",
+  "keywords": ["release", "cherry-pick", "acceptance-test", "deploy"]
+}

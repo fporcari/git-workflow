@@ -15,6 +15,11 @@
       "name": "desk-band",
       "source": "./plugins/desk-band",
       "description": "Claude Code mod for the git desk: a band above the prompt with every desk loop tagged PR or ISSUE in its own color — working, in background, queued, waiting for you — a toast when one needs you or finishes, and a guard on a bare \"vai\" when two loops wait for an answer."
+    },
+    {
+      "name": "dw",
+      "source": "./plugins/dw",
+      "description": "Deploy workflow, on-demand skills only: dep-merger builds the release checklist of what develop carries over master and turns the reviewer's ticks into a cherry-pick list; dev-tester builds the acceptance-test page for the people who reported the fixes."
     }
   ]
 }
