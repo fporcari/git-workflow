@@ -7,6 +7,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -17,7 +18,7 @@ sys.path.insert(0, str(ROOT))
 import cache            # noqa: E402
 import deskstate        # noqa: E402
 import jobs             # noqa: E402
-import nightwork        # noqa: E402
+import preparation      # noqa: E402
 import prdesk           # noqa: E402
 from providers import get_provider  # noqa: E402
 
@@ -28,11 +29,11 @@ _SAVED = {}
 def setUpModule():
     home = tempfile.mkdtemp(prefix="nightwork-")
     _SAVED.update(home=os.environ.get("HOME"), state=deskstate.STATE_DIR,
-                  runtime=deskstate.RUNTIME_DIR, poll=nightwork.POLL)
+                  runtime=deskstate.RUNTIME_DIR, poll=preparation.POLL)
     os.environ["HOME"] = home
     deskstate.STATE_DIR = Path(home) / ".local" / "state" / "git-workflow"
     deskstate.RUNTIME_DIR = Path(home) / "runtime"
-    nightwork.POLL = 0
+    preparation.POLL = 0
 
 
 def tearDownModule():
@@ -40,7 +41,7 @@ def tearDownModule():
         os.environ["HOME"] = _SAVED["home"]
     deskstate.STATE_DIR = _SAVED["state"]
     deskstate.RUNTIME_DIR = _SAVED["runtime"]
-    nightwork.POLL = _SAVED["poll"]
+    preparation.POLL = _SAVED["poll"]
 
 
 def fresh_desk():
@@ -103,7 +104,7 @@ class FakeJobs:
 
     def patch(self):
         return mock.patch.multiple(
-            nightwork.jobs, analyze_pr=self.analyze_pr,
+            preparation.jobs, analyze_pr=self.analyze_pr,
             analyze_issue=self.analyze_issue, triage=self.triage,
             active=self.active, get=self.get)
 
@@ -121,7 +122,7 @@ class PrNight(unittest.TestCase):
         self.assertTrue(expected, "the fixture needs PRs owing an analysis")
         fake = FakeJobs()
         with fake.patch():
-            nightwork.pr_night(desk, 4)
+            preparation.pr_night(desk, 4)
         self.assertEqual({n for kind, n in fake.calls if kind == "pr"}, expected)
         self.assertFalse([c for c in fake.calls if c[0] == "issue"])
         self.assertNotIn(("triage", "issue-triage"), fake.calls)
@@ -130,7 +131,7 @@ class PrNight(unittest.TestCase):
         desk = fresh_desk()
         fake = FakeJobs()
         with fake.patch():
-            nightwork.pr_night(desk, 4)
+            preparation.pr_night(desk, 4)
         last = [n for kind, n in fake.calls if kind == "pr"][-1]
         keys, context = fake.inputs()
         self.assertEqual(context["row"]["n"], last)
@@ -142,7 +143,7 @@ class PrNight(unittest.TestCase):
         self.assertTrue(conflicts, "the fixture needs a DIRTY PR of the user's")
         fake = FakeJobs()
         with fake.patch():
-            nightwork.pr_night(desk, 4)
+            preparation.pr_night(desk, 4)
         self.assertIn(("triage", "pr-triage"), fake.calls)
         self.assertEqual(set(fake.exported["model_tasks"]), conflicts)
         self.assertTrue(all(kinds == ["conflict"]
@@ -159,14 +160,14 @@ class PrNight(unittest.TestCase):
         deskstate.save(REPO, {"prs": {str(n): {"analysis": "done", "analysis_key": key}}})
         fake = FakeJobs()
         with fake.patch():
-            nightwork.pr_night(desk, 4)
+            preparation.pr_night(desk, 4)
         self.assertNotIn(("pr", n), fake.calls)
 
     def test_no_more_than_parallel_jobs_are_alive(self):
         desk = fresh_desk()
         fake = FakeJobs()
         with fake.patch():
-            nightwork.pr_night(desk, 2)
+            preparation.pr_night(desk, 2)
         self.assertGreater(len(fake.calls), 2)
         self.assertEqual(fake.peak, 2)
 
@@ -176,9 +177,9 @@ class PrNight(unittest.TestCase):
         due = [int(n) for n, kinds in tasks.items() if "analysis" in kinds]
         fake = FakeJobs(fail={("pr", due[0])})
         with fake.patch():
-            done = nightwork.pr_night(desk, 4)
+            done = preparation.pr_night(desk, 4)
         self.assertEqual({n for kind, n in fake.calls if kind == "pr"}, set(due))
-        status, report = nightwork.summary("pr", done)
+        status, report = preparation.summary("pr", done)
         self.assertEqual(status, "done")
         self.assertIn("%d PR analizzate" % (len(due) - 1), report)
         self.assertIn("#%s (boom)" % due[0], report)
@@ -192,7 +193,7 @@ class IssueNight(unittest.TestCase):
         self.assertTrue(shortlist, "the fixture needs a shortlist")
         fake = FakeJobs()
         with fake.patch():
-            nightwork.issue_night(desk, 4)
+            preparation.issue_night(desk, 4)
         self.assertEqual(fake.calls[0], ("triage", "issue-triage"))
         self.assertEqual([n for kind, n in fake.calls if kind == "issue"], shortlist)
         self.assertFalse([c for c in fake.calls if c[0] == "pr"])
@@ -208,18 +209,88 @@ class IssueNight(unittest.TestCase):
             "at": "2999-01-01T00:00:00+00:00"}}})
         fake = FakeJobs()
         with fake.patch():
-            nightwork.issue_night(desk, 4)
+            preparation.issue_night(desk, 4)
         self.assertNotIn(("issue", first), fake.calls)
 
     def test_a_failed_ranking_still_analyzes(self):
         desk = fresh_desk()
         fake = FakeJobs(fail={("triage", "issue-triage")})
         with fake.patch():
-            done = nightwork.issue_night(desk, 4)
+            done = preparation.issue_night(desk, 4)
         self.assertTrue([c for c in fake.calls if c[0] == "issue"])
-        status, report = nightwork.summary("issue", done)
+        status, report = preparation.summary("issue", done)
         self.assertEqual(status, "done")
         self.assertIn("classifica (boom)", report)
+
+
+class TheRunRecord(unittest.TestCase):
+    """What the desk reads while a preparation works: the record says what is
+    due, what landed and what failed, item by item."""
+
+    def test_the_record_advances_item_by_item(self):
+        desk = fresh_desk()
+        due = sorted(int(n) for n, kinds in owed(desk).items() if "analysis" in kinds)
+        fake = FakeJobs(fail={("pr", due[0])})
+        seen = []
+        real_landed = preparation._progress
+
+        def spying(repo, kind):
+            landed = real_landed(repo, kind)
+
+            def spy(item, record):
+                landed(item, record)
+                run = deskstate.load(repo)["runs"]["pr-nightwork"]
+                seen.append((run["status"], len(run["landed"]), len(run["failed"])))
+            return spy
+        with fake.patch(), mock.patch.object(preparation, "_progress", spying):
+            preparation.prepare(desk, "pr", 4, trigger="desk")
+        self.assertTrue(all(status == "running" for status, _, _ in seen))
+        self.assertEqual([landed + failed for _, landed, failed in seen
+                          ][:len(due)], list(range(1, len(due) + 1)))
+        run = deskstate.load(REPO)["runs"]["pr-nightwork"]
+        self.assertEqual(run["status"], "done")
+        self.assertEqual(sorted(run["due"]), due)
+        self.assertEqual(sorted(run["landed"]), due[1:])
+        self.assertIn("boom", run["failed"][str(due[0])])
+        self.assertEqual((run["trigger"], run["prepared_by"]), ("desk", "desk"))
+
+    def test_a_run_with_nothing_to_do_keeps_when_work_last_landed(self):
+        desk = fresh_desk()
+        with FakeJobs().patch():
+            preparation.prepare(desk, "pr", 4, trigger="night")
+        first = deskstate.load(REPO)["runs"]["pr-nightwork"]
+        with mock.patch.object(preparation, "pr_work", return_value=[]):
+            preparation.prepare(desk, "pr", 4, trigger="desk")
+        run = deskstate.load(REPO)["runs"]["pr-nightwork"]
+        self.assertEqual(run["report"], "nessuna PR da analizzare")
+        self.assertEqual(run["trigger"], "desk")
+        self.assertEqual((run["prepared_at"], run["prepared_by"]),
+                         (first["prepared_at"], "night"))
+
+    def test_the_desk_reads_the_snapshot_its_boot_paid_for(self):
+        desk = fresh_desk()
+        calls = []
+        real = desk.run_triage
+
+        def spy(flow=None, fresh=True):
+            calls.append(fresh)
+            return real(flow, fresh)
+        desk.run_triage = spy
+        with FakeJobs().patch():
+            preparation.prepare(desk, "pr", 4, trigger="desk")
+            preparation.prepare(desk, "pr", 4, trigger="night")
+        self.assertEqual(calls[0], False)
+        self.assertEqual(calls[-1], True)
+
+    def test_an_evening_run_and_a_desk_open_share_one_lock(self):
+        desk = fresh_desk()
+        fake = FakeJobs()
+        with preparation.exclusive(REPO, "pr-nightwork"), fake.patch():
+            self.assertTrue(preparation.running(REPO, "pr"))
+            status, report = preparation.prepare(desk, "pr", 4, trigger="desk")
+        self.assertEqual((status, fake.calls), ("failed", []))
+        self.assertIn("già in corso", report)
+        self.assertFalse(preparation.running(REPO, "pr"))
 
 
 class WithTheFakeAgent(unittest.TestCase):
@@ -249,7 +320,7 @@ class WithTheFakeAgent(unittest.TestCase):
         desk = fresh_desk()
         desk.agent = "claude"
         due = sorted(int(n) for n, kinds in owed(desk).items() if "analysis" in kinds)
-        nightwork.pr_night(desk, 4)
+        preparation.pr_night(desk, 4)
         notes = deskstate.load(REPO)["prs"]
         for n in due:
             note = notes[str(n)]
@@ -269,16 +340,48 @@ class WithTheFakeAgent(unittest.TestCase):
         analyzed = [line for line in self.calls() if line.startswith("pr ")]
         self.assertEqual(sorted(int(line.split()[1]) for line in analyzed), due)
 
-        nightwork.pr_night(desk, 4)
+        preparation.pr_night(desk, 4)
         again = [line for line in self.calls() if line.startswith("pr ")]
         self.assertEqual(again, analyzed, "a current verdict is never bought twice")
+
+    def test_the_desk_opens_and_the_rows_move_into_their_steps(self):
+        provider = get_provider("fixture")
+        cache.clear(REPO)
+        deskstate.save(REPO, {})
+        desk = prdesk.Desk(provider, REPO, "genro", str(ROOT), agent="claude")
+        before = desk.wizard()["review"]
+        self.assertEqual(before["first"], "prepare")
+        self.assertEqual(len(before["pending"]), before["count"])
+        self.assertTrue(before["count"])
+        desk.prepare_async(("pr",))
+        deadline = time.time() + 60
+        while time.time() < deadline:
+            info = desk.wizard()
+            if (info["prepare"]["pr"]["status"] == "done"
+                    and not info["review"]["pending"]):
+                break
+            time.sleep(0.2)
+        after = desk.wizard()["review"]
+        self.assertEqual(after["pending"], [])
+        steps = {step["id"]: [c["n"] for c in step["rows"]] for step in after["steps"]}
+        for stance in ("approve", "changes", "doubt"):
+            self.assertTrue(steps[stance], stance)
+            self.assertTrue(all(("approve", "changes", "doubt")[n % 3] == stance
+                                for n in steps[stance]), stance)
+        self.assertEqual(after["first"], "approve")
+        bought = len(self.calls())
+        desk.prepare_async(("pr",))
+        time.sleep(1)
+        while preparation.running(REPO, "pr"):
+            time.sleep(0.1)
+        self.assertEqual(len(self.calls()), bought, "current analyses start nothing")
 
     def test_a_failed_analysis_costs_only_its_pr(self):
         desk = fresh_desk()
         desk.agent = "claude"
         due = sorted(int(n) for n, kinds in owed(desk).items() if "analysis" in kinds)
         with mock.patch.dict(os.environ, {"FAKE_FAIL": str(due[0])}):
-            done = nightwork.pr_night(desk, 4)
+            done = preparation.pr_night(desk, 4)
         self.assertEqual(done[due[0]]["status"], "error")
         notes = deskstate.load(REPO)["prs"]
         self.assertNotIn("stance", notes.get(str(due[0])) or {})
@@ -288,11 +391,11 @@ class WithTheFakeAgent(unittest.TestCase):
 class Outcome(unittest.TestCase):
 
     def test_nothing_to_do_is_not_a_failure(self):
-        self.assertEqual(nightwork.summary("pr", {}),
+        self.assertEqual(preparation.summary("pr", {}),
                          ("done", "nessuna PR da analizzare"))
 
     def test_work_that_all_failed_is_a_failure(self):
-        status, report = nightwork.summary(
+        status, report = preparation.summary(
             "issue", {7: {"status": "error", "error": "timeout"}})
         self.assertEqual(status, "failed")
         self.assertIn("#7 (timeout)", report)
@@ -301,7 +404,7 @@ class Outcome(unittest.TestCase):
         desk = fresh_desk()
         fake = FakeJobs()
         with fake.patch():
-            status, report = nightwork.night(desk, "pr", 4)
+            status, report = preparation.prepare(desk, "pr", 4)
         state = deskstate.load(REPO)
         run = state["runs"]["pr-nightwork"]
         self.assertEqual((run["status"], run["report"]), (status, report))
@@ -312,19 +415,19 @@ class Outcome(unittest.TestCase):
     def test_a_second_run_of_the_same_kind_refuses_to_start(self):
         desk = fresh_desk()
         fake = FakeJobs()
-        with nightwork.exclusive(REPO, "pr-nightwork") as free, fake.patch():
+        with preparation.exclusive(REPO, "pr-nightwork") as free, fake.patch():
             self.assertTrue(free)
-            status, report = nightwork.night(desk, "pr", 4)
+            status, report = preparation.prepare(desk, "pr", 4)
             self.assertEqual(fake.calls, [])
-            other = nightwork.night(desk, "issue", 4)
+            other = preparation.prepare(desk, "issue", 4)
         self.assertEqual(status, "failed")
         self.assertIn("già in corso", report)
         self.assertEqual(other[0], "done", "the other kind is not held")
 
     def test_a_run_that_breaks_is_recorded_as_failed(self):
         desk = fresh_desk()
-        with mock.patch.object(nightwork, "pr_night", side_effect=RuntimeError("gh down")):
-            status, report = nightwork.night(desk, "pr", 4)
+        with mock.patch.object(preparation, "pr_night", side_effect=RuntimeError("gh down")):
+            status, report = preparation.prepare(desk, "pr", 4)
         self.assertEqual(status, "failed")
         self.assertIn("gh down", deskstate.load(REPO)["runs"]["pr-nightwork"]["report"])
 

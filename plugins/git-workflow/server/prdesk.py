@@ -74,9 +74,11 @@ import gate as gatelib
 import issuecheck
 import jobs
 import notify
+import preparation
 import scope as scopelib
 import threads
 import verdicts
+import wizard as wizardlib
 from providers import PROVIDERS, get_provider
 from verdicts import decorate, handoff, issue_handoff, issue_type
 
@@ -546,6 +548,15 @@ class Desk:
                 "ranked": bool(shortlist and any(r.get("impact")
                                                  for r in shortlist["rows"]))}
 
+    def preparing(self):
+        return {kind: preparation.running(self.repo, kind)
+                for kind in preparation.KINDS}
+
+    def wizard(self):
+        queue = self.queue()
+        return wizardlib.build(queue, deskstate.load(self.repo), self.me,
+                               jobs.active(self.repo), self.preparing())
+
     def live_state(self):
         st = deskstate.load(self.repo)
         active_jobs = jobs.active(self.repo)
@@ -559,6 +570,8 @@ class Desk:
                 "chat": {"attached": bool(chat),
                          "at": (chat or {}).get("at")},
                 "runs": st.get("runs") or {},
+                "prepare": {kind: wizardlib.prepare_info(st, kind, held)
+                            for kind, held in self.preparing().items()},
                 "working": deskstate.working(self.repo, st),
                 "provider_refresh": st.get("provider_refresh"),
                 # the stamp, not the grid: the page reads the reconciled rows
@@ -586,11 +599,19 @@ class Desk:
                          "scope": self.scope_info()},
                 "queue": queue, "issues": issues,
                 "threads": threads.build(queue["rows"], every_issue, self.me),
+                "wizard": wizardlib.build(queue, deskstate.load(self.repo), self.me,
+                                          jobs.active(self.repo), self.preparing()),
                 "state": self.live_state(),
                 "timings": dict(self.timings),
                 "generated": time.strftime("%H:%M:%S")}
 
-    def run_triage(self, flow=None):
+    def prepare_async(self, kinds=preparation.KINDS):
+        """The preparation, behind the caller: the lock keeps a second
+        press, or a run still going from last night, from doubling it."""
+        threading.Thread(target=preparation.prepare_all,
+                         args=(self.members, kinds), daemon=True).start()
+
+    def run_triage(self, flow=None, fresh=True):
         """The explicit triage run, in full: compute the verdicts, PUBLISH the
         keyed grid and the chase blocks, and write the rows file the skill
         reads.
@@ -610,7 +631,7 @@ class Desk:
         a same-day push never preserves one.
         """
         state = deskstate.load(self.repo)
-        rows, _, _, gates = self._queue_facts(refresh=True,
+        rows, _, _, gates = self._queue_facts(refresh=fresh,
                                               complete_gates=True, state=state)
         decorate(rows, self.me, gates)
         for row in rows:
@@ -628,7 +649,7 @@ class Desk:
                 state["chase"] = chase
             deskstate.update(self.repo, publish)
 
-        issues = self.issues(refresh=flow == "issue-triage")
+        issues = self.issues(refresh=fresh and flow == "issue-triage")
         tasks = model_tasks(rows, state.get("prs"), self.me)
         payload = {"repo": self.repo, "me": self.me,
                    "generated": grid["generated"],
@@ -842,6 +863,13 @@ class ScopeDesk:
                         found.append(label)
         return cited
 
+    def wizard(self):
+        return wizardlib.merge(self._each(lambda d: d.wizard()))
+
+    def prepare_async(self, kinds=preparation.KINDS):
+        threading.Thread(target=preparation.prepare_all,
+                         args=(self.members, kinds), daemon=True).start()
+
     def live_state(self):
         parts = [(d.repo, d.live_state()) for d in self.desks]
         feed = [dict(line, repo=repo) for repo, st in parts for line in st["feed"]]
@@ -859,6 +887,10 @@ class ScopeDesk:
         return {"feed": feed[-50:], "flows": merged["flows"],
                 "chat": {"attached": bool(chats), "at": chats[0]["at"] if chats else None},
                 "runs": merged["runs"],
+                "prepare": parts[0][1]["prepare"] if len(parts) == 1 else
+                {kind: next((st["prepare"][kind] for _, st in parts
+                             if st["prepare"][kind]["status"] == "running"),
+                            parts[0][1]["prepare"][kind]) for kind in preparation.KINDS},
                 "working": workings[0] if workings else None,
                 "workings": workings,
                 "provider_refresh": max(refreshes, key=lambda r: r.get("token") or "")
@@ -890,6 +922,7 @@ class ScopeDesk:
                          "scope": self.scope_info()},
                 "queue": queue, "issues": issues,
                 "threads": threads.build(queue["rows"], every_issue, self.me),
+                "wizard": self.wizard(),
                 "state": self.live_state(),
                 "timings": dict(self.timings),
                 "generated": time.strftime("%H:%M:%S")}
@@ -936,6 +969,7 @@ def idle_expired(last_request, now, limit, active_jobs):
 
 class Handler(BaseHTTPRequestHandler):
     desk = None
+    prepare_on_fetch = False
     protocol_version = "HTTP/1.1"      # keep-alive: the UI polls every few seconds
     last_request = time.monotonic()
 
@@ -1007,6 +1041,8 @@ class Handler(BaseHTTPRequestHandler):
             elif url.path == "/api/issues":
                 self._send_tagged(dict(self.desk.issues(refresh),
                                        generated=time.strftime("%H:%M:%S")))
+            elif url.path == "/api/wizard":
+                self._send_tagged(self.desk.wizard())
             elif url.path == "/api/feed":
                 self._send(200, {"feed": self.desk.live_state()["feed"]})
             elif url.path == "/api/state":
@@ -1110,8 +1146,20 @@ class Handler(BaseHTTPRequestHandler):
                         desk.repo, n, desk.me, desk.cwd, desk.agent)}
                 self._send(202, response)
             elif parts == ["api", "fetch"]:
-                # explicit re-read of the provider, on the caller's demand
-                self._send(200, dict(self.desk.snapshot(refresh=True), refetched=True))
+                # explicit re-read of the provider, on the caller's demand; a
+                # PR that moved owes its analysis again, and only that one
+                snapshot = self.desk.snapshot(refresh=True)
+                if self.prepare_on_fetch:
+                    self.desk.prepare_async()
+                self._send(200, dict(snapshot, refetched=True))
+            elif parts == ["api", "prepare"]:
+                kinds = [k for k in body.get("kinds") or preparation.KINDS
+                         if k in preparation.KINDS]
+                if not kinds:
+                    self._send(400, {"error": "unknown preparation kind"})
+                    return
+                self.desk.prepare_async(tuple(kinds))
+                self._send(202, {"started": kinds})
             elif parts == ["api", "rows"]:
                 paths = [str(d.run_triage()) for d in self.desk.members]
                 self._send(200, {"path": paths[0], "paths": paths})
@@ -1343,6 +1391,9 @@ def main():
                              "of starting empty")
     parser.add_argument("--no-prefetch", action="store_true",
                         help="do not warm the provider cache at boot")
+    parser.add_argument("--no-prepare", action="store_true",
+                        help="do not start the analyses the desk owes at boot, nor "
+                             "after a re-read (they wait for POST /api/prepare)")
     parser.add_argument("--keep-cache", action="store_true",
                         help="reuse the previous run's provider cache instead "
                              "of reading the provider again (offline work)")
@@ -1397,6 +1448,9 @@ def main():
     threading.Thread(target=idle_watch, daemon=True).start()
     if not args.no_prefetch:
         desk.prefetch()
+    Handler.prepare_on_fetch = not args.no_prepare
+    if not args.no_prepare:
+        desk.prepare_async()
     for repo in repos:
         deskstate.register_desk(repo, args.desk, port)
     if len(repos) > 1:
