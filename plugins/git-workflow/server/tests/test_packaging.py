@@ -101,6 +101,21 @@ class Packaging(unittest.TestCase):
             for tool in ("Agent", "mcp__ccd_session_mgmt__set_session_title"):
                 self.assertIn(tool, allowed, "%s in %s" % (tool, name))
 
+    def test_the_nightworks_are_explicit_read_only_and_one_side_each(self):
+        """They run unattended at night: nothing may start one by itself, no
+        job they start may write, and the PR and issue sides stay apart."""
+        source = (PLUGIN / "server" / "nightwork.py").read_text()
+        self.assertNotIn("operation(", source)
+        for kind in ("pr", "issue"):
+            name = "%s-nightwork" % kind
+            skill = (PLUGIN / "skills" / name / "SKILL.md").read_text()
+            wrapper = (PLUGIN / "commands" / ("%s.md" % name)).read_text()
+            self.assertIn("disable-model-invocation: true", skill, name)
+            self.assertIn("disable-model-invocation: true", wrapper, name)
+            self.assertIn("skills/%s/SKILL.md" % name, wrapper, name)
+            self.assertIn("--kind %s" % kind, skill, name)
+            self.assertTrue((PLUGIN / "evals" / ("%s-not-auto" % name)).is_dir(), name)
+
     def test_the_desk_opens_in_the_browser_pane_not_as_a_link(self):
         """The port is known only at bind time, so no launch.json recipe can
         open the pane; the tool that does must be named in full, and the

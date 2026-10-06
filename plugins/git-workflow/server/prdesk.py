@@ -629,6 +629,48 @@ class Desk:
         path.write_text(json.dumps(payload, indent=1))
         return path
 
+    def analysis_inputs(self, n):
+        """The keys and the compact evidence a pr-analyze job of PR `n`
+        receives. It READS THE PROVIDER, so callers run it inside the job."""
+        row = next((row for row in self.queue()["rows"]
+                    if row["n"] == n), None)
+        if not row:
+            return {}, {"probe": None}
+        keys = row.get("model_keys") or {}
+        if keys.get("analysis") is None:
+            rows, _, _, gates = self._queue_facts(complete_gates=True)
+            decorate(rows, self.me, gates)
+            row = next((item for item in rows if item["n"] == n), row)
+            keys = row.get("model_keys") or {}
+        try:
+            probe = self.provider.analysis_probe(self.repo, n)
+        except Exception as exc:
+            probe = {"fresh": False, "error": str(exc)[:160]}
+        if (probe and probe.get("fresh") and probe.get("head")
+                and probe["head"] != row.get("head")):
+            rows, _, _, gates = self._queue_facts(
+                refresh=True, complete_gates=True)
+            decorate(rows, self.me, gates)
+            row = next((item for item in rows if item["n"] == n), row)
+            keys = row.get("model_keys") or {}
+        note = ((deskstate.load(self.repo).get("prs") or {})
+                .get(str(n)) or {})
+        cached_problem = (note.get("problem")
+                          if note.get("problem_key") == keys.get("problem")
+                          else None)
+        keys = dict(keys, problem_head=row.get("head"))
+        context = {
+            "row": {key: row.get(key) for key in (
+                "n", "title", "summary", "author", "created", "base",
+                "base_head", "head", "merge", "decision", "req", "reviews",
+                "unresolved", "threads", "closes", "last")},
+            "probe": probe,
+            "cached_problem": cached_problem,
+            "previous_problem": note.get("problem"),
+            "previous_problem_head": note.get("problem_head"),
+        }
+        return keys, context
+
 
 def repo_labels(repos):
     """The short name of each repository on a desk that covers several:
@@ -1143,54 +1185,14 @@ class Handler(BaseHTTPRequestHandler):
                                       "pr-analyze #%s" % n)
         if response is None:
             response = {"job": jobs.analyze_pr(desk.repo, n, desk.me, desk.cwd, desk.agent,
-                                               lambda: self._analysis_inputs(desk, n))}
+                                               lambda: desk.analysis_inputs(n))}
         self._send(202, response)
 
     def _analysis_payload(self, desk, n):
         def build():
-            keys, context = self._analysis_inputs(desk, n)
+            keys, context = desk.analysis_inputs(n)
             return {"analysis_keys": keys, "context": context}
         return build
-
-    def _analysis_inputs(self, desk, n):
-        row = next((row for row in desk.queue()["rows"]
-                    if row["n"] == n), None)
-        if not row:
-            return {}, {"probe": None}
-        keys = row.get("model_keys") or {}
-        if keys.get("analysis") is None:
-            rows, _, _, gates = desk._queue_facts(complete_gates=True)
-            decorate(rows, desk.me, gates)
-            row = next((item for item in rows if item["n"] == n), row)
-            keys = row.get("model_keys") or {}
-        try:
-            probe = desk.provider.analysis_probe(desk.repo, n)
-        except Exception as exc:
-            probe = {"fresh": False, "error": str(exc)[:160]}
-        if (probe and probe.get("fresh") and probe.get("head")
-                and probe["head"] != row.get("head")):
-            rows, _, _, gates = desk._queue_facts(
-                refresh=True, complete_gates=True)
-            decorate(rows, desk.me, gates)
-            row = next((item for item in rows if item["n"] == n), row)
-            keys = row.get("model_keys") or {}
-        note = ((deskstate.load(desk.repo).get("prs") or {})
-                .get(str(n)) or {})
-        cached_problem = (note.get("problem")
-                          if note.get("problem_key") == keys.get("problem")
-                          else None)
-        keys = dict(keys, problem_head=row.get("head"))
-        context = {
-            "row": {key: row.get(key) for key in (
-                "n", "title", "summary", "author", "created", "base",
-                "base_head", "head", "merge", "decision", "req", "reviews",
-                "unresolved", "threads", "closes", "last")},
-            "probe": probe,
-            "cached_problem": cached_problem,
-            "previous_problem": note.get("problem"),
-            "previous_problem_head": note.get("problem_head"),
-        }
-        return keys, context
 
     def _chat_handoff(self, desk, kind, n, payload, label, key=None):
         """Route the click to the attached chat instead of a one-shot agent.
@@ -1268,6 +1270,29 @@ def held_elsewhere(repos, kind):
     return held
 
 
+def build_desks(repos=(), orgs=(), folder=None, clones=(), provider=None, me=None,
+                kind="pr", agent="auto"):
+    """The scope's name and one Desk per member, as the server builds them."""
+    name, members = scopelib.build(repos=list(repos), orgs=list(orgs), folder=folder,
+                                   clone_roots=list(clones), provider=provider,
+                                   get_provider=get_provider)
+    launch = str(Path.cwd())
+    if len(members) == 1 and not members[0]["cwd"]:
+        members[0]["cwd"] = launch      # one repository: the cwd is its checkout
+    providers = {}
+
+    def provider_of(member):
+        key = (member["provider"], member["host"])
+        if key not in providers:
+            providers[key] = get_provider(*key)
+        return providers[key]
+
+    me = me or provider_of(members[0]).whoami()
+    return name, [Desk(provider_of(m), m["repo"], me, m["cwd"] or launch, chat=False,
+                       kind=kind, agent=agent, clone=bool(m["cwd"]))
+                  for m in members]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", action="append", default=[],
@@ -1304,22 +1329,10 @@ def main():
                              "of reading the provider again (offline work)")
     args = parser.parse_args()
 
-    name, members = scopelib.build(repos=args.repo, orgs=args.org, folder=args.folder,
-                                   clone_roots=args.clones, provider=args.provider,
-                                   get_provider=get_provider)
-    launch = str(Path.cwd())
-    if len(members) == 1 and not members[0]["cwd"]:
-        members[0]["cwd"] = launch      # one repository: the cwd is its checkout
-    providers = {}
-
-    def provider_of(member):
-        key = (member["provider"], member["host"])
-        if key not in providers:
-            providers[key] = get_provider(*key)
-        return providers[key]
-
-    me = args.me or provider_of(members[0]).whoami()
-    repos = [m["repo"] for m in members]
+    name, desks = build_desks(args.repo, args.org, args.folder, args.clones,
+                              args.provider, args.me, args.desk, args.agent)
+    me = desks[0].me
+    repos = [d.repo for d in desks]
     server, running = open_server(args.desk, name, args.port)
     if running:
         sys.stderr.write("%s desk already running for %s\n%s desk on %s\n"
@@ -1341,9 +1354,6 @@ def main():
     cache_action = ("kept" if args.keep_cache else
                     ",".join(sorted({cache.reset(repo) for repo in repos})))
 
-    desks = [Desk(provider_of(m), m["repo"], me, m["cwd"] or launch, chat=False,
-                  kind=args.desk, agent=args.agent, clone=bool(m["cwd"]))
-             for m in members]
     desk = desks[0] if len(desks) == 1 else ScopeDesk(name, desks, me, args.desk, args.agent)
     Handler.desk = desk
     Handler.last_request = time.monotonic()

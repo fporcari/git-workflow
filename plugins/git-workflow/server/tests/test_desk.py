@@ -856,9 +856,7 @@ class HeadlessAgents(unittest.TestCase):
             "problem": "verified problem",
             "problem_key": row["model_keys"]["problem"],
             "problem_head": row["head"]}}})
-        handler = object.__new__(prdesk.Handler)
-        handler.desk = desk
-        keys, context = handler._analysis_inputs(desk, 1145)
+        keys, context = desk.analysis_inputs(1145)
         self.assertEqual(context["cached_problem"], "verified problem")
         self.assertEqual(context["previous_problem_head"], row["head"])
         self.assertTrue(context["probe"]["fresh"])
@@ -870,9 +868,7 @@ class HeadlessAgents(unittest.TestCase):
         source = next(row for row in desk.provider.data["rows"]
                       if row["n"] == 1145)
         source["head"] = "head-seen-by-probe"
-        handler = object.__new__(prdesk.Handler)
-        handler.desk = desk
-        keys, context = handler._analysis_inputs(desk, 1145)
+        keys, context = desk.analysis_inputs(1145)
         self.assertEqual(context["probe"]["head"], "head-seen-by-probe")
         self.assertEqual(keys["problem_head"], "head-seen-by-probe")
 
@@ -2935,12 +2931,12 @@ class AttachedChat(unittest.TestCase):
         started = threading.Event()
         release = threading.Event()
 
-        def slow_inputs(self_, desk, n):
+        def slow_inputs(self_, n):
             started.set()
             release.wait(5)
             return {"analysis": "k1"}, {"probe": None, "row": {"n": n}}
 
-        with mock.patch.object(prdesk.Handler, "_analysis_inputs", slow_inputs):
+        with mock.patch.object(prdesk.Desk, "analysis_inputs", slow_inputs):
             status, payload = self.post("/api/pr/1145/analyze")
             self.assertEqual((status, payload["via"]), (202, "chat"))
             self.assertTrue(started.wait(2))
@@ -2961,10 +2957,10 @@ class AttachedChat(unittest.TestCase):
     def test_a_context_the_desk_cannot_read_fails_the_request(self):
         deskstate.chat_heartbeat(REPO, "test-chat")
 
-        def broken(self_, desk, n):
+        def broken(self_, n):
             raise RuntimeError("provider down")
 
-        with mock.patch.object(prdesk.Handler, "_analysis_inputs", broken):
+        with mock.patch.object(prdesk.Desk, "analysis_inputs", broken):
             self.post("/api/pr/1145/analyze")
             for _ in range(50):
                 record = deskstate.load(REPO)["requests"]["analyze:1145"]
