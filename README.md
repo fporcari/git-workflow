@@ -120,16 +120,21 @@ launch recipe is the repo's own (a `run`/`ui-test` project skill or
 /git-desk
 ```
 
-One page, with Pull request, Issue and Filoni as tabs. It opens in the browser, reads
-provider/cache JSON itself and paints in seconds. Opening or polling it spends
-no model tokens; an explicit action button starts one ephemeral Codex or
-Claude process and records its progress and result in a job JSON. While it
-runs, the desk shows elapsed time, current phase and sanitized tool activity;
-opening the progress view does not attach the primary conversation. The
-launching chat is titled `Git desk · owner/repo · 2026-09-09 14:32` when the
-desk opens and gets a ` · closed` suffix once the desk is gone — the server
-registers itself at boot, and the chat's listener ends by itself when the
-desk has stopped — so the session list tells the two apart.
+A wizard over four sections — **Da rivedere** (somebody else's PRs whose
+review is asked of you), **Mie** (your own), **Issue**, **A chi tocca** (per
+person, whose move it is) — in a pane beside the chat on Claude Code, or in
+the browser on Codex and on a wide screen. It opens on facts in seconds and
+prepares in background only what is new or changed since the last
+preparation — the nightwork's own work, so a desk opened the morning after
+`/pr-nightwork` has nothing left to read. Da rivedere then asks you three
+things: approve the PRs the analysis would sign (prechecked, one key), send
+the changes it would ask for (prechecked, the motivation editable under the
+row), and decide the doubtful ones, one at a time, with the hunk and the
+leaning in front of you. The merge stays with the author. The launching chat
+is titled `Git desk · owner/repo · 2026-09-09 14:32` when the desk opens and
+gets a ` · closed` suffix once the desk is gone — the server registers itself
+at boot, and the chat's listener ends by itself when the desk has stopped —
+so the session list tells the two apart.
 
 Attached clicks carry the originating desk, owning session and a unique
 request ID. A second chat cannot silently take over a live desk. Each chat
@@ -169,17 +174,19 @@ succeeded.
 
 | skill | what it does |
 |---|---|
-| **`pr-analyze`** | One PR, read properly: a compact fresh probe first, reusing the desk's normalized row and any still-valid problem statement. When only the head changed after a review, it compares the reviewed SHA with the new head and stops before the full diff if PR-owned behaviour is unchanged. Otherwise it gathers the complete snapshot and diff once. Exact local Git objects accelerate reads without trusting the working tree. Returns author / problem / history / one proposal, asks for confirmation, and prepares any draft worth posting. Read-only — never posts, never pushes. Used headless by the desk's Analizza button. |
+| **`pr-analyze`** | One PR, read properly: a compact fresh probe first, reusing the desk's normalized row and any still-valid problem statement. When only the head changed after a review, it compares the reviewed SHA with the new head and stops before the full diff if PR-owned behaviour is unchanged. Otherwise it gathers the complete snapshot and diff once. Exact local Git objects accelerate reads without trusting the working tree. Returns author / problem / history / one proposal and the verdict the desk sorts by — approve, changes with the review body, doubt with its hunk; on your own PR fix or decide with three options — asks for confirmation, and prepares any draft worth posting, never signed by the tool that wrote it. Read-only — never posts, never pushes. Run headless by the desk's preparation and by the nightwork. |
 | **`issue-analyze`** | One issue, in a virgin context: verify the root cause in the actual code (DEFECT), walk the reuse ladder (REQUEST), find the proving line (QUESTION/DOCS). Returns a typed verdict with the minimal change and a verification plan. Read-only — never branches, never comments. |
 | **`issue-work`** | The mandate of a session spawned for a single issue: analyze it fresh, then either fix it in a worktree and open the PR when it is one coherent change, or lay out the phases it really needs. |
 
 ### Prepare overnight — read-only
 
 Both are **explicit-invocation only**: launched by hand in the evening, they
-start the jobs the desk would start in the morning and nothing else, with the
-read-only `ANALYZE` profile. Every result is keyed to the PR or issue as it
-was read, so whatever moves before morning shows as stale and is asked for
-again. Nothing is posted, pushed or assigned.
+run the preparation the desk runs when it opens (`server/preparation.py`) and
+nothing else, with the read-only `ANALYZE` profile. Every result is keyed to
+the PR or issue as it was read, so whatever moves before morning shows as
+stale and is the only thing prepared again at open; the two triggers share
+one lock per kind and repository, so an evening run still going is shown by
+the desk, not doubled. Nothing is posted, pushed or assigned.
 
 | skill | what it does |
 |---|---|
@@ -190,32 +197,42 @@ again. Nothing is posted, pushed or assigned.
 
 | skill | what it does |
 |---|---|
-| **`git-desk`** | The detached dashboard (default port 8399, a free one when that is taken), one page with three tabs. *Pull request*: the PR queue. *Issue*: the cross-check and the shortlist computed without a model on every read, only the issues still to take — unassigned or yours, and cited by no open PR (the lead line counts what it leaves out), the resolution order, urgency and dependencies from `issue-triage` shown on every row, an analysis marked *da aggiornare* when its issue has moved since. *Filoni*: PRs and the issues they close, read together. Startup, reload and polling use Python/provider JSON only; the launching chat stays attached by default and executes every click except triage, which — like every click on a detached desk — starts one ephemeral Codex or Claude process. The skill also defines the JSON/job contract. |
+| **`git-desk`** | The detached desk server (default port 8399, a free one when that is taken) and its four wizards. *Da rivedere*: Approvabili, Da respingere, Dubbie, Fatto. *Mie*: Da mergiare, Le sistema Claude, Da decidere, In attesa — your own PRs are merged, fixed or answered, never approved. *Issue*: Da chiudere (already fixed by a merged PR), Le fa Claude (easy, single-phase, nobody's), Da decidere, Fatto. *A chi tocca*: per person, the PRs and issues whose next move is theirs, with the chase to paste. It prepares at boot what is new or changed; the launching chat stays attached by default and executes every click — reviews and closings only there, with the command echoed. The skill also defines the JSON/job contract. |
 
 `plugins/git-workflow/server/` is the code under it: a zero-dependency
-Python stdlib server that reads the provider, prepares explicit triage work,
-and serves one page.
+Python stdlib server that reads the provider, prepares the analyses the desk
+owes, computes the wizard (`wizard.py`) and serves one page.
 
-### `desk-band` — the desk in the chat, Claude Code only
+### The pane — the desk in the chat, Claude Code only
 
-A separate plugin of the same marketplace, a Claude Code mod (function
-hooks), for the chat a desk is attached to:
+The plugin carries a Claude Code mod (function hooks, `hooks/register.tsx`)
+for the chat a desk is attached to. It was the separate `desk-band` plugin
+up to 0.58; if you installed it, remove it with
+`claude plugin uninstall desk-band@fporcari`.
 
-```bash
-claude plugin install desk-band@fporcari
-```
-
-- **a band above the prompt**, one row per desk request of this chat, tagged
-  `PR` (magenta) or `ISSUE` (green): in coda, in chat ora, in background,
+- **`/desk`**, a pane docked beside the chat and drawn with the host's own
+  elements, so it takes the host's theme: the same four wizards as the page,
+  the same clicks, the zoom on one PR widening the pane; a narrow pane
+  collapses the steps to numbers and keeps the why line. With no desk open it
+  offers to launch one in this chat; the `git-desk` skill opens it with the
+  mod's `desk_pane` tool instead of the Browser pane;
+- **a band above the prompt**: the wizard's step, or the doubt in view with
+  its A / R / S keys, and one row per desk request of this chat, tagged `PR`
+  (magenta) or `ISSUE` (green): in coda, in chat ora, in background,
   **aspetta te** first and in yellow;
-- **a status line** `PR ⏳1 ⏸1 · ISSUE ⏳1`: what works, what waits for you;
-- **a toast** only when a loop starts waiting for you or closes;
-- **a guard on a bare `vai`**: with two loops waiting for an answer it does
-  not enter and asks which one; with one, the chat is told which it answers.
+- **a status line** `PR ✓8 ✕3 ?4 ⏳1 · ISSUE 5 per Claude`: what the desk
+  holds, what works, what waits for you;
+- **a toast** when a preparation ends, and when a loop starts waiting for
+  you or closes;
+- **a guard on a bare `vai`**: with two candidates waiting for an answer it
+  does not enter and asks which one; with one loop, the chat is told which it
+  answers; with a doubt in view, the vai is that doubt's leaning, sent as its
+  desk click and said beside the message.
 
 It reads the desk state files under `~/.local/state/git-workflow/` every four
-seconds, re-reading only a file that changed; no model, no network.
-`claude plugin test plugins/desk-band` runs its tests.
+seconds, re-reading only a file that changed, and the wizard from the desk's
+own server; no model. `claude plugin test plugins/git-workflow` runs its
+tests.
 
 ## The dashboard
 
@@ -228,17 +245,19 @@ python3 plugins/git-workflow/server/prdesk.py --org erpy   # every repo of an ow
 cd ~/Development/erpy-org && python3 …/prdesk.py           # a folder of clones
 ```
 
-**One page, three views.** Pull request, Issue and Filoni are tabs of the
-same page, whichever desk you launched: the server already reads both, and
-Filoni pairs every open issue with the PR that closes or cites it —
-`owner/repo#n` included — grouped by who has to move, with a strip of the
-people involved on top. The layout is built for a tall, narrow pane (the
-Browser pane beside the chat on a portrait screen): two-line rows, the
-detail under the list with a handle to move the split, filter chips instead
-of a metrics row. On a wide window the detail moves beside the list. ⌘K
-opens every action of the page — the picked rows, the selected row, the
-views, the chase messages, the scope — and `j`/`k`, `x`, `a`, `g p`/`g i`/`g f`
-work without it.
+**Four sections, a wizard each.** One header row of 40px holds Da rivedere,
+Mie, Issue and A chi tocca with their counts; under it the section's steps,
+and the page opens on the first one with something to do. Rows are two lines
+— the title and why the analysis put it there — with a git icon that opens
+GitHub in one named window, reused. Space, or *Vedi tutta la situazione*,
+opens the zoom on one PR: in brief, why it is doubtful, the one hunk that
+shows it, what was verified and what not, the story, the state, the linked
+issues; Esc goes back, `j`/`k` move to the neighbour. `x` checks, `o` opens
+GitHub, ⏎ is the step's key, `a`/`r`/`s` answer a doubt. No preview, no
+Analizza, no logs on the page: one status bar at the bottom with an Attività
+drawer opened on demand. Colours follow the system's light or dark theme and
+a choice kept by the theme key; a narrow window collapses the steps to
+numbers.
 
 **A scope of several repositories.** `--org [host/]owner` covers every
 repository of that owner with an open issue or PR (one cross-repo search: no
@@ -258,33 +277,33 @@ for PRs and 8398 for issues when free, a free port the OS picks when another
 repo or the sibling desk holds it, and the running server's URL when the same
 desk of the same repo is already up (then the new process just exits). An
 explicit `--port` is strict. A desk idle for an hour with no job running exits
-on its own (`--idle-exit`). Clicking a row opens the detail panel: the next
-move with the `pr-loop` autorun class first, then what the PR solves, the
-state of play, reviews and linked issues.
+on its own (`--idle-exit`).
 
 Options: `--repo` (repeatable), `--org`, `--folder`, `--clones`,
 `--provider github|forgejo|fixture`, `--me`, `--port`,
 `--idle-exit`, `--agent auto|claude|codex`, `--keep-state`, `--keep-cache`,
-`--no-prefetch`.
+`--no-prefetch`, `--no-prepare`.
 
-**It does not triage at startup.** It fetches the provider itself and paints
-in seconds. Reload performs the same pure fetch. Pressing the triage button
-reads the provider fresh, computes and publishes the whole grid on the spot,
-then starts one ephemeral agent only if the freshly exported rows need model
-work. `model_tasks` names only the stale analysis or conflict artifacts;
-`needs_model` remains their compatibility list of PR numbers.
-From then on the triage is durable: a PR the provider moves is re-verdicted
-by the engine on every read and the grid survives a desk relaunch; only a PR
-no press has ever seen is marked as never triaged.
-Completing a loop or order asks every open tab for one fresh provider snapshot;
-fact refreshes do not relaunch triage or spend model tokens.
+**It prepares at startup, and never blocks on it.** It fetches the provider
+itself and paints in seconds; then, in a thread of its own, it runs the
+preparation — the grid, one `pr-analyze` job per PR whose analysis is missing
+or stale, four at a time, the conflict readings owed on your `DIRTY` PRs,
+then the issue ranking and the shortlist's analyses. A PR that did not move
+since the last preparation keeps its verdict and costs nothing; each row
+moves into its step as its job lands, and you work on the ready ones
+meanwhile. `model_tasks` names only the stale analysis or conflict
+artifacts. A re-read prepares again what moved; `--no-prepare` leaves it to
+`POST /api/prepare`. Completing a loop, an order or a review asks every open
+tab for one fresh provider snapshot.
 
-**Choosing what the loop works.** cmd-click (shift-click for a stretch) picks
-rows; ▶ then runs `pr-loop`/`issue-loop` on **exactly those, in that order,
-and stops**. More than one picked is a background batch: the chat parks the
-request (`running` on the row), takes the next click while its agents work,
-and comes back with the digest. The same mandate is typed directly at the
-skill: `/pr-loop 1145,1128 batch=2`.
+**Public clicks are exact.** *Approva tutte e N*, *Invia le richieste* and
+*Chiudi* carry the rows shown, on the head shown, with the text shown, to the
+attached chat, which runs them with the command echoed (`▶ approva #1164
+#1163`); a PR that moved since you saw it is refused, your own PR is never
+approvable, and without an attached chat the key does not leave. Mie and
+Issue hand their checked rows to `pr-loop`/`issue-loop` as one batch, exactly
+those, in that order. The same mandate is typed directly at the skill:
+`/pr-loop 1145,1128 batch=2`.
 
 Acting belongs to the skills, which log every action on the PR itself.
 
@@ -338,6 +357,8 @@ gw issue create --title T --body-file F [--label L] [--assignee @me]
 gw pr create --title T --body-file F --head BRANCH [--base B] [--draft] [--label L] [--assignee @me] [--reviewer L]
 gw pr edit <n> --add-reviewer L · pr comment <n> --body-file F · issue edit · issue comment
 gw pr merge <n> [--squash] [--delete-branch] · pr verified <n> --sha SHA
+gw pr review <n> --approve|--request-changes --commit SHA [--body-file F]
+gw issue close <n> --body-file F
 gw label ensure NAME [--color HEX] [--description D]
 gw api <endpoint> [-X METHOD] [-f k=v] [-F k=json]   # {repo} expands to owner/repo
 ```
@@ -348,7 +369,9 @@ host is unknown. `pr create` refuses a reviewer who is not a collaborator and
 exits 1 when the body's `Fixes #n` linked nothing. `pr merge` reads the PR
 back and reports the state of every issue its body closes. `-f` sends a
 string, `-F` a JSON value — a form field typed as a bool refuses the string.
-There is no verb that rewrites a PR body.
+`pr review` reviews the head you read or nothing (a moved head, your own PR,
+an empty motivation are refused), and `pr review` and `issue close` refuse a
+text that credits a tool. There is no verb that rewrites a PR body.
 
 ## Tests
 
@@ -361,8 +384,23 @@ The Python suite covers the row contract, verdict engine, merge gate,
 five-block partition, issue cross-check, cache and cross-host packaging
 invariants (`test_packaging.py`). The UI checks drive the **real**
 `static/index.html` against a **real** desk process through a small DOM shim,
-so it is the page's own render path that runs.
+so it is the page's own render path that runs, on a desk the real
+preparation filled with a fake `claude` (`tests/fixtures/fake_claude.py`).
 `plugins/git-workflow/server/tests/README.md` says what each file is for.
+The pane's tests run with `claude plugin test plugins/git-workflow`, on the
+terminal, desktop and mobile surfaces.
+
+## The desk as a wizard — 0.59.0
+
+The desk was redesigned for a 13" screen and for reviewing other people's
+PRs in minutes: four sections in one header row, a wizard per section, the
+doubtful PRs the only ones that need you, a zoom where details are needed,
+no preview and no logs. The analysis gained a structured verdict, the
+nightwork became the preparation the desk also runs at boot, reviews and
+issue closings became desk clicks the attached chat executes, and the
+`desk-band` mod moved into this plugin as the `/desk` pane — uninstall
+`desk-band@fporcari` if you had it. Restart running desks and chat listeners
+after the update.
 
 ## Codex compatibility update — 0.57.0
 

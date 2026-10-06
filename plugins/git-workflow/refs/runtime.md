@@ -26,7 +26,8 @@ Never split one batch into several questions merely to fit a tool schema.
 ## Desks
 
 Start the desk with `--desk pr` and the current host as its one-shot agent
-backend; Pull request, Issue and Filoni are tabs of that one page:
+backend; Da rivedere, Mie, Issue and A chi tocca are sections of that one
+desk:
 
 ```sh
 python3 <PLUGIN_ROOT>/server/prdesk.py --desk pr --agent codex
@@ -37,13 +38,16 @@ Start it in the background with stderr on a log and open the URL of the
 at bind time (default when free, otherwise one the OS picks, or the running
 twin's URL), so no launch configuration may hard-code it.
 
-- Claude Code: open it in the Browser pane beside the chat with
-  `mcp__Claude_Browser__preview_start`, `url` set to the printed URL
-  (`mcp__Claude_Browser__navigate` does the same once the pane is open). The
-  pane IS the desk; a pasted link is not it. The page is local, served on
-  127.0.0.1 by the process just started: no login, nothing to state or ask
-  first — open it. Not the `launch.json` browser-preview recipe: it needs a
-  port known in advance.
+- Claude Code: call the plugin's `mcp__git-workflow__desk_pane` tool, which
+  opens the `/desk` pane the plugin's mod draws beside the chat in the host's
+  own theme, and keep the session id its answer names for the listener.
+  Where the tool does not exist (a host that loads no mods), open the URL in
+  the Browser pane beside the chat with `mcp__Claude_Browser__preview_start`,
+  `url` set to the printed URL (`mcp__Claude_Browser__navigate` does the same
+  once the pane is open). Either pane IS the desk; a pasted link is not it.
+  The page is local, served on 127.0.0.1 by the process just started: no
+  login, nothing to state or ask first — open it. Not the `launch.json`
+  browser-preview recipe: it needs a port known in advance.
 - Codex: start the process in a persistent terminal session, then call
   `mcp__codex_app__open_in_codex` with target `{"type":"browser","url":<printed URL>}`.
   The opening URL is local; no login is needed. Use the returned URL, never
@@ -102,8 +106,10 @@ would make existing review comments read as nonsense. Rewriting another
 author's description remains outside automatic actions.
 
 The server is detached from the launching conversation. It reads provider
-cache, rows and job JSON files by itself, and it never starts a model merely
-because the desk is open or polling. The launching conversation stays
+cache, rows and job JSON files by itself; it never starts a model because a
+page is open or polling, and at boot it starts only the read-only jobs of
+the preparation for the analyses that are new or changed (`--no-prepare`
+turns that off). The launching conversation stays
 ATTACHED by default: on Claude Code through one persistent `Monitor` running
 `chatdesk.py listen`, on Codex through the `chatdesk.py wait --timeout 50` loop, yielding within
 60 seconds and resuming the same command session until it returns.

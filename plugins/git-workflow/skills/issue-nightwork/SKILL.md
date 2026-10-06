@@ -13,11 +13,12 @@ disable-model-invocation: true
 
 Read `<PLUGIN_ROOT>/refs/runtime.md` first.
 
-It does tonight what the desk would ask for in the morning, and nothing else.
+It does tonight what the desk would do when it opens, and nothing else: it is
+the same preparation (`server/preparation.py`).
 The shortlist is the desk's own filter, computed without a model: the open
 issues nobody is assigned to, that no open PR cites, and that the user never
 commented — the ones he missed. One issue-triage pass ranks them; then each
-gets the analysis the desk's issue button starts, with the same read-only
+gets the analysis the desk's preparation starts, with the same read-only
 profile (`ANALYZE` in runtime.md → *Model policy*), unless the one it has is
 newer than the issue's last activity. Nothing is branched, posted, assigned
 or commented.
@@ -39,8 +40,9 @@ caffeinate -i python3 <PLUGIN_ROOT>/server/nightwork.py --kind issue --agent <cl
 does not exist. `--parallel N` sets how many analyses run at once (default 4).
 
 Tell the user in one line that it is running, that the machine must stay on
-until it ends, and that a desk opened meanwhile shows the analyses as they
-land. Then wait for the exit; do not poll the log.
+until it ends, and that a desk opened meanwhile shows the issues moving into
+their steps — to close, for Claude, to decide — as they land. Then wait for
+the exit; do not poll the log.
 
 ## Report
 
@@ -51,5 +53,7 @@ Say it in Italian and stop. The same report is saved under
 `runs.issue-nightwork` in the desk state and as a line of the desk's feed.
 
 A failed ranking does not stop the analyses: they follow the shortlist's
-date order instead. A run started while another issue nightwork is alive on
-the same repository refuses to start and says so.
+date order instead. A run started while another issue preparation is alive
+on the same repository — this command or a desk opening — refuses to start
+and says so; a desk opened while this one runs shows it instead of doubling
+it.

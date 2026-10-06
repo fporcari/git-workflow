@@ -1,6 +1,6 @@
 {
   "name": "git-workflow",
-  "version": "0.59.0+codex.20261006",
+  "version": "0.59.0+codex.20261007",
   "description": "A repository workflow toolkit with detached PR and issue desks whose explicit actions run visible, ephemeral agents.",
   "author": {
     "name": "Francesco Porcari",
@@ -21,7 +21,7 @@
   "interface": {
     "displayName": "Git Workflow",
     "shortDescription": "Drain pull request and issue queues safely.",
-    "longDescription": "Serve pull requests and issues from local/provider JSON, explicitly triage them with fingerprinted verdicts, and show sanitized live progress from agent processes started only for requested analyses or approved work.",
+    "longDescription": "Serve pull requests and issues from local/provider JSON as a wizard — approvable, to reject, doubtful, your own to merge or fix, issues to close or hand over — prepared in background by read-only agents for what is new or changed, with sanitized live progress and every approved action run visibly in the attached chat.",
     "developerName": "Francesco Porcari",
     "category": "Developer Tools",
     "capabilities": [
