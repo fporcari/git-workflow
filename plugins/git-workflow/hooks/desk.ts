@@ -23,7 +23,7 @@ const BUDGET: Record<string, number> = {
   preparing: 1800, queued: 1800, taken: 3600, running: 3600, 'needs-input': 86400,
 }
 const CLOSED = ['done', 'failed']
-const ISSUE_KINDS = ['issue-analyze']
+const ISSUE_KINDS = ['issue-analyze', 'close']
 const ISSUE_FLOWS = ['issue-loop', 'issue-triage']
 
 export const OPEN = Object.keys(BUDGET)
@@ -105,18 +105,18 @@ export function transitions(before: Record<string, string>, items: DeskItem[]): 
   return out
 }
 
-export function statusLine(items: DeskItem[]): string | undefined {
+/** `PR ✓8 ✕3 ?4 ⏳1 · ISSUE 5 per Claude`: what the desk holds, then what works and waits. */
+export function statusLine(items: DeskItem[], desk: Partial<Record<Tag, string>> = {}): string | undefined {
   const open = items.filter(isOpen)
-  if (!open.length) return undefined
   const parts: string[] = []
   for (const tag of ['PR', 'ISSUE'] as const) {
     const mine = open.filter(i => i.tag === tag)
-    if (!mine.length) continue
     const wait = mine.filter(i => i.status === 'needs-input').length
     const busy = mine.length - wait
-    parts.push(`${tag}${busy ? ` ⏳${busy}` : ''}${wait ? ` ⏸${wait}` : ''}`)
+    const words = [desk[tag], busy ? `⏳${busy}` : '', wait ? `⏸${wait}` : ''].filter(Boolean)
+    if (words.length) parts.push(`${tag} ${words.join(' ')}`)
   }
-  return parts.join(' · ')
+  return parts.length ? parts.join(' · ') : undefined
 }
 
 const GO = /^\s*(vai|ok|okay|si|sì|procedi|tutte vai|vai su tutte|go)\s*[.!]*\s*$/i
@@ -124,3 +124,30 @@ const GO = /^\s*(vai|ok|okay|si|sì|procedi|tutte vai|vai su tutte|go)\s*[.!]*\s
 export const bareGoAhead = (text: string) => GO.test(text)
 
 export const waiting = (items: DeskItem[]) => items.filter(i => i.status === 'needs-input')
+
+// deskstate.CHAT_STALE: a heartbeat older than this is no chat
+const CHAT_STALE = 45
+
+type Mark = { port?: number; stopped?: string }
+type Chat = { epoch?: number }
+export type StateFile = { mtime: number; state: unknown }
+export type Target = { port: number; repo: string; attached: boolean }
+
+export const repoOf = (fileName: string) => fileName.replace(/\.json$/, '').replace('__', '/')
+
+/** The desk this chat drives: the one it is attached to, else the one touched last.
+ *  `attached`: some chat listens to it, so the server has a chat to route a click to. */
+export function deskTarget(files: Record<string, StateFile>, session: string, nowSec: number): Target | null {
+  const found: (Target & { mine: boolean; mtime: number })[] = []
+  for (const [fileName, file] of Object.entries(files)) {
+    const s = file.state as { desks?: { pr?: Mark }; chats?: Record<string, Chat> } | null
+    const mark = s?.desks?.pr
+    if (!mark?.port || mark.stopped) continue
+    const chats = s?.chats ?? {}
+    found.push({ port: mark.port, repo: repoOf(fileName), mtime: file.mtime, mine: session in chats,
+                 attached: Object.values(chats).some(chat => nowSec - (chat.epoch ?? 0) <= CHAT_STALE) })
+  }
+  found.sort((a, b) => Number(b.mine) - Number(a.mine) || b.mtime - a.mtime)
+  const best = found[0]
+  return best ? { port: best.port, repo: best.repo, attached: best.attached } : null
+}

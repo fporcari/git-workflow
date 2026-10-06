@@ -11,7 +11,7 @@ const TYPED = { wait: false, origin: { kind: 'composer' } } as const
 // instead, and stands for the engine beneath the prompt and the band
 const seed = (on: On, items: DeskItem[]) => {
   on('state.get', ($, e, next) =>
-    e.plugin === 'desk-band' && e.key === 'items' ? { value: { value: items, version: 1 } } : next(e))
+    e.plugin === 'git-workflow' && e.key === 'items' ? { value: { value: items, version: 1 } } : next(e))
   on('prompt.submit', ($, e) => ({ text: e.text, context: e.context, origin: e.origin }))
   on('ui.render', ($, e) => {
     const { Text } = $.ui.resolve(e)
@@ -116,7 +116,7 @@ describe('the guard on a bare vai', () => {
 
 describe('the band', () => {
   const BAND = {
-    plugin: 'desk-band', component: 'AbovePrompt',
+    plugin: 'git-workflow', component: 'AbovePrompt',
     props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 120,
              scroll: { offset: 0, bodyRows: 10 }, view: {} },
   } as const
