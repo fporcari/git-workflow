@@ -74,8 +74,10 @@ computes in 0.07 ms — and a row dropped in the copy reads as a PR nobody ever
 triaged. Your job is only what the fields cannot answer, and **only the
 artifacts in `model_tasks`**. An `analysis` task needs the diff or review read;
 a `conflict` task needs the current head/base conflict classified as mechanical
-or substantive. Write the matching key from that row's `model_keys` with the
-artifact, so unrelated provider changes do not rebuy it and a same-day push
+or substantive. An `analysis` item carries the same verdict a `pr-analyze`
+result does (`stance`, `why` and the fields its stance needs, that skill's
+§4); a `conflict`-only item leaves them `null`. Write the matching key from
+that row's `model_keys` with the artifact, so unrelated provider changes do not rebuy it and a same-day push
 cannot leave it current. One-line explanations are separate `explain` events,
 never bulk triage work. Also report §8's three repo-level findings.
 

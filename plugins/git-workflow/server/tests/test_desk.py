@@ -644,7 +644,10 @@ class HeadlessAgents(unittest.TestCase):
     RESULT = {"n": 17, "author": "alice", "problem": "problema",
               "history": "storia",
               "propose": "proposta", "draft": None,
-              "verified": ["diff"], "not_verified": ["CI"]}
+              "verified": ["diff"], "not_verified": ["CI"],
+              "stance": "approve", "why": "piccola, con il test",
+              "doubt": None, "lean": None, "hunk": None, "ask": None,
+              "options": None}
 
     def test_codex_command_is_ephemeral_and_read_only(self):
         command = jobs.command("codex", "prompt", jobs.READ_TOOLS,
@@ -815,6 +818,56 @@ class HeadlessAgents(unittest.TestCase):
         jobs.persist(repo, self.RESULT, "k2")
         self.assertNotIn("plan", deskstate.load(repo)["prs"]["17"])
 
+    def _parse(self, **fields):
+        return jobs.parse_result("claude", json.dumps({
+            "result": json.dumps(dict(self.RESULT, **fields))}), expected_n=17)
+
+    def test_each_stance_carries_what_its_step_needs(self):
+        doubt = {"stance": "doubt", "doubt": "l'ordine dei trigger cambia",
+                 "lean": "changes", "draft": "Please pin the order with a test.",
+                 "hunk": {"path": "gnrjs/gnrbag.js", "header": "@@ -1204,9 +1204,11 @@"}}
+        self.assertEqual(self._parse(**doubt)["lean"], "changes")
+        decide = {"stance": "decide", "ask": "Dividila in tre",
+                  "options": ["dividila", "rispondi", "lascia com'è"]}
+        self.assertEqual(len(self._parse(**decide)["options"]), 3)
+        for fields, error in (
+                ({"stance": "merge"}, "unknown stance"),
+                ({"why": " "}, "no why line"),
+                ({"stance": "changes"}, "without a motivation"),
+                (dict(doubt, lean=None), "without its text or leaning"),
+                (dict(doubt, doubt=""), "without its text or leaning"),
+                (dict(doubt, draft=None), "leans to changes without a motivation"),
+                (dict(decide, options=["a", "b"]), "three options"),
+                (dict(decide, ask=None), "three options"),
+                (dict(doubt, hunk={"path": "x.py", "header": "line 4"}), "hunk"),
+        ):
+            with self.subTest(fields=fields), self.assertRaisesRegex(ValueError, error):
+                self._parse(**fields)
+
+    def test_a_draft_never_names_the_tool_that_wrote_it(self):
+        for text in ("Looks good.\n\nCo-Authored-By: Claude <noreply@anthropic.com>",
+                     "Generated with Claude Code", "Reviewed by Codex.",
+                     "\U0001F916 split it"):
+            with self.subTest(text=text), self.assertRaisesRegex(
+                    ValueError, "names the tool"):
+                self._parse(stance="changes", draft=text)
+        self.assertTrue(self._parse(stance="changes", draft="Please split it.")["draft"])
+
+    def test_a_new_verdict_replaces_the_old_one_whole(self):
+        repo = REPO + "-verdict"
+        deskstate.save(repo, {})
+        jobs.persist(repo, dict(self.RESULT, stance="doubt", doubt="d", lean="approve",
+                                hunk={"path": "a.py", "header": "@@ -1 +1 @@"}),
+                     {"analysis": "k1", "checks": {"head": "abc", "state": "SUCCESS"}})
+        record = deskstate.load(repo)["prs"]["17"]
+        self.assertEqual((record["stance"], record["lean"]), ("doubt", "approve"))
+        self.assertEqual(record["checks"], {"head": "abc", "state": "SUCCESS"})
+        jobs.persist(repo, self.RESULT, "k2")
+        record = deskstate.load(repo)["prs"]["17"]
+        self.assertEqual(record["stance"], "approve")
+        for key in ("doubt", "lean", "hunk"):
+            self.assertNotIn(key, record)
+
     def test_result_requires_a_non_empty_decision_block(self):
         result = dict(self.RESULT, problem="")
         with self.assertRaisesRegex(ValueError, "empty analysis fields"):
@@ -871,6 +924,29 @@ class HeadlessAgents(unittest.TestCase):
         keys, context = desk.analysis_inputs(1145)
         self.assertEqual(context["probe"]["head"], "head-seen-by-probe")
         self.assertEqual(keys["problem_head"], "head-seen-by-probe")
+
+    def test_the_tests_on_the_read_head_go_with_the_analysis(self):
+        desk = fresh_desk()
+        source = next(row for row in desk.provider.data["rows"] if row["n"] == 1145)
+        source.update(head="h1145", checks_state="SUCCESS")
+        keys, _ = desk.analysis_inputs(1145)
+        self.assertEqual(keys["checks"], {"head": "h1145", "state": "SUCCESS"})
+
+    def test_a_row_serves_the_verdict_only_while_its_analysis_is_current(self):
+        desk = fresh_desk()
+        rows = desk._queue_facts(complete_gates=True)[0]
+        keys = next(row for row in rows if row["n"] == 1145)["model_keys"]
+        jobs.persist(REPO, dict(self.RESULT, n=1145, stance="changes",
+                                draft="Please split it."), keys)
+        served = next(row for row in desk.queue()["rows"] if row["n"] == 1145)
+        self.assertEqual(served["advice"]["stance"], "changes")
+        self.assertEqual(served["advice"]["draft"], "Please split it.")
+        source = next(row for row in desk.provider.data["rows"] if row["n"] == 1145)
+        source["head"] = "f" * 40
+        cache.store(REPO, "queue", desk.provider.queue(REPO, desk.me))
+        moved = next(row for row in desk.queue()["rows"] if row["n"] == 1145)
+        self.assertIsNone(moved["advice"])
+        self.assertTrue(moved["analysis_stale"])
 
     def test_the_provider_read_happens_inside_the_analyze_job(self):
         """The click is answered at once; the probe and the gate fill are the
@@ -1188,16 +1264,22 @@ class HeadlessAgents(unittest.TestCase):
                 {"n": 18, "model_keys": {"analysis": "a18", "conflict": "c18"}}]}
         empty = {"author": None, "problem": None, "history": None,
                  "propose": None, "draft": None, "verified": [],
-                 "not_verified": [], "conflict_kind": None, "finding": None}
+                 "not_verified": [], "conflict_kind": None, "finding": None,
+                 "stance": None, "why": None, "doubt": None, "lean": None,
+                 "hunk": None, "ask": None, "options": None}
         result = {"flow": "pr-triage", "report": "ok", "issues": [], "prs": [
             dict(empty, n=17, author="alice", problem="p", history="h",
-                 propose="next", verified=["diff"]),
+                 propose="next", verified=["diff"], stance="changes",
+                 why="due cose in una", draft="Please split it."),
             dict(empty, n=18, conflict_kind="mechanical", finding="lock file")]}
         jobs.persist_triage(repo, result, "pr-triage", exported)
         records = deskstate.load(repo)["prs"]
         self.assertEqual(records["17"]["analysis_key"], "a17")
+        self.assertEqual((records["17"]["stance"], records["17"]["why"]),
+                         ("changes", "due cose in una"))
         self.assertEqual(records["18"]["conflict_key"], "c18")
         self.assertNotIn("analysis_key", records["18"])
+        self.assertNotIn("stance", records["18"])
         self.assertNotIn("plan", records["17"])
         result["prs"][0]["plan"] = ["run the suite"]
         jobs.persist_triage(repo, result, "pr-triage", exported)
@@ -1810,7 +1892,7 @@ class Blocks(unittest.TestCase):
     def _analysis(self, n):
         return {"n": n, "author": "dgpaci", "problem": "p", "history": "h",
                 "propose": "x", "draft": None, "verified": [],
-                "not_verified": []}
+                "not_verified": [], "stance": "approve", "why": "w"}
 
     def test_an_analyzed_pr_counts_as_triaged(self):
         """The PR somebody flagged, analyzed directly without a press: the

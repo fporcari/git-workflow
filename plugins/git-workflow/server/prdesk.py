@@ -161,6 +161,19 @@ def triage_records(grid):
             if row_number(row) is not None}
 
 
+ADVICE_KEYS = ("stance", "why", "doubt", "lean", "hunk", "ask", "options",
+               "draft", "checks")
+
+
+def advice(note, keys):
+    """The analysis' structured verdict, only while the analysis is current:
+    a push or a new review voids it, as it voids an approval."""
+    if (not note or not note.get("why") or not keys.get("analysis")
+            or note.get("analysis_key") != keys["analysis"]):
+        return None
+    return {key: note.get(key) for key in ADVICE_KEYS}
+
+
 def model_tasks(rows, notes, me):
     """The exact model-owned artifacts that are absent or out of date."""
     out = {}
@@ -452,6 +465,7 @@ class Desk:
             row["conflict_stale"] = bool(
                 note.get("conflict_kind") and
                 note.get("conflict_key") != keys["conflict"])
+            row["advice"] = advice(note, keys)
         deskstate.annotate_requests(rows, state)
         orders = state.get("orders") or {}
         for row in rows:
@@ -659,6 +673,11 @@ class Desk:
                           if note.get("problem_key") == keys.get("problem")
                           else None)
         keys = dict(keys, problem_head=row.get("head"))
+        if probe and probe.get("fresh") and probe.get("head"):
+            # the tests as they stood on the head this analysis reads: the
+            # wizard's gate, decided here and never by the model
+            keys["checks"] = {"head": probe["head"],
+                              "state": (probe.get("checks") or {}).get("state")}
         context = {
             "row": {key: row.get(key) for key in (
                 "n", "title", "summary", "author", "created", "base",

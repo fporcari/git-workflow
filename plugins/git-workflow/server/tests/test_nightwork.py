@@ -4,6 +4,7 @@ at a time, a failure costing only its own item."""
 
 import json
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -15,6 +16,7 @@ sys.path.insert(0, str(ROOT))
 
 import cache            # noqa: E402
 import deskstate        # noqa: E402
+import jobs             # noqa: E402
 import nightwork        # noqa: E402
 import prdesk           # noqa: E402
 from providers import get_provider  # noqa: E402
@@ -218,6 +220,69 @@ class IssueNight(unittest.TestCase):
         status, report = nightwork.summary("issue", done)
         self.assertEqual(status, "done")
         self.assertIn("classifica (boom)", report)
+
+
+class WithTheFakeAgent(unittest.TestCase):
+    """The real jobs, the real persistence, a `claude` that answers at once:
+    what the night prepares is the verdict the wizard is built on."""
+
+    def setUp(self):
+        self.bin = Path(tempfile.mkdtemp(prefix="fake-claude-"))
+        agent = self.bin / "claude"
+        shutil.copy(ROOT / "tests" / "fixtures" / "fake_claude.py", agent)
+        agent.chmod(0o755)
+        self.log = self.bin / "calls.log"
+        self.env = mock.patch.dict(os.environ, {
+            "PATH": "%s%s%s" % (self.bin, os.pathsep, os.environ.get("PATH", "")),
+            "FAKE_LOG": str(self.log)})
+        self.env.start()
+
+    def tearDown(self):
+        self.env.stop()
+        jobs.shutdown()
+        shutil.rmtree(self.bin, ignore_errors=True)
+
+    def calls(self):
+        return self.log.read_text().split("\n") if self.log.exists() else []
+
+    def test_the_verdict_is_persisted_and_a_second_run_reuses_it(self):
+        desk = fresh_desk()
+        desk.agent = "claude"
+        due = sorted(int(n) for n, kinds in owed(desk).items() if "analysis" in kinds)
+        nightwork.pr_night(desk, 4)
+        notes = deskstate.load(REPO)["prs"]
+        for n in due:
+            note = notes[str(n)]
+            self.assertEqual(note["stance"], ("approve", "changes", "doubt")[n % 3])
+            self.assertEqual(note["why"], "perché %d" % n)
+            if note["stance"] == "approve":
+                self.assertNotIn("draft", note)
+            else:
+                self.assertTrue(note["draft"].startswith("Please"))
+            if note["stance"] == "doubt":
+                self.assertEqual(note["lean"], "changes")
+                self.assertEqual(note["hunk"]["path"], "gnrjs/gnrbag.js")
+            else:
+                self.assertNotIn("hunk", note)
+        served = {row["n"]: row for row in desk.queue()["rows"]}
+        self.assertEqual(served[due[0]]["advice"]["stance"], notes[str(due[0])]["stance"])
+        analyzed = [line for line in self.calls() if line.startswith("pr ")]
+        self.assertEqual(sorted(int(line.split()[1]) for line in analyzed), due)
+
+        nightwork.pr_night(desk, 4)
+        again = [line for line in self.calls() if line.startswith("pr ")]
+        self.assertEqual(again, analyzed, "a current verdict is never bought twice")
+
+    def test_a_failed_analysis_costs_only_its_pr(self):
+        desk = fresh_desk()
+        desk.agent = "claude"
+        due = sorted(int(n) for n, kinds in owed(desk).items() if "analysis" in kinds)
+        with mock.patch.dict(os.environ, {"FAKE_FAIL": str(due[0])}):
+            done = nightwork.pr_night(desk, 4)
+        self.assertEqual(done[due[0]]["status"], "error")
+        notes = deskstate.load(REPO)["prs"]
+        self.assertNotIn("stance", notes.get(str(due[0])) or {})
+        self.assertTrue(all("stance" in notes[str(n)] for n in due[1:]))
 
 
 class Outcome(unittest.TestCase):

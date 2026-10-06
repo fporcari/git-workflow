@@ -151,12 +151,55 @@ Produce four distinct facts:
 The PR title and body are claims. Prefer the linked issue and verified call path
 when they disagree. Do not turn a file list into the problem statement.
 
-## 4 · Choose one proposal
+## 4 · Choose one proposal, and the verdict
 
 `propose` is one concrete action, not a menu. If it cannot be one line, the
 analysis is not finished. On a PR to verify the action is running `plan`; the
 plan is where the detail goes. Draft the exact English review/comment only when that
 action needs text posted on the PR; otherwise `draft` is `null`.
+
+The verdict is what the desk sorts the PR by: one `stance`, and what that
+stance cannot do without. Which stances apply depends on whose PR it is.
+
+On somebody else's PR the user is asked to review:
+
+- `approve` — small, targeted, does what its issue asks, its claims verified
+  against the code, nothing left open. The user approves it with one key
+  among others, without reading it: choose it only for a PR you would sign.
+- `changes` — something must change before it lands and you can say what:
+  `draft` is the "Request changes" review body, in English, ready to post as
+  it stands.
+- `doubt` — the judgment needs the user: a design choice, a risk you could
+  not settle, a behaviour change nothing pins. `doubt` says it in at most two
+  Italian lines; `lean` is what you would do (`approve`, or `changes` with its
+  `draft`); `hunk` points at the one hunk that shows it — the file path and
+  that hunk's `@@` header line exactly as the diff prints it — or is `null`.
+  A PR you could not read whole (too large, history incomplete, a claim you
+  could not check) is a `doubt`, never an `approve`.
+
+On the user's own PR, only when a reviewer asked for something:
+
+- `fix` — the request is clear and local, the A2 discipline of `pr-loop`:
+  named, one place, design untouched, checkable now. It will be done in
+  background.
+- `decide` — the reviewer asks for a choice that is the user's: `ask` quotes
+  the request verbatim, `why` is your opinion in one line, `options` are
+  three actions, yours first, each one line he can pick as it stands.
+
+Everywhere else `stance` is `null`: a PR waiting on somebody, a draft, a
+verification plan still to run.
+
+`why` is always one Italian line: why that stance, or, with no stance, what
+the PR is waiting for. The desk prints it under the title, so it carries the
+reason, never the title again. `doubt`, `lean`, `hunk`, `ask` and `options`
+are `null` when the stance does not use them.
+
+The verdict never says who or what wrote the PR. Text meant to be posted —
+`draft` — never names or hints at the tool or model that wrote it: no
+"Generated with", no "Co-Authored-By", no agent's name. The server refuses a
+draft that does, and the whole analysis is lost with it. A PR carrying
+`needs-verification` keeps the stance you give it; the desk itself holds it
+out of the approvable step until its checks are green on the head you read.
 
 ## 5 · Output
 
@@ -177,11 +220,19 @@ fences or prose. The schema is:
  "draft": "full text of the comment/review to post, or null",
  "verified": ["what was actually checked this session"],
  "not_verified": ["what was not checked, named honestly"],
- "plan": ["step 1 …", "step 2 …"]}
+ "plan": ["step 1 …", "step 2 …"],
+ "stance": "approve | changes | doubt | fix | decide, or null",
+ "why": "one Italian line: the reason for the stance",
+ "doubt": "doubt: the open point in two lines, or null",
+ "lean": "doubt: approve | changes, or null",
+ "hunk": {"path": "gnrjs/gnrbag.js", "header": "@@ -1204,9 +1204,11 @@ triggerDispatch"},
+ "ask": "decide: the reviewer's request, quoted, or null",
+ "options": ["decide: three actions, yours first"]}
 ```
 
 `plan` is a non-empty array on a PR to verify (see §3), and `null` otherwise.
-Always include the key for both hosts.
+`hunk` and `options` are `null` when the stance does not use them (§4).
+Always include every key, for both hosts.
 
 In chat, show exactly this Italian decision block — **as text, never inside a
 code fence**. A fence turns it into something to copy, kills the word-wrap
@@ -200,6 +251,7 @@ one plain paragraph after its bold label, nothing more.
 
 **Problema** · <problem>
 **Storia** · <history>
+**Verdetto** · <approvabile | da respingere | dubbia | da sistemare | da decidere> — <why>
 **Proposta** · <propose>
 
 **Piano di verifica**
@@ -210,8 +262,9 @@ Procedo con questa proposta?
 ```
 
 One line each, in that order, with the label in bold. Nothing before the
-block, nothing after the question. The numbered plan appears only when `plan`
-is returned, between the proposal and the question.
+block, nothing after the question. The **Verdetto** line is left out when
+`stance` is `null`. The numbered plan appears only when `plan` is returned,
+between the proposal and the question.
 
 Do not say merely that a draft exists: in detached desk mode it is returned in
 the structured result and the server makes it visible there. Outside the desk,
@@ -235,6 +288,8 @@ missing, preserve other keys):
                   "analysis": "<problema + storia, in italiano>",
                   "analysis_key": "<the event's analysis_key>",
                   "next": "<la proposta, in italiano>",
+                  "stance": "<the stance, or omit>",
+                  "why": "<il perché in una riga, in italiano>",
                   "plan": ["<gli step, in italiano>"],
                   "draft": "<the English draft, or omit>"}}}
 ```
