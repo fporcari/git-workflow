@@ -677,6 +677,27 @@ class Desk:
                  + section["pending"] + section["skipped"])
         return {card["n"]: card for card in cards}
 
+    def zoom(self, n):
+        """One PR's whole situation; the diff is read only for the hunk the
+        analysis pointed at, and cached under the head it belongs to."""
+        queue = self.queue()
+        row = next((row for row in queue["rows"] if row["n"] == n), None)
+        if row is None:
+            raise KeyError("#%s non è nella coda" % n)
+        note = (deskstate.load(self.repo).get("prs") or {}).get(str(n)) or {}
+        ref = (row.get("advice") or {}).get("hunk")
+        hunk = None
+        if ref and row.get("head"):
+            try:
+                diff = cache.get(self.repo, "diff:%s:%s" % (n, row["head"]),
+                                 lambda: self.provider.pr_diff(self.repo, n))[0]
+                hunk = (wizardlib.cut_hunk(diff, ref["path"], ref["header"])
+                        or dict(ref, lines=[], missing=True))
+            except Exception as exc:
+                hunk = dict(ref, lines=[], error=str(exc)[:160])
+        return wizardlib.zoom(row, note, self.me, (queue.get("gates") or {}).get(
+            row.get("base")), hunk)
+
     def close_targets(self):
         """{n: card} of the issues the analysis found already fixed: the only
         ones a closing click may name."""
@@ -1062,6 +1083,13 @@ class Handler(BaseHTTPRequestHandler):
                                        generated=time.strftime("%H:%M:%S")))
             elif url.path == "/api/wizard":
                 self._send_tagged(self.desk.wizard())
+            elif url.path.startswith("/api/pr/") and url.path.endswith("/zoom"):
+                n = int(url.path.split("/")[3])
+                try:
+                    desk = self.desk.member((parse_qs(url.query).get("repo") or [None])[0])
+                    self._send_tagged(desk.zoom(n))
+                except KeyError as exc:
+                    self._send(404, {"error": str(exc).strip("'")})
             elif url.path == "/api/feed":
                 self._send(200, {"feed": self.desk.live_state()["feed"]})
             elif url.path == "/api/state":

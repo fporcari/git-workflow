@@ -1,13 +1,12 @@
-/* UI test — loads the real static/index.html against a live fixture desk.
+/* UI test — loads the real static/index.html against a live fixture desk
+ * that the morning's preparation has already filled.
  *
  *   node tests/test_ui.mjs [port]          # port of a running fixture desk
- *   GIT_WORKFLOW_STATE_DIR=$(mktemp -d) \
- *     python3 prdesk.py --provider fixture --repo genropy/genropy --port 8397
  *
- * The state dir is not optional. A published triage is durable by design, so a
- * desk started on the real one answers the next run's first /api/desk with the
- * previous run's grid, and the checks on a virgin fetch fail for no reason of
- * their own. `run.sh` does this for you.
+ * `run.sh` builds that desk: a throwaway state dir, tests/seed_ui.py running
+ * the real preparation with the fake agent for `--me genro`, then the desk
+ * with --no-prepare. A state dir is not optional: the analyses are durable,
+ * and a desk on the real one would paint yesterday's.
  *
  * No browser and no dependencies: a small DOM shim plus fetch against the
  * real server, so the page's own render path is what gets exercised. It
@@ -60,13 +59,13 @@ class El {
   setAttribute(k, v) { this.setAttr(k, String(v)); }
   get id() { return this.attrs.id || ""; }
   get innerHTML() { return this._html; }
-  set innerHTML(v) { this._html = String(v); this.children = build(this._html, this); }
+  set innerHTML(v) { this._html = String(v); this._text = ""; this.children = build(this._html, this); }
   get textContent() {
-    return this._text || this.children.map(c => c.textContent).join("");
+    return this._text + this.children.map(c => c.textContent).join("");
   }
   set textContent(v) { this._text = String(v); this.children = []; this._html = ""; }
-  get disabled() { return !!this.attrs.disabled; }
-  set disabled(v) { this.attrs.disabled = v; }
+  get disabled() { return "disabled" in this.attrs && this.attrs.disabled !== false; }
+  set disabled(v) { if (v) this.attrs.disabled = ""; else delete this.attrs.disabled; }
   // a checkbox: `checked` starts from the attribute, `indeterminate` is a
   // property only — markup cannot carry it, which is why the page sets it
   // on the node
@@ -111,7 +110,7 @@ function build(html, parent) {
   while ((m = token.exec(html))) {
     if (m[5] !== undefined) {                        // text
       const top = stack[stack.length - 1];
-      if (top) top._text += m[5];
+      (top || parent)._text += m[5];
       continue;
     }
     const [, closing, tag, rawAttrs, selfClose] = m;
@@ -154,6 +153,7 @@ globalThis.document = {
   querySelector: sel => allEls().find(e => matchSel(e, sel)) || null,
   querySelectorAll: sel => allEls().filter(e => matchSel(e, sel)),
   createElement: t => new El(t),
+  documentElement: new El("html"),
   // recorded, not swallowed: the page's own visibility handler is under test
   addEventListener: (k, fn) => { docHandlers[k] = fn; },
   visibilityState: "visible",
@@ -166,796 +166,266 @@ globalThis.window = globalThis;
 // the page's static markup, so every id in index.html resolves
 body.innerHTML = html.slice(html.indexOf("<main"), html.indexOf("<script>"));
 
-/* ---- 0. the real payload, fetched BEFORE the timers are stubbed
-        (node's own fetch schedules on setTimeout).
-   The gate of a base beyond the default fills in BEHIND the first paint —
-   that is the shipped behaviour, so poll for it the way the browser does
-   rather than pretending the first response is final. ---- */
+/* ---- 0. the real payload, fetched BEFORE the network is cut ---- */
 let snapshot;
 try {
-  for (let i = 0; i < 60; i++) {
-    snapshot = await (await fetch(`${ROOT}/api/desk`)).json();
-    if (snapshot.meta?.provider !== "fixture") {
-      throw new Error("UI tests require the fixture provider; refusing to write to this desk");
-    }
-    const bases = new Set(snapshot.queue.rows.map(r => r.base).filter(Boolean));
-    const known = Object.keys(snapshot.queue.gates || {});
-    if (known.length >= bases.size) break;      // every base's gate has landed
-    await new Promise(r => setTimeout(r, 150));
-  }
+  snapshot = await (await fetch(`${ROOT}/api/desk`)).json();
+  if (snapshot.meta?.provider !== "fixture")
+    throw new Error("UI tests require the fixture provider; refusing to write to this desk");
 } catch (e) {
-  console.log(`\ncannot reach a desk on ${ROOT} (${e.message}) — start one first:\n` +
-    `  python3 prdesk.py --provider fixture --repo desk-tests/ui --port ${PORT}\n`);
-  process.exit(2);
-}
-
-/* ---- the explicit triage, run for real: the desk computes and publishes the
-   grid itself, so the page only ever has to paint what /api/desk hands it ---- */
-let triaged;
-try {
-  await fetch(`${ROOT}/api/rows`, {method: "POST",
-    headers: {"X-Git-Workflow-Token": snapshot.meta.write_token}});
-  triaged = await (await fetch(`${ROOT}/api/desk`)).json();
-} catch (e) {
-  console.log(`\ncannot publish a triage on ${ROOT} (${e.message})\n`);
+  console.log(`\ncannot reach a desk on ${ROOT} (${e.message}) — run tests/run.sh\n`);
   process.exit(2);
 }
 
 globalThis.setInterval = () => 0;      // the page's own polling stays off
-globalThis.fetch = async () => { throw new Error("network is off in this test"); };
+const opened = [];
+globalThis.open = (url, name) => opened.push([url, name]);
+let posted = [];
+const offline = async () => { throw new Error("network is off in this test"); };
+globalThis.fetch = offline;
+const recording = answer => async (path, opts) => {
+  if (!opts || opts.method !== "POST") throw new Error("reads are off in this test");
+  posted.push({path, body: JSON.parse((opts && opts.body) || "{}")});
+  return {ok: true, status: 202, headers: {get: () => null},
+          json: async () => (answer || {queued: true, via: "chat"})};
+};
+const settle = () => new Promise(r => setTimeout(r, 0));
 
 /* ---- run the page's script ---- */
 const script = html.match(/<script>\n([\s\S]*)\n<\/script>/)[1];
-const page = new Function(`${script}\nreturn {applyDesk,applyState,render,renderSync,loadDesk,renderDetail,select,moveSelection,setSort,visiblePrs,visibleIssues,rk,setMode,openPalette,closePalette,commands,toggleScope,renderThreads,
-  rowClick,togglePick,clearPicks,doRun,pending,closed,startPending,endPending,
-  get state(){return {prs,issues,selected,tab,view,loaded,DESK,truncated,pendingMerge,sort,
-                      picked:[...picked]};},
-  set view(v){view=v;}, set query(v){query=v;}, set agent(v){agentReady=v;}};`)();
+const page = new Function(`${script}\nreturn {applyDesk,applyWizard,applyState,render,setSection,setStep,
+  primary,decideDoubt,openZoom,closeZoom,onKey,toggleTheme,currentStep,stepRows,checked,key,
+  get state(){return {section,doubtAt,zoomed,drawerOpen,drafts,off:[...off]};},
+  set zoomCache(v){zoomCache=v;}, get wiz(){return wiz;}};`)();
+await settle();
 
-/* a row's name on the page is repo#n: the numbers the checks pick by are
-   turned into it here, once */
-const K = n => page.rk(page.state.prs.find(r => r.n === n) ||
-                       page.state.issues.find(r => r.n === n));
+const W = snapshot.wizard;
+const $ = id => document.getElementById(id);
+const acts = (name, where) => (where || document).querySelectorAll("[data-act]")
+  .filter(e => e.dataset.act === name);
+const text = id => $(id).textContent;
+const chat = attached => page.applyState({...snapshot.state, chat: {attached, at: "10:00"}});
+const rowsOf = (section, step) => (W[section].steps.find(s => s.id === step) || {}).rows || [];
 
-/* ---- 1. what the server handed over ---- */
-ok("server answers /api/desk in one round trip",
-   snapshot.meta && snapshot.queue && snapshot.issues && snapshot.state);
-ok("queue carries rows", (snapshot.queue.rows || []).length > 0);
-ok("issues carry rows", (snapshot.issues.rows || []).length > 0);
+/* ---- 1. the payload the page is drawn from ---- */
+ok("the desk serves the wizard in its one round trip",
+   W && ["review", "mine", "issue", "whose", "prepare"].every(k => k in W));
+ok("the preparation filled the steps before the page opened",
+   rowsOf("review", "approve").length && rowsOf("review", "changes").length &&
+   rowsOf("review", "doubt").length && W.review.pending.length === 0);
+ok("and says when it did", /^preparata/.test(W.prepare.pr.phrase), W.prepare.pr.phrase);
 
-/* ---- 2. the page digests it without throwing ---- */
+/* ---- 2. the header: one row, four sections ---- */
 page.applyDesk(snapshot);
+chat(false);
 page.render();
 ok("first render throws nothing", errors.length === 0, errors[0] && errors[0].message);
-ok("rows landed in the page", page.state.prs.length === snapshot.queue.rows.length);
-ok("a row is selected by default", page.state.selected !== null);
+const sections = acts("section", $("seg"));
+ok("one header row with Da rivedere, Mie, Issue and A chi tocca",
+   sections.map(b => b.dataset.id).join() === "review,mine,issue,whose");
+ok("each section says how many rows it holds",
+   new RegExp(`Da rivedere\\s*${W.review.count}`).test(sections[0].textContent),
+   sections[0].textContent);
+ok("Filoni is gone, and so are the preview and Analizza",
+   !/Filoni|Analizza/.test(html) && !$("detail"));
+ok("the chat state is in the header", /chat non collegata/.test(text("chat")));
 
-/* ---- 3. the table ---- */
-const tbody = document.getElementById("tbody");
-ok("table has one tr per visible row",
-   tbody.querySelectorAll("tr").length === page.visiblePrs().length,
-   `${tbody.querySelectorAll("tr").length} vs ${page.visiblePrs().length}`);
-ok("every row is clickable to select",
-   tbody.querySelectorAll("tr").every(tr => "n" in tr.dataset));
-ok("the selected row is marked",
-   tbody.innerHTML.includes("selected"));
-
-/* ---- 4. the detail panel — the prototype's element the desk had lost ---- */
-const detail = document.getElementById("detail");
-ok("detail panel renders below the table", detail.innerHTML.includes("detailGrid"));
-ok("detail head names the PR", /PR #\d+/.test(detail.innerHTML));
-ok("detail has the prototype's four tabs",
-   ["quadro", "analisi", "thread", "bozza"].every(t => detail.innerHTML.includes(`data-t="${t}"`)));
-
-for (const t of ["quadro", "analisi", "thread", "bozza"]) {
-  errors.length = 0;
-  const before = errors.length;
-  const tabs = document.getElementById("detailTabs");
-  const btn = tabs.querySelectorAll("button").find(b => b.dataset.t === t);
-  btn.click();
-  const grid = document.getElementById("detailGrid");
-  ok(`tab ${t} renders content`, grid.innerHTML.length > 80 && errors.length === before,
-     errors[0] && errors[0].message);
-}
-
-const analyzedRow = page.state.prs.find(r => page.rk(r) === page.state.selected);
-const previousSkill = analyzedRow.skill;
-analyzedRow.skill = { author: "alice", problem: "problema verificato",
-                      history: "storia ricostruita", next: "proposta unica" };
-page.renderDetail();
-document.getElementById("detailTabs").querySelectorAll("button")
-  .find(b => b.dataset.t === "analisi").click();
-const analysisGrid = document.getElementById("detailGrid").innerHTML;
-ok("PR analysis separates problem, history, and proposal",
-   /Problema/.test(analysisGrid) && /problema verificato/.test(analysisGrid) &&
-   /Storia/.test(analysisGrid) && /storia ricostruita/.test(analysisGrid) &&
-   /Proposta/.test(analysisGrid) && /proposta unica/.test(analysisGrid));
-analyzedRow.skill = previousSkill;
-page.renderDetail();
-
-/* ---- 5. actions are wired and act directly (no modal in between) ---- */
-page.agent = false;
+/* ---- 3. Approvabili: prechecked, one key, why line, git icon ---- */
+ok("Da rivedere opens on its first non-empty step", page.currentStep() === "approve");
+const approve = rowsOf("review", "approve");
+const boxes = () => $("content").querySelectorAll("input").filter(i => i.attrs.type === "checkbox");
+ok("one row per approvable PR, every one prechecked",
+   boxes().length === approve.length && boxes().every(b => b.checked));
+ok("every row carries its why line", $("content").querySelectorAll("span.why").length === approve.length);
+ok("and a git icon", acts("gh", $("content")).length === approve.length);
+const cta = () => acts("cta")[0];
+ok("the key counts the rows: Approva tutte e N",
+   cta().textContent.includes(`Approva tutte e ${approve.length}`), cta().textContent);
+ok("without an attached chat a review cannot leave", cta().disabled &&
+   /serve la chat collegata/.test($("content").textContent));
+boxes()[0].click();
+ok("taking a check off changes the count",
+   cta().textContent.includes(`Approva le ${approve.length - 1} spuntate`), cta().textContent);
+chat(true);
 page.render();
-ok("actions disable when neither one-shot backend is available",
-   /id="aAnalyze" disabled/.test(
-     document.getElementById("detailActions").innerHTML));
-page.agent = true;
+globalThis.fetch = recording();
+await page.primary();
+await settle();
+let review = posted.find(p => p.path === "/api/review");
+ok("Approva posts exactly the checked rows, with their heads",
+   review && review.body.event === "approve" &&
+   review.body.items.length === approve.length - 1 &&
+   review.body.items.every(i => "head" in i && i.n !== approve[0].n),
+   JSON.stringify(review && review.body).slice(0, 200));
+posted = []; globalThis.fetch = offline;
+
+/* ---- 4. Da respingere: the motivation under the selected row ---- */
+page.setStep("changes");
+const changes = rowsOf("review", "changes");
+const area = () => $("content").querySelectorAll("textarea")[0];
+ok("the first row opens with Claude's motivation, editable", area() &&
+   area().textContent.includes(changes[0].draft), area() && area().textContent);
+area().value = "Please split the two changes.";
+area().handlers.input();
+ok("the key names the requests", /Invia le \d+ richieste|Invia la richiesta/.test(cta().textContent));
+globalThis.fetch = recording();
+await page.primary();
+await settle();
+review = posted.find(p => p.path === "/api/review");
+ok("Invia sends a Request changes with the text as edited",
+   review && review.body.event === "changes" &&
+   review.body.items[0].body === "Please split the two changes." &&
+   review.body.items.length === changes.length);
+posted = []; globalThis.fetch = offline;
+
+/* ---- 5. Dubbie: one at a time, A R S ---- */
+page.setStep("doubt");
+const doubts = rowsOf("review", "doubt");
+ok("one doubt at a time, with where it stands",
+   $("content").textContent.includes(`dubbia 1 di ${doubts.length}`) &&
+   $("content").querySelectorAll("i").length >= doubts.length);
+ok("the doubt and Claude's leaning are on the page",
+   $("content").textContent.includes(doubts[0].doubt) && /Claude propende per/.test($("content").textContent));
+page.onKey({key: "j", target: {}});
+ok("j moves to the next doubt", page.state.doubtAt === 1 &&
+   $("content").textContent.includes(`dubbia 2 di ${doubts.length}`));
+globalThis.fetch = recording({skipped: [doubts[1].n]});
+page.onKey({key: "s", target: {}});
+await settle();
+ok("S puts it off to tomorrow", posted.some(p => p.path === "/api/review" &&
+   p.body.event === "skip" && p.body.items[0].n === doubts[1].n));
+posted = [];
+page.onKey({key: "a", target: {}});
+await settle();
+ok("A approves the doubt in view", posted.some(p => p.body.event === "approve" &&
+   p.body.items[0].n === doubts[1].n));
+posted = [];
+page.onKey({key: "r", target: {}});
+await settle();
+ok("R sends the leaning's text", posted.some(p => p.body.event === "changes" &&
+   p.body.items[0].body === doubts[1].draft));
+posted = []; globalThis.fetch = offline;
+
+/* ---- 6. the zoom: the whole situation, Esc back ---- */
+const k = page.key(doubts[0]);
+page.zoomCache = {[k]: {problem: "cosa fa in breve", verified: ["i test passano"],
+  not_verified: ["le pagine dei clienti"], timeline: [{on: "2026-08-25", text: "apre"},
+  {on: "oggi", text: "tocca a te", now: true}], state: {tests: "SUCCESS", merge: "BLOCKED",
+  conflicts: "nessuno", reviewers: ["cgabriel"]}, closes: [1146],
+  hunk: {path: "gnrjs/gnrbag.js", header: "@@ -1 +1 @@ x", lines: ["-a", "+b"]}}};
+page.openZoom(k);
+ok("space or the link widens on one PR", !$("zoom").hidden && page.state.zoomed === k);
+const zoomText = $("zoom").textContent;
+ok("in brief, why it is doubtful, the hunk, what was and was not verified",
+   ["cosa fa in breve", "Perché è dubbia", "gnrjs/gnrbag.js", "i test passano",
+    "Non verificato: le pagine dei clienti"].every(t => zoomText.includes(t)), zoomText.slice(0, 300));
+ok("the story, the state, the linked issues",
+   ["La storia", "tocca a te", "BLOCKED", "cgabriel", "#1146"].every(t => zoomText.includes(t)));
+page.onKey({key: "Escape", target: {}});
+ok("Esc goes back to the list", $("zoom").hidden && page.state.zoomed === null);
+
+/* ---- 7. the git icon opens GitHub in one named window ---- */
+acts("gh", $("content"))[0].click();
+ok("the git icon opens GitHub in the same named window",
+   opened.length === 1 && opened[0][1] === "github" && /^https:\/\/github\.com\//.test(opened[0][0]));
+
+/* ---- 8. Fatto and A chi tocca ---- */
+page.setStep("done");
+ok("Fatto says what the session sent and whose move it is now",
+   /Oggi/i.test($("content").textContent) && /A chi tocca adesso/i.test($("content").textContent) &&
+   $("content").querySelectorAll("div").filter(d => d.classList.contains("pr")).length === W.whose.length);
+page.setSection("whose");
+ok("A chi tocca lists the user first and nobody last",
+   /tu/.test($("content").querySelectorAll("span").filter(s => s.classList.contains("nm"))[0].textContent) &&
+   /nessuno/.test($("content").textContent));
+let copied = null;
+navigator.clipboard.writeText = async t => { copied = t; };
+const copyButton = acts("copy", $("content"))[0];
+copyButton.click();
+await settle();
+ok("each person's chase is one click to copy", copied && copied.startsWith("@"), copied);
+
+/* ---- 9. Mie: never approvable ---- */
+page.setSection("mine");
+ok("Mie opens on its first non-empty step", page.currentStep() === W.mine.first);
+ok("Mie has no approve key", !/Approva/.test($("content").textContent));
+const decide = rowsOf("mine", "decide");
+globalThis.fetch = recording();
+acts("loopone", $("content"))[0].click();
+await settle();
+ok("a decision without options goes to the chat as pr-loop on that PR",
+   posted.some(p => p.path === "/api/run" && p.body.flow === "pr-loop" &&
+                    p.body.items[0].n === decide[0].n && p.body.batch === 1));
+posted = [];
+const withOptions = JSON.parse(JSON.stringify(W));
+withOptions.mine.steps.find(s => s.id === "decide").rows[0] =
+  {...decide[0], ask: "Dividila in tre", options: ["Dividila", "Rispondi", "Lascia"]};
+page.applyWizard(withOptions);
 page.render();
-const actions = document.getElementById("detailActions");
-ok("the action button is in the detail head, not a dialog",
-   actions.innerHTML.includes("aAnalyze"));
-ok("no modal dialog is left in the page", !html.includes("<dialog"));
-ok("analyze button carries a real title", /title="[^"]{40,}"/.test(actions.innerHTML));
-ok("mutating fetches carry the desk session token",
-   html.includes('"X-Git-Workflow-Token":writeToken'));
+acts("option", $("content"))[1].click();
+await settle();
+ok("an option is an order with exactly its text", posted.some(p =>
+   p.path === `/api/pr/${decide[0].n}/order` && p.body.propose === "Rispondi"));
+posted = []; globalThis.fetch = offline;
+page.applyWizard(W);
 
-/* ---- 6. selection, sorting, filtering ---- */
-const first = page.rk(page.visiblePrs()[0]);
-page.moveSelection(1);
-ok("arrow keys move the selection", page.state.selected !== first);
-page.setSort("n");
-const ns = page.visiblePrs().map(r => r.n);
-ok("sorting by # actually sorts", ns.every((v, i) => i === 0 || ns[i - 1] >= v) ||
-                                  ns.every((v, i) => i === 0 || ns[i - 1] <= v));
-page.query = "zzzzzz-nothing-matches";
-page.render();
-ok("an empty filter result renders the empty state",
-   document.getElementById("empty").style.display === "flex");
-page.query = "";
+/* ---- 10. Issue: close, let Claude do, decide ---- */
+page.setSection("issue");
+ok("Issue opens on Da chiudere", page.currentStep() === "close");
+const closing = rowsOf("issue", "close");
+globalThis.fetch = recording();
+await page.primary();
+await settle();
+const close = posted.find(p => p.path === "/api/close");
+ok("Chiudi sends each issue with the comment shown",
+   close && close.body.items.length === closing.length &&
+   close.body.items[0].body === closing[0].body);
+posted = [];
+page.setStep("claude");
+await page.primary();
+await settle();
+ok("Le fa Claude hands the checked issues to issue-loop as one batch",
+   posted.some(p => p.path === "/api/run" && p.body.flow === "issue-loop" &&
+                    p.body.batch === rowsOf("issue", "claude").length));
+posted = []; globalThis.fetch = offline;
 
-/* ---- 7. honesty banners ---- */
-page.applyDesk({ ...snapshot, queue: { ...snapshot.queue, truncated: true, total: 999 } });
-page.render();
-ok("a truncated queue is reported, never hidden",
-   document.getElementById("noteBox").innerHTML.includes("999"));
+/* ---- 11. the status bar and the activity drawer ---- */
+page.setSection("review");
+page.setStep("approve");
+ok("one status bar at the bottom says where the wizard stands",
+   /DA RIVEDERE 1\/4/.test(text("sb")));
+acts("drawer", $("sb"))[0].click();
+ok("Attività opens only when asked, with the feed", !$("drawer").hidden &&
+   /Attività/.test(text("drawer")));
+acts("drawer", $("sb"))[0].click();
+ok("and closes", $("drawer").hidden);
 
-page.applyDesk({ ...snapshot, issues: { ...snapshot.issues, truncated: true, total: 228 } });
-page.render();
-ok("a truncated issue list is reported too",
-   document.getElementById("noteBox").innerHTML.includes("228"));
+/* ---- 12. while the preparation reads, the page already works ---- */
+const reading = JSON.parse(JSON.stringify(W));
+const pendingRows = reading.review.steps.find(s => s.id === "doubt").rows.splice(0);
+reading.review.pending = pendingRows.map(c => ({...c, chip: "legge…"}));
+reading.prepare.pr = {...reading.prepare.pr, status: "running",
+                      phrase: "preparo la review · 3 di 9 lette"};
+reading.review.first = "approve";
+page.applyWizard(reading);
+page.setSection("review");
+page.setStep("prepare");
+ok("the preparation screen shows how far it is and what each row is doing",
+   /3 di 9 lette/.test($("content").textContent) && /legge…/.test($("content").textContent) &&
+   /approvabile/.test($("content").textContent));
+page.applyWizard(W);
 
-/* ---- 7b. fetch is factual; explicit triage publishes keyed verdicts ---- */
-page.applyDesk(snapshot);
-page.render();
-ok("fetch does not publish a triage grid", snapshot.queue.grid === null);
-ok("every fetched PR starts visibly untriaged",
-   page.state.prs.every(r => r.triage_status === "missing") &&
-   document.getElementById("tbody").innerHTML.includes("senza verdetto"));
-ok("the default PR view is Senza verdetto",
-   page.state.view === "untriaged" && page.visiblePrs().length === page.state.prs.length);
-ok("the fetch banner does not claim a triage ran",
-   document.getElementById("noteBox").innerHTML.includes("Fetch provider completato"));
-
-page.applyDesk(triaged);
-page.render();
-ok("explicit pr-triage makes every matching row current",
-   page.state.prs.every(r => r.triage_status === "current"));
-ok("the server, not the page, reconciled them",
-   triaged.queue.triage_complete && !html.includes("applyPrTriage"));
-ok("the triage button shows that nothing is pending",
-   document.getElementById("btnTriage").textContent.includes("✓"));
-
-const blocksTab = document.getElementById("tabs").querySelectorAll("button")
-  .find(b => b.dataset.v === "blocks");
-ok("a Blocks tab shows what pr-triage published", !!blocksTab);
-blocksTab.click();
-ok("the blocks render as their own cards",
-   document.getElementById("chaseWrap").innerHTML.includes("Da mergiare subito"));
-ok("a block row is clickable through to the detail panel",
-   document.getElementById("chaseWrap").querySelectorAll("[data-n]").length > 0);
-
-/* a PR no triage press has ever seen: the server hands it as `missing`
-   and keeps it out of the grid — the page must show it as such. (A changed
-   PR is re-verdicted by the engine itself and never expires: `stale` is no
-   longer a state the server emits.) */
-const newN = triaged.queue.rows[0].n;
-const newDesk = {...triaged, queue: {...triaged.queue,
-  triage_complete: false, chase: {},
-  rows: triaged.queue.rows.map(r => r.n !== newN ? r : ({...r,
-    state: "untriaged", autorun: "-", action: null, waiting_on: null,
-    todo: "senza verdetto", triage_status: "missing"})),
-  grid: {...triaged.queue.grid, blocks: triaged.queue.grid.blocks.map(b =>
-    ({...b, rows: b.rows.filter(r => +r.n !== newN)}))}}};
-page.applyDesk(newDesk);
-page.view = "untriaged"; page.render();
-ok("a never-triaged PR alone reads as senza verdetto",
-   page.visiblePrs().length === 1 && page.visiblePrs()[0].n === newN &&
-   document.getElementById("tbody").innerHTML.includes("senza verdetto"));
-page.applyDesk(triaged);
-
-page.view = "todo";
-page.render();
-const quadro = document.getElementById("detailGrid");
-ok("the detail panel shows the gate of the row's base",
-   quadro.innerHTML.includes("Gate di"), quadro.innerHTML.slice(0, 120));
-ok("the gate says who may land",
-   /riservato a|non protetta|codeowner/.test(quadro.innerHTML),
-   quadro.innerHTML.slice(quadro.innerHTML.indexOf("Gate di"),
-                          quadro.innerHTML.indexOf("Gate di") + 160));
-/* Analizza is THE action button — it starts one read-only job. Spiega is a
-   fallback that only shows up when the desk cannot answer "what is this for"
-   from the data itself. */
-ok("Analizza is always offered: it is the action button",
-   document.getElementById("detailActions").innerHTML.includes("aAnalyze"));
-ok("the detail says what the PR is for, straight from the data",
-   /Cosa risolve/.test(quadro.innerHTML) &&
-   !!page.state.prs.find(r => r.summary));
-ok("Spiega is hidden when the author's own description answers it", (() => {
-  const withSummary = page.visiblePrs().find(r => r.summary);
-  page.select(withSummary);
-  return !document.getElementById("detailActions").innerHTML.includes("aExplain");
-})());
-ok("Spiega appears when there is no description to read", (() => {
-  const row = page.state.prs.find(r => r.summary);
-  const keep = row.summary;
-  row.summary = null;
-  page.select(row);
-  const shown = document.getElementById("detailActions").innerHTML.includes("aExplain");
-  row.summary = keep;
-  return shown;
-})());
-ok("a closed issue is named with its title, not just its number",
-   page.state.prs.some(r => (r.closes || []).some(c => c.title)));
-
-/* ---- 7d. one press, one hand-over ---- */
-const target = page.visiblePrs()[0];
-page.select(target);
-target.requests = { analyze: { status: "queued", at: "10:00:00", kind: "analyze" } };
-page.render();
-const acts = document.getElementById("detailActions").innerHTML;
-ok("an outstanding request locks its button instead of re-arming it",
-   acts.includes("richiesta precedente") && !acts.includes('id="aAnalyze"'));
-ok("the panel says where the ball is",
-   /richiesta alle/.test(document.getElementById("detailGrid").innerHTML));
-target.requests = { analyze: { status: "done", at: "10:00:00",
-                               closed_at: "10:02:00", report: "niente da rispondere" } };
-page.render();
-ok("a closed request shows its outcome",
-   /niente da rispondere/.test(document.getElementById("detailGrid").innerHTML));
-ok("and the button comes back", document.getElementById("detailActions")
-   .innerHTML.includes('id="aAnalyze"'));
-target.requests = { analyze: { status: "failed", at: "10:00:00",
-                               report: "gate non passato" } };
-page.render();
-ok("a failure reads as a failure",
-   /gate non passato/.test(document.getElementById("detailGrid").innerHTML));
-target.requests = {};
-
-ok("chase blocks carry the dates the message needs",
-   Object.values(triaged.queue.chase).some(t => /\(\d{4}-\d{2}-\d{2}\)/.test(t)));
-
-/* ---- 7c. no invented Italian for a term whose home is English ---- */
-const BANNED = ["Situa", "situa", "Solleciti", "mergiabili", "assegnatari"];
-const uiText = html.slice(html.indexOf("<body"));
-for (const word of BANNED)
-  ok(`the UI does not say "${word}"`, !uiText.includes(word),
-     uiText.slice(Math.max(0, uiText.indexOf(word) - 40), uiText.indexOf(word) + 40));
-
-/* ---- 7e. the row under the needle ---- */
-const runner = page.visiblePrs()[1];
-const liveJob = { id: "job-live", kind: "operation", status: "running", agent: "codex",
-  request: { flow: "pr-loop", ns: [runner.n], batch: 1 },
-  progress: { stage: "testing", detail: "Command · pytest tests/test_api.py", elapsed: 68 },
-  events: [
-    { at: "19:09:58", stage: "inspecting", detail: "Command · gh pr view" },
-    { at: "19:10:00", stage: "testing", detail: "Command · pytest tests/test_api.py" },
-  ] };
-page.applyState({ agent: { mode: "on-demand", busy: true, jobs: [liveJob] }, feed: [] });
-page.render();
-const jobPanel = document.getElementById("jobPanel");
-ok("a detached job shows its live phase and elapsed time",
-   jobPanel.classList.contains("on") && /verifica/.test(jobPanel.innerHTML) &&
-   /1:08/.test(jobPanel.innerHTML));
-ok("observable agent activity is shown below the current phase",
-   /gh pr view/.test(jobPanel.innerHTML) && /pytest tests\/test_api.py/.test(jobPanel.innerHTML));
-ok("the progress card identifies its one-shot backend",
-   /codex/.test(jobPanel.innerHTML));
-/* ---- 7e-bis. the seconds between the press and the server's answer ----
-   A triage rereads the whole provider before it answers: with nothing drawn
-   the desk reads as if it had ignored the click. */
-page.startPending("flow:pr-triage", "pr-triage");
-const waitPanel = document.getElementById("jobPanel");
-ok("a pressed button paints a card before the server has answered",
-   waitPanel.classList.contains("on") &&
-   /pr-triage/.test(waitPanel.innerHTML) && /in coda/.test(waitPanel.innerHTML));
-ok("the live job keeps its own card while another click waits",
-   /pytest tests\/test_api.py/.test(waitPanel.innerHTML));
-page.endPending("flow:pr-triage");
-ok("the waiting card goes when the server answers",
-   !/in coda/.test(document.getElementById("jobPanel").innerHTML));
-/* ---- 7f. the report a finished run leaves behind ---- */
-const REPORT = "pr-loop su genropy/genropy, working set [1183, 1099].\n\n"
-  + "AZIONI AUTOMATICHE: nessuna.\n\nPROPOSTE: #1183 review --request-changes.";
-page.applyState({ agent: { mode: "on-demand", busy: false }, feed: [],
-                  runs: { "pr-loop": { status: "needs-input", report: REPORT,
-                                       at: "14:24:15" } } });
-page.render();
-const reportPanel = document.getElementById("jobPanel");
-ok("a finished run leaves its report on the page, whole",
-   reportPanel.classList.contains("on") &&
-   reportPanel.innerHTML.includes("PROPOSTE: #1183 review --request-changes"));
-ok("the report card says which run and when",
-   /pr-loop/.test(reportPanel.innerHTML) && /14:24:15/.test(reportPanel.innerHTML) &&
-   /serve una decisione/.test(reportPanel.innerHTML));
-/* the persistent report used to be drawn ABOVE the live cards, which pushed
-   the progress of a running job under the fold */
-page.applyState({ agent: { mode: "on-demand", busy: true, jobs: [liveJob] }, feed: [],
-                  runs: { "pr-loop": { status: "needs-input", report: REPORT,
-                                       at: "14:24:15" } } });
-page.render();
-const bothPanel = document.getElementById("jobPanel");
-ok("live progress is drawn above the report a past run left behind",
-   bothPanel.innerHTML.indexOf("pytest tests/test_api.py") <
-   bothPanel.innerHTML.indexOf("PROPOSTE: #1183"));
-page.applyState({ agent: { mode: "on-demand", busy: false }, feed: [],
-                  runs: { "pr-loop": { status: "needs-input", report: REPORT,
-                                       at: "14:24:15" } } });
-page.render();
-reportPanel.querySelector("[data-run-toggle]").click();
-ok("the report folds away without losing the card",
-   !document.getElementById("jobPanel").innerHTML.includes("PROPOSTE: #1183") &&
-   document.getElementById("jobPanel").innerHTML.includes("pr-loop"));
-reportPanel.querySelector("[data-run-toggle]").click();
-ok("and unfolds again",
-   document.getElementById("jobPanel").innerHTML.includes("PROPOSTE: #1183"));
-document.getElementById("jobPanel").querySelector("[data-run-close]").click();
-ok("dismissing it empties the panel",
-   !document.getElementById("jobPanel").classList.contains("on"));
-page.applyState({ agent: { mode: "on-demand", busy: false }, feed: [],
-                  runs: { "pr-loop": { status: "needs-input", report: REPORT,
-                                       at: "14:24:15" } } });
-page.render();
-ok("a dismissed report does not come back on the next poll",
-   !document.getElementById("jobPanel").classList.contains("on"));
-page.applyState({ agent: { mode: "on-demand", busy: false }, feed: [],
-                  runs: { "order:1189": { status: "done", report: "merged",
-                                          at: "14:31:02" } } });
-page.render();
-ok("a newer run replaces the dismissed one",
-   document.getElementById("jobPanel").innerHTML.includes("order:1189"));
-page.applyState({ agent: { mode: "on-demand", busy: false }, feed: [],
-                  runs: {
-                    "pr-loop": { status: "done", report: "report di ieri",
-                                 at: "2026-08-31T23:59:59" },
-                    "issue-loop": { status: "done", report: "report di oggi",
-                                    at: "2026-09-01T00:00:01" }
-                  } });
-page.render();
-ok("the newest report is selected across midnight",
-   document.getElementById("jobPanel").innerHTML.includes("report di oggi") &&
-   !document.getElementById("jobPanel").innerHTML.includes("report di ieri"));
-ok("a full report timestamp is still displayed as time only",
-   document.getElementById("jobPanel").innerHTML.includes("00:00:01") &&
-   !document.getElementById("jobPanel").innerHTML.includes("2026-09-01"));
-page.applyState({ agent: { mode: "on-demand", busy: false }, feed: [], runs: {} });
-page.render();
-
-/* ---- attached chat: the chip and the button lock ---- */
-ok("no chat attached: the chip stays hidden",
-   document.getElementById("chatState").hidden === true);
-page.applyState({ agent: { mode: "on-demand", busy: false }, feed: [],
-                  chat: { attached: true, at: "15:02:11" } });
-ok("an attached chat shows the chip",
-   document.getElementById("chatState").hidden === false);
-page.applyState({ agent: { mode: "on-demand", busy: false }, feed: [],
-                  chat: { attached: false } });
-ok("a detached chat hides it again",
-   document.getElementById("chatState").hidden === true);
-ok("a request taken by the chat still locks its button", (() => {
-  const q = page.pending({ requests: { analyze: { status: "taken", at: "15:03:00", via: "chat" } } }, "analyze");
-  return q && q.status === "taken";
-})());
-ok("a closed chat request frees the button", (() => {
-  const row = { requests: { analyze: { status: "needs-input", at: "15:04:00", via: "chat" } } };
-  return !page.pending(row, "analyze") && !!page.closed(row, "analyze");
-})());
-ok("a request the desk is still preparing for the chat locks its button", (() => {
-  const q = page.pending({ requests: { analyze: { status: "preparing", at: "15:05:00", via: "chat" } } }, "analyze");
-  return q && q.status === "preparing";
-})());
-ok("a stale chat request frees the button", (() => {
-  const row = { requests: { analyze: { status: "stale", at: "15:06:00", via: "chat" } } };
-  return !page.pending(row, "analyze") && !!page.closed(row, "analyze");
-})());
-
-page.applyState({ working: { n: runner.n, msg: "riallineo il branch", at: "19:10:00" },
-                  agent: { mode: "on-demand", busy: true }, feed: [] });
-page.render();
-const tbodyNow = document.getElementById("tbody");
-ok("the row the one-shot job is on is marked in the table",
-   tbodyNow.querySelectorAll("tr").some(
-     tr => +tr.dataset.n === runner.n && tr.classList.contains("working")));
-ok("only that row is marked",
-   tbodyNow.querySelectorAll("tr").filter(tr => tr.classList.contains("working")).length === 1);
-ok("the row carries a live chip, not just a colour",
-   tbodyNow.innerHTML.includes("nowChip"));
-ok("a bar says which PR and what is happening", (() => {
-  const bar = document.getElementById("workingBar");
-  return bar.classList.contains("on") && bar.innerHTML.includes(String(runner.n)) &&
-         /riallineo il branch/.test(bar.innerHTML);
-})());
-ok("the bar offers a jump to the row",
-   document.getElementById("workingBar").innerHTML.includes("goWorking"));
-page.select(runner);
-ok("the detail panel says the one-shot job is on this one",
-   /job one-shot sta lavorando questa/.test(document.getElementById("detailGrid").innerHTML));
-/* ---- 7f. a batch marks every row it is working ---- */
-const three = page.visiblePrs().slice(0, 3).map(r => r.n);
-page.applyState({ working: { n: three[0], ns: three, items: {}, msg: "3 in parallelo",
-                             at: "19:20:00" },
-                  agent: { mode: "on-demand", busy: true }, feed: [] });
-page.render();
-ok("every row of a batch glows, not just the first",
-   document.getElementById("tbody").querySelectorAll("tr")
-     .filter(tr => tr.classList.contains("working")).length === 3);
-ok("the bar names the whole batch", (() => {
-  const bar = document.getElementById("workingBar").innerHTML;
-  return three.every(n => bar.includes(String(n))) && /in parallelo/.test(bar);
-})());
-page.applyState({ working: { n: three[0], ns: three,
-                             items: { [three[1]]: "giro i test" },
-                             msg: "3 in parallelo", at: "19:20:00" },
-                  agent: { mode: "on-demand", busy: true }, feed: [] });
-page.select(K(three[1]));
-ok("the detail of one batch member shows its own line, not the batch label",
-   /giro i test/.test(document.getElementById("detailGrid").innerHTML));
-
-/* ---- 7g. rows picked by hand, with a checkbox ----
-   The gesture has to be visible and it must not be the same one that opens
-   the row: ticking picks, and the action stays one click further on. */
-page.clearPicks();
-page.render();
-const boxes = () => document.getElementById("tbody").querySelectorAll('input[type=checkbox]');
-ok("every row carries a checkbox", boxes().length === page.visiblePrs().length);
-ok("the header carries a select-all", !!document.getElementById("pickAll"));
-
-const box = n => boxes().find(b => b.dataset.pick === K(n));
-box(three[0]).click();
-box(three[1]).click();
-ok("ticking a box picks the row",
-   page.state.picked.length === 2 && page.state.picked.includes(K(three[0])));
-ok("a picked row is marked in the table",
-   document.getElementById("tbody").querySelectorAll("tr")
-     .filter(tr => tr.classList.contains("picked")).length === 2);
-ok("ticking does not move the cursor, so the panel stays put", (() => {
-  const before = page.state.selected;
-  box(page.visiblePrs()[5].n).click();
-  const same = page.state.selected === before;
-  box(page.visiblePrs()[5].n).click();       // untick it again
-  return same;
-})());
-ok("unticking removes just that one", (() => {
-  box(three[1]).click();
-  const only = page.state.picked.length === 1 && page.state.picked.includes(K(three[0]));
-  box(three[1]).click();
-  return only;
-})());
-ok("a plain click on the row never drops the picks", (() => {
-  page.rowClick(page.rk(page.visiblePrs()[4]), {});
-  return page.state.picked.length === 2;
-})());
-ok("a click that lands on the checkbox does not also open the row", (() => {
-  const before = page.state.selected;
-  const target = box(page.visiblePrs()[6].n);
-  page.rowClick(page.rk(page.visiblePrs()[6]), { target });
-  const untouched = page.state.selected === before;
-  return untouched;
-})());
-ok("shift-click on a box takes the stretch", (() => {
-  page.clearPicks(); page.render();
-  const list = page.visiblePrs();
-  boxes().find(b => b.dataset.pick === page.rk(list[1])).click();
-  const far = boxes().find(b => b.dataset.pick === page.rk(list[4]));
-  far.click({ shiftKey: true });
-  const got = page.state.picked.slice().sort();
-  const want = [list[1], list[2], list[3], list[4]].map(page.rk).sort();
-  return JSON.stringify(got) === JSON.stringify(want);
-})());
-ok("select-all takes every row of THIS view, not the whole queue", (() => {
-  page.clearPicks(); page.render();
-  document.getElementById("pickAll").click();
-  return page.state.picked.length === page.visiblePrs().length &&
-         page.state.picked.length < page.state.prs.length;
-})());
-ok("select-all again clears them", (() => {
-  document.getElementById("pickAll").click();
-  return page.state.picked.length === 0;
-})());
-ok("a non-table view leaves no stale checkbox behind", (() => {
-  const tabs = document.getElementById("tabs").querySelectorAll("button");
-  tabs.find(b => b.dataset.v === "blocks").click();
-  const stale = document.getElementById("tbody").querySelectorAll("input[type=checkbox]").length;
-  tabs.find(b => b.dataset.v === "todo").click();
-  return stale === 0;
-})());
-ok("the header box shows the in-between state when only some are picked", (() => {
-  page.clearPicks(); page.render();
-  boxes().find(b => b.dataset.pick === K(three[0])).click();
-  return document.getElementById("pickAll").indeterminate === true;
-})());
-page.clearPicks(); page.render();
-box(three[0]).click();
-box(three[1]).click();
-ok("the pick bar says which rows and offers to run them", (() => {
-  const bar = document.getElementById("pickBar");
-  return bar.classList.contains("on") && bar.innerHTML.includes("pRun");
-})());
-{
-  const sent = [];
-  const offline = globalThis.fetch;
-  globalThis.fetch = async (path, opts) => {
-    sent.push({path, body: JSON.parse(opts.body || "{}")});
-    return {status: 202, headers: {get: () => null}, json: async () => ({runs: [{via: "chat"}]})};
-  };
-  try {
-    page.doRun();
-    await new Promise(r => setTimeout(r, 0));
-    const run = sent.find(p => p.path === "/api/run");
-    ok("▶ on several picked rows runs them as one batch, without asking",
-       run && run.body.batch === 2 && run.body.ns.length === 2 &&
-       !/Una alla volta/.test(document.getElementById("pickBar").innerHTML));
-    sent.length = 0;
-    page.clearPicks(); page.render();
-    boxes().find(b => b.dataset.pick === K(three[0])).click();
-    page.doRun();
-    await new Promise(r => setTimeout(r, 0));
-    const one = sent.find(p => p.path === "/api/run");
-    ok("a single picked row runs alone", one && one.body.batch === 1);
-  } finally {
-    globalThis.fetch = offline;
-  }
-}
-page.clearPicks();
-ok("svuota leaves nothing picked and nothing marked",
-   page.state.picked.length === 0 &&
-   !document.getElementById("pickBar").classList.contains("on"));
-
-page.applyState({ working: null, agent: { mode: "on-demand", busy: false }, feed: [] });
-page.render();
-ok("when the loop ends nothing is left glowing",
-   !document.getElementById("workingBar").classList.contains("on") &&
-   !document.getElementById("tbody").innerHTML.includes("nowChip"));
-
-/* ---- 7h. a completed provider mutation refreshes facts, not triage ---- */
-let forcedReads = 0;
-globalThis.fetch = async url => {
-  if (url === "/api/fetch") forcedReads++;
-  return {status: 304, headers: {get: () => null}, json: async () => ({})};
-};
-page.applyState({provider_refresh: {token: "ui-refresh-1"},
-                 working: null, agent: {mode: "on-demand", busy: false}, feed: []});
-await Promise.resolve();
-ok("a provider mutation forces one factual refresh",
-   forcedReads === 1);
-ok("a stale-while-revalidate response gets a short repaint retry",
-   html.includes('t.source==="stale"') && html.includes('},7000)'));
-globalThis.fetch = async () => { throw new Error("network is off in this test"); };
-
-/* ---- 7h. Chase is people, not PRs ---- */
-const tabsNow = () => document.getElementById("tabs").querySelectorAll("button");
-tabsNow().find(b => b.dataset.v === "chase").click();
-ok("Chase shows one card per person",
-   document.getElementById("chaseWrap").querySelectorAll("[data-copy]").length ===
-     Object.keys(triaged.queue.chase).length);
-ok("each card carries the message to paste, whole",
-   document.getElementById("chaseWrap").querySelectorAll("[data-copy]")
-     .every(b => (b.attrs["data-copy"] || "").includes("#")));
-ok("the login is not upper-cased: it is a case-sensitive handle",
-   /\.chaseCard h2\{[^}]*text-transform:none/.test(html));
-ok("a card says how many and since when",
-   document.getElementById("chaseWrap").innerHTML.includes("chaseCount"));
-ok("a reply owed sits under the person waiting for it, not in a message",
-   Object.keys(triaged.queue.replies).length > 0 &&
-   Object.entries(triaged.queue.replies).every(([who, items]) =>
-     document.getElementById("chaseWrap").innerHTML.includes(`@${who} <span class="chaseCount">aspetta una tua risposta`) &&
-     items.every(r => document.getElementById("chaseWrap").innerHTML.includes(`data-n="${r.n}"`))));
-ok("no PR detail panel under the chase blocks — the unit here is a person",
-   document.getElementById("detail").innerHTML === "" &&
-   document.getElementById("detail").style.display === "none");
-ok("no PR tabs leak into this view",
-   !document.getElementById("detail").innerHTML.includes("detailTabs"));
-tabsNow().find(b => b.dataset.v === "todo").click();
-ok("leaving Chase brings the detail panel back",
-   document.getElementById("detail").innerHTML.includes("detailGrid") &&
-   document.getElementById("detail").style.display !== "none");
-ok("Da fare leaves out a PR where only a comment is due",
-   triaged.queue.rows.some(r => r.state === "reply") &&
-   triaged.queue.rows.filter(r => r.state === "reply")
-     .every(r => !document.getElementById("tbody").innerHTML.includes(`data-n="${r.n}"`)));
-
-/* ---- 8. the issue desk uses the same panel ---- */
-page.applyDesk({ ...snapshot, meta: { ...snapshot.meta, desk: "issue" } });
-page.render();
-ok("issue desk renders its own detail panel",
-   document.getElementById("detail").innerHTML.includes("issue #"));
-ok("issue desk has its own tabs",
-   document.getElementById("detail").innerHTML.includes('data-t="analisi"'));
-ok("issue desk shows the cross-check the desk computed",
-   document.getElementById("detailGrid").innerHTML.includes("Cross-check"));
-ok("the issue shortlist is computed on every read",
-   !!snapshot.issues.shortlist && snapshot.issues.ranked === false);
-ok("every issue row says whether it is in it",
-   snapshot.issues.rows.every(r => "in_shortlist" in r));
-ok("the ordering button says what it does and how many wait for it",
-   document.getElementById("btnTriage").textContent ===
-     `↻ ordina shortlist · ${snapshot.issues.shortlist.rows.length} da ordinare`);
-ok("an unranked shortlist says it is in date order and what the button adds",
-   document.getElementById("noteBox").innerHTML.includes("Shortlist non ancora ordinata"));
-{
-  const rows = snapshot.issues.shortlist.rows;
-  page.applyDesk({ ...snapshot, meta: { ...snapshot.meta, desk: "issue" },
-                   issues: { ...snapshot.issues, ranked: true,
-                             shortlist: { ...snapshot.issues.shortlist,
-                                          rows: rows.map((r, i) => ({ ...r, impact: i ? i : null })) } } });
-  page.render();
-  ok("a shortlist ranked before new issues came in says so, and counts them",
-     document.getElementById("btnTriage").textContent === "↻ ordina shortlist · 1 da ordinare" &&
-     document.getElementById("noteBox").innerHTML.includes("Shortlist ordinata in parte"));
-  page.applyDesk({ ...snapshot, meta: { ...snapshot.meta, desk: "issue" } });
-  page.render();
-}
-ok("the page no longer hunts the shortlist array per row",
-   !html.includes("shortlist.rows.find"));
-page.applyState({ agent: { mode: "on-demand", busy: false }, feed: [],
-                  runs: { "issue-loop": { status: "needs-input", at: "15:02:11",
-                                          report: "issue-loop: 3 lavorate, 1 serve una decisione" } } });
-page.render();
-ok("the issue desk shows a finished issue-loop report too",
-   document.getElementById("jobPanel").classList.contains("on") &&
-   document.getElementById("jobPanel").innerHTML.includes(
-     "issue-loop: 3 lavorate, 1 serve una decisione"));
-ok("the issue desk report card names its flow and time",
-   /issue-loop/.test(document.getElementById("jobPanel").innerHTML) &&
-   /15:02:11/.test(document.getElementById("jobPanel").innerHTML));
-
-/* ---- 9. a tab left in the background must not keep an old render (#2) ----
-   The poll is a timer, and a hidden tab's timers are throttled: what makes the
-   desk a radar again is reconciling when it is looked at, plus a label that
-   says how old the paint is instead of what time it was. ---- */
-page.applyDesk(snapshot);
-page.render();
-
-ok("the page registers a visibility handler at all",
-   typeof docHandlers.visibilitychange === "function");
-
-let deskReads = 0;
-globalThis.fetch = async url => {
-  if (String(url).startsWith("/api/desk")) deskReads++;
-  return {status: 304, headers: {get: () => null}, json: async () => ({})};
-};
-document.visibilityState = "hidden";
-docHandlers.visibilitychange();
-await Promise.resolve();
-ok("going away does not spend a read", deskReads === 0);
-
-document.visibilityState = "visible";
-docHandlers.visibilitychange();
-await Promise.resolve();
-ok("coming back reconciles at once, without waiting for the next tick",
-   deskReads === 1);
-globalThis.fetch = async () => { throw new Error("network is off in this test"); };
-
-const label = () => document.getElementById("syncLabel").textContent;
-page.applyDesk(snapshot);
-page.renderSync();
-ok("the label is the age of the paint, not the clock it was made at",
-   /^⟳ \d+s$/.test(label()), label());
-ok("a fresh paint is not marked stale",
-   !document.getElementById("btnFetch").classList.contains("stale"));
-
-const realNow = Date.now;
-try {
-  Date.now = () => realNow() + 80000;      // two polls and change
-  page.renderSync();
-  ok("a paint older than two polls says so in the label", /^⟳ 1m$/.test(label()), label());
-  ok("and marks the button, so a frozen page announces itself",
-     document.getElementById("btnFetch").classList.contains("stale"));
-} finally {
-  Date.now = realNow;
-}
-ok("the poll interval and the stale threshold are named, not buried",
-   /const POLL=30000,STALE_PAINT=70/.test(html));
-
-/* A quiet desk answers 304 to every poll — the rows are inside the ETag, so
-   nothing changing means nothing to send. That is the server confirming the
-   paint, not a poll that achieved nothing: leaving the stamp alone marked a
-   current page as behind after two polls and never let it back. */
-globalThis.fetch = async () => ({status: 304, headers: {get: () => null},
-                                 json: async () => ({})});
-Date.now = () => realNow() + 80000;
-try {
-  page.renderSync();
-  ok("a paint nothing has confirmed still goes stale", /^⟳ 1m$/.test(label()), label());
-  await page.loadDesk(false);
-  ok("a 304 counts as a confirmation, not as a poll that did nothing",
-     /^⟳ 0s$/.test(label()), label());
-  ok("and it takes the stale mark off",
-     !document.getElementById("btnFetch").classList.contains("stale"));
-} finally {
-  Date.now = realNow;
-  globalThis.fetch = async () => { throw new Error("network is off in this test"); };
-}
-
-/* ---- 9. one page, three views: PR, Issue, and the threads between them ---- */
-page.applyDesk(triaged);
-page.setMode("pr");
-page.render();
-const modes = document.getElementById("modeTabs").querySelectorAll("button");
-ok("the page offers PR, Issue and Filoni as one desk",
-   modes.map(b => b.dataset.mode).join() === "pr,issue,threads");
-page.setMode("issue");
-ok("switching to Issue paints the issue rows without a reload",
-   page.state.DESK === "issue" &&
-   document.getElementById("tbody").querySelectorAll("tr").length === page.visibleIssues().length);
-page.setMode("threads");
-const threadsBox = document.getElementById("threadsWrap");
-ok("Filoni pairs the issues with their PRs, grouped by who must move",
-   threadsBox.classList.contains("on") && /thrHead/.test(threadsBox.innerHTML) &&
-   triaged.threads.groups.length > 0);
-ok("Filoni has no detail panel of its own: a node opens its row",
-   document.getElementById("detail").style.display === "none" &&
-   threadsBox.querySelectorAll("[data-goto]").length > 0);
-const node = threadsBox.querySelectorAll("[data-goto]")[0];
-node.click();
-ok("a thread node opens its PR or issue in its own view",
-   page.state.DESK === node.dataset.goto && page.state.selected === node.dataset.k);
-page.setMode("pr");
-
-/* ---- 10. ⌘K: the page's actions, one keystroke away ---- */
-page.openPalette();
-ok("the palette opens with the views and the desk commands",
-   !document.getElementById("palette").hidden &&
-   page.commands().some(c => c.group === "Vai a" && c.label === "Filoni") &&
-   page.commands().some(c => c.label === "Rileggi il provider"));
-page.closePalette();
-ok("and closes", document.getElementById("palette").hidden);
-
-/* ---- 11. a scope of several repositories ---- */
-const [repoA, repoB] = ["acme/acme-engine", "acme/acme-ext"];
-const split = (rows, n) => rows.map((r, i) => ({...r, repo: i < n ? repoA : repoB,
-                                                label: `${i < n ? "engine" : "ext"} #${r.n}`}));
-const scoped = {...triaged,
-  meta: {...triaged.meta, repo: "acme", scope: {name: "acme", members: [
-    {repo: repoA, label: "engine", clone: true, provider: "forgejo"},
-    {repo: repoB, label: "ext", clone: false, provider: "forgejo"}]}},
-  queue: {...triaged.queue, rows: split(triaged.queue.rows, 3)},
-  issues: {...triaged.issues, rows: split(triaged.issues.rows, 3)}};
-page.applyDesk(scoped);
-page.setMode("pr", true);
-page.view = "all";
-page.render();
-ok("every row names its repository when the desk covers several",
-   /repoChip">engine</.test(document.getElementById("tbody").innerHTML) &&
-   /repoChip">ext</.test(document.getElementById("tbody").innerHTML));
-const extRow = page.state.prs.find(r => r.repo === repoB);
-page.select(extRow);
-ok("a repository without a clone says what stays off",
-   /non ha un clone locale/.test(document.getElementById("detail").innerHTML));
-page.toggleScope(true);
-ok("the scope popover lists the members and their clones",
-   /acme\/acme-ext/.test(document.getElementById("scopePop").innerHTML) &&
-   /nessun clone locale/.test(document.getElementById("scopePop").innerHTML));
-page.toggleScope(false);
-const posted = [];
-globalThis.fetch = async (path, opts) => {
-  posted.push({path, body: JSON.parse(opts.body || "{}")});
-  return {status: 202, headers: {get: () => null}, json: async () => ({runs: [
-    {via: "chat", repo: repoA}, {via: "chat", repo: repoB}]})};
-};
-try {
-  page.clearPicks();
-  const engineRow = page.state.prs.find(r => r.repo === repoA);
-  page.togglePick(engineRow);
-  page.togglePick(extRow);
-  page.doRun();
-  await new Promise(r => setTimeout(r, 0));
-  const run = posted.find(p => p.path === "/api/run");
-  ok("a run across repositories sends each row with its repository",
-     run && run.body.items.length === 2 &&
-     run.body.items.some(i => i.repo === repoB && i.n === extRow.n));
-} finally {
-  globalThis.fetch = async () => { throw new Error("network is off in this test"); };
-}
+/* ---- 13. the theme follows the host, and keeps a choice ---- */
+ok("colour tokens on :root, prefers-color-scheme and data-theme",
+   /:root\{color-scheme:light/.test(html) && /@media \(prefers-color-scheme: dark\)\{:root:not\(\[data-theme="light"\]\)/.test(html) &&
+   /:root\[data-theme="dark"\]/.test(html));
+page.toggleTheme();
+const first = document.documentElement.dataset.theme;
+page.toggleTheme();
+ok("the theme key flips between the two", ["dark", "light"].includes(first) &&
+   document.documentElement.dataset.theme !== first);
+ok("a narrow layout exists for a sidebar or half a screen", /@media \(max-width:760px\)/.test(html));
+ok("nothing threw along the way", errors.length === 0, errors[0] && errors[0].message);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
