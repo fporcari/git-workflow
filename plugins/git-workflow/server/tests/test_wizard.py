@@ -250,6 +250,67 @@ class WhoseTurn(unittest.TestCase):
         self.assertTrue(cgabriel["chase"].startswith("@cgabriel"))
 
 
+DIFF = """diff --git a/gnrjs/gnrbag.js b/gnrjs/gnrbag.js
+--- a/gnrjs/gnrbag.js
++++ b/gnrjs/gnrbag.js
+@@ -10,2 +10,2 @@ setItem
+-a
++b
+@@ -1204,9 +1204,11 @@ triggerDispatch
+   var path = node.getFullpath();
+-  this._subscribers.forEach(fire);
++  var hits = this._triggerIndex.lookup(path);
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+@@ -1204,9 +1204,11 @@ triggerDispatch
++not this one
+"""
+
+
+class Zoom(unittest.TestCase):
+
+    def test_the_hunk_is_the_one_the_analysis_pointed_at(self):
+        hunk = wizard.cut_hunk(DIFF, "gnrjs/gnrbag.js", "@@ -1204,9 +1204,11 @@")
+        self.assertEqual(hunk["header"], "@@ -1204,9 +1204,11 @@ triggerDispatch")
+        self.assertEqual(hunk["lines"], ["   var path = node.getFullpath();",
+                                         "-  this._subscribers.forEach(fire);",
+                                         "+  var hits = this._triggerIndex.lookup(path);"])
+        self.assertIsNone(wizard.cut_hunk(DIFF, "gnrjs/other.js", "@@ -1204,9 +1204,11 @@"))
+
+    def test_the_whole_situation_of_one_pr(self):
+        desk = fresh_desk()
+        n = sorted(desk.review_targets())[0]
+        source = next(row for row in desk.provider.data["rows"] if row["n"] == n)
+        source["head"] = "h%d" % n
+        desk.provider.data["diffs"] = {str(n): DIFF}
+        cache.clear(REPO)
+        analyze(desk, n, stance="doubt", doubt="l'ordine cambia", lean="changes",
+                draft="Please add a test.", verified=["i test passano"],
+                not_verified=["le pagine dei clienti"],
+                hunk={"path": "gnrjs/gnrbag.js", "header": "@@ -1204,9 +1204,11 @@"},
+                keys={"checks": {"head": "h%d" % n, "state": "SUCCESS"}})
+        zoom = desk.zoom(n)
+        self.assertEqual(zoom["card"]["stance"], "doubt")
+        self.assertEqual((zoom["verified"], zoom["not_verified"]),
+                         (["i test passano"], ["le pagine dei clienti"]))
+        self.assertEqual(len(zoom["hunk"]["lines"]), 3)
+        self.assertEqual(zoom["state"]["tests"], "SUCCESS")
+        self.assertEqual(zoom["timeline"][-1], {"on": "oggi", "now": True,
+                                                "text": "tocca a te: sei revisore richiesto"})
+        self.assertEqual(zoom["timeline"][0]["text"], "%s apre la PR" % source["author"])
+        with self.assertRaises(KeyError):
+            desk.zoom(1)
+
+    def test_a_diff_the_provider_cannot_give_is_said_not_hidden(self):
+        desk = fresh_desk()
+        n = sorted(desk.review_targets())[0]
+        source = next(row for row in desk.provider.data["rows"] if row["n"] == n)
+        source["head"] = "h%d" % n
+        cache.clear(REPO)
+        analyze(desk, n, stance="doubt", doubt="d", lean="approve",
+                hunk={"path": "a.js", "header": "@@ -1 +1 @@"})
+        self.assertIn("no diff", desk.zoom(n)["hunk"]["error"])
+
+
 class Preparation(unittest.TestCase):
     NOW = datetime(2026, 10, 6, 9, 12)
 
@@ -266,6 +327,13 @@ class Preparation(unittest.TestCase):
         info = self.info({"status": "done", "prepared_by": "night",
                           "prepared_at": "2026-10-05T23:10:00"})
         self.assertEqual(info["phrase"], "preparata stanotte alle 23:10")
+        info = self.info({"status": "done", "prepared_by": "night",
+                          "prepared_at": "2026-10-06T02:10:00"})
+        self.assertEqual(info["phrase"], "preparata stanotte alle 02:10")
+        evening = wizard.prepare_info({"runs": {"pr-nightwork": {
+            "status": "done", "prepared_by": "night",
+            "prepared_at": "2026-10-06T20:55:00"}}}, "pr", None, datetime(2026, 10, 6, 21, 30))
+        self.assertEqual(evening["phrase"], "preparata stasera alle 20:55")
         info = self.info({"status": "done", "prepared_by": "desk",
                           "prepared_at": "2026-10-06T09:09:00"})
         self.assertEqual(info["phrase"], "preparata alle 09:09")

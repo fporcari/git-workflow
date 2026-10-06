@@ -41,6 +41,41 @@ STAGE_WORDS = {"queued": "in coda", "starting": "parte…", "inspecting": "legge
                "waiting": "attende capacità", "finalizing": "conclude…"}
 
 
+TODO_WORDS = {
+    "review it": "tocca a te: sei revisore richiesto",
+    "review it (maintainer)": "tocca a te: revisione da maintainer",
+    "re-review it": "tocca a te: rileggila dopo le modifiche",
+    "verify it": "da verificare prima del merge",
+    "merge it": "da mergiare",
+    "realign with the base": "da riallineare con la base",
+    "inspect the conflict before realigning": "conflitto da leggere prima di riallineare",
+    "answer the review": "rispondi alla review",
+    "resolve the threads": "chiudi i thread aperti",
+    "resolve the threads (bloccano il merge)": "chiudi i thread aperti: bloccano il merge",
+    "mark ready or finish it": "segnala pronta o finiscila",
+    "get a reviewer": "chiedi un revisore",
+    "assign the PR to its author before merging": "assegnala al suo autore prima del merge",
+    "needs a look - whose move is unclear": "da guardare: non è chiaro a chi tocca",
+    "approved but BLOCKED - check the gate": "approvata ma BLOCKED: controlla il gate",
+    "approved - merge state not computed": "approvata, stato di merge non letto",
+    "verified - merge at your call": "verificata: il merge è tuo",
+    "provider result incomplete - inspect before merging":
+        "dati incompleti: controlla prima del merge",
+}
+
+
+def todo_text(todo):
+    """The engine's to-do, in the words the desk shows."""
+    todo = todo or ""
+    if todo in TODO_WORDS:
+        return TODO_WORDS[todo]
+    for prefix, said in (("waiting on ", "aspetta "), ("answer ", "rispondi a ")):
+        if todo.startswith(prefix):
+            return said + todo[len(prefix):].replace("(draft)", "(bozza)").replace(
+                "(changes requested)", "(modifiche richieste)")
+    return todo
+
+
 def _age(created):
     try:
         return max(0, (date.today() - date.fromisoformat(str(created)[:10])).days)
@@ -160,6 +195,74 @@ def review_section(queue, state, me, active_jobs=()):
             "waiting_author": waiting_author}
 
 
+REVIEW_WORDS = {"APPROVED": "approva", "CHANGES_REQUESTED": "chiede modifiche",
+                "COMMENTED": "commenta", "DISMISSED": "review ritirata"}
+HUNK_LINES = 40
+
+
+def cut_hunk(diff, path, header):
+    """The one hunk an analysis pointed at, out of the PR's whole diff: the
+    lines of `path` from the `@@` line that starts like `header` to the next
+    hunk or file. None when the diff no longer has it."""
+    lines = (diff or "").splitlines()
+    marker = header.split("@@")[1].strip() if header.count("@@") >= 2 else header
+    in_file = False
+    for i, line in enumerate(lines):
+        if line.startswith("diff --git "):
+            in_file = line.endswith(" b/%s" % path)
+            continue
+        if in_file and line.startswith("@@") and marker in line:
+            body = []
+            for follow in lines[i + 1:]:
+                if follow.startswith(("@@", "diff --git ")):
+                    break
+                body.append(follow)
+            return {"path": path, "header": line, "lines": body[:HUNK_LINES],
+                    "cut": len(body) > HUNK_LINES}
+    return None
+
+
+def timeline(row, me, todo):
+    """The PR's story as dated lines, oldest first, ending on whose move it is."""
+    events = [(row.get("created") or "", "%s apre la PR" % row.get("author"))]
+    for review in row.get("reviews") or []:
+        events.append((review.get("on") or "", "%s %s" % (
+            review.get("who"), REVIEW_WORDS.get(review.get("state"), review.get("state")))))
+    last = row.get("last") or {}
+    if last.get("ch") == "comment":
+        events.append(((last.get("t") or "")[:10], "%s commenta" % last.get("who")))
+    events.sort(key=lambda event: event[0])
+    out = [{"on": on, "text": text} for on, text in events]
+    out.append({"on": "oggi", "text": todo_text(todo), "now": True})
+    return out
+
+
+def zoom(row, note, me, gate=None, hunk=None):
+    """The whole situation of one PR, for the zoom: what the analysis read,
+    what it checked and what not, the story, the state, the linked issues."""
+    advice = row.get("advice") or {}
+    todo, _, _ = verdicts.verdict(row, me, gate)
+    checks = advice.get("checks") or {}
+    merge = row.get("merge")
+    return {"card": card(row, **{key: advice.get(key) for key in (
+                "stance", "draft", "doubt", "lean", "hunk", "ask", "options")}),
+            "problem": note.get("problem"), "history": note.get("history"),
+            "next": note.get("next"), "verified": note.get("verified") or [],
+            "not_verified": note.get("not_verified") or [],
+            "stale": bool(row.get("analysis_stale")),
+            "timeline": timeline(row, me, todo),
+            "state": {"tests": checks.get("state") if checks.get("head") == row.get("head")
+                      else None,
+                      "merge": merge,
+                      "conflicts": (row.get("conflict_kind") or "da leggere")
+                      if merge == "DIRTY" else "nessuno",
+                      "reviewers": sorted(set(row.get("req") or []) | {
+                          review.get("who") for review in row.get("reviews") or []
+                          if review.get("who")})},
+            "closes": [item.get("issue") for item in row.get("closes") or []],
+            "hunk": hunk}
+
+
 def _clock(stamp):
     try:
         return datetime.fromisoformat(stamp)
@@ -189,7 +292,10 @@ def prepare_info(state, kind, running=None, now=None):
         phrase = "%s mai preparata" % noun
     else:
         when = _clock(run.get("prepared_at"))
-        if when and run.get("prepared_by") == "night" and now - when < timedelta(hours=18):
+        night = run.get("prepared_by") == "night"
+        if when and night and when.date() == now.date() and when.hour >= 12:
+            phrase = "preparata stasera alle %s" % when.strftime("%H:%M")
+        elif when and night and now - when < timedelta(hours=18):
             phrase = "preparata stanotte alle %s" % when.strftime("%H:%M")
         elif when and when.date() == now.date():
             phrase = "preparata alle %s" % when.strftime("%H:%M")
@@ -226,7 +332,7 @@ def mine_section(queue, state, me):
         gate = gates.get(row.get("base"))
         todo, verdict_state, autorun = verdicts.verdict(row, me, gate)
         advice = row.get("advice") or {}
-        extra = {"todo": todo, "loop": working.get(row["n"])}
+        extra = {"todo": todo_text(todo), "loop": working.get(row["n"])}
         if autorun == "A1":
             steps["merge"].append(card(row, **extra))
         elif autorun == "A3" or advice.get("stance") == "fix":
@@ -313,6 +419,16 @@ def issue_section(issues, state):
             "unassigned": sum(1 for row in issues["rows"] if not row.get("assignees"))}
 
 
+CHASE_PARTS = (("merge", "da mergiare"), ("fix", "da correggere"),
+               ("review", "review ferme"), ("wait", "in attesa"), ("issues", "issue senza PR"))
+
+
+def chase_text(who, entry):
+    lines = ["%s: %s" % (label, " ".join("#%s" % n for n in entry[key]))
+             for key, label in CHASE_PARTS if entry.get(key)]
+    return ("@%s — tocca a te:\n%s" % (who, "\n".join(lines))) if lines else None
+
+
 def whose_section(queue, issues, me, review, mine, issue):
     """Per person, the moves that are theirs: the user's own first, then
     whoever holds the most, nobody last."""
@@ -344,7 +460,7 @@ def whose_section(queue, issues, me, review, mine, issue):
     for who, entry in people.items():
         if who == me:
             continue
-        entry["chase"] = (mine or {}).get("chase", {}).get(who)
+        entry["chase"] = (mine or {}).get("chase", {}).get(who) or chase_text(who, entry)
         entry["total"] = sum(len(entry[key]) for key in ("merge", "fix", "review", "wait", "issues"))
         if entry["total"]:
             out.append(entry)
