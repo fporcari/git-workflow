@@ -237,6 +237,11 @@ class FixtureProvider(Provider):
             if issue["n"] == n:
                 issue["state"] = "closed"
 
+    def issue_close(self, repo, n, body):
+        self._close(n)
+        self.data.setdefault("closed_issues", []).append({"n": n, "body": body})
+        return {"url": "%s#close" % self._item(n).get("url")}
+
     def review(self, repo, n, event, body, commit):
         self.data.setdefault("posted_reviews", []).append(
             {"n": n, "event": event, "body": body, "commit": commit})

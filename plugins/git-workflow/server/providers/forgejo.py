@@ -384,6 +384,11 @@ class ForgejoProvider(Provider):
         made = self._send("POST", "/repos/%s/issues/%s/comments" % (repo, n), {"body": body})
         return {"url": made["html_url"]}
 
+    def issue_close(self, repo, n, body):
+        made = self.comment(repo, n, body)
+        self._send("PATCH", "/repos/%s/issues/%s" % (repo, n), {"state": "closed"})
+        return made
+
     def review(self, repo, n, event, body, commit):
         made = self._send("POST", "/repos/%s/pulls/%s/reviews" % (repo, n), {
             "event": {"approve": "APPROVED", "changes": "REQUEST_CHANGES"}[event],

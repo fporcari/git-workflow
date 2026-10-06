@@ -259,6 +259,11 @@ it in this conversation, by `kind`:
     `{n, why}` for the rest — every row of the click in one of the two. A
     review click exists only in an attached chat: with none, the desk refuses
     it instead of starting an agent.
+  - `close` → close the issues in `payload.items`, each with exactly its
+    `body`, the comment naming the PR that already fixed it:
+    `gw --repo <owner/repo> issue close <n> --body-file <f>`. Publish the
+    same review-result JSON — `done` and `refused`, every row in one of the
+    two. Attached chat only, like a review.
   - `run` → `pr-loop`/`issue-loop` with the `ns` and `batch` in `payload`.
     With `batch` > 1 the loop hands its work to background agents and parks
     the request (`chatdesk.py park`, `refs/batch.md`): the row reads
@@ -349,9 +354,9 @@ python3 <PLUGIN_ROOT>/server/notify.py --repo <owner/repo> \
 ```
 
 Keys: `analyze:<n>`, `explain:<n>`, `order:<n>`, `issue-analyze:<n>`,
-`triage:<flow>`, `run:<flow>`, `review:<approve|changes>`. A request never
-closed goes stale after half an hour so a dead session cannot wedge the button
-forever — a backstop, not a substitute for closing it.
+`triage:<flow>`, `run:<flow>`, `review:<approve|changes>`, `close:issues`. A
+request never closed goes stale after half an hour so a dead session cannot
+wedge the button forever — a backstop, not a substitute for closing it.
 
 **One request per loop, not per item.** `run:<flow>` stays a single request
 however wide the loop's batches: closing it per item would re-arm the ▶

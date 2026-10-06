@@ -134,6 +134,122 @@ class DaRivedere(unittest.TestCase):
         self.assertEqual(chip, "verifica i test…")
 
 
+class Mie(unittest.TestCase):
+    """fporcari's own PRs on the fixture: none approvable, ever."""
+
+    def setUp(self):
+        self.desk = fresh_desk("fporcari")
+
+    def mine(self):
+        return self.desk.wizard()["mine"]
+
+    def test_own_prs_are_split_by_whose_move_it_is(self):
+        mine = self.mine()
+        own = [row for row in self.desk.queue()["rows"] if row["author"] == "fporcari"]
+        self.assertEqual(mine["count"], len(own))
+        self.assertEqual({k: len(v) for k, v in steps(mine).items()},
+                         {"merge": 0, "fix": 0, "decide": 8, "waiting": 28})
+        self.assertEqual(mine["first"], "decide")
+        self.assertIn("cgabriel", mine["chase"])
+        self.assertNotIn(1145, steps(self.desk.wizard()["review"])["approve"])
+
+    def test_a_clear_request_goes_to_claude_a_choice_comes_with_its_options(self):
+        decide = steps(self.mine())["decide"]
+        fix, choice = decide[:2]
+        options = ["Dividila", "Rispondi a cgabriel", "Lascia com'è"]
+        analyze(self.desk, fix, stance="fix")
+        analyze(self.desk, choice, stance="decide", ask="Dividila in tre", options=options)
+        mine = self.mine()
+        self.assertEqual(steps(mine)["fix"], [fix])
+        card = next(c for c in mine["steps"][2]["rows"] if c["n"] == choice)
+        self.assertEqual((card["ask"], card["options"]), ("Dividila in tre", options))
+
+    def test_an_approved_clean_pr_of_mine_is_to_merge(self):
+        rows = self.desk.provider.data["rows"]
+        row = next(r for r in rows if r["author"] == "fporcari" and not r["draft"]
+                   and r.get("base") == "develop")
+        row.update(decision="APPROVED", req=[], merge="CLEAN", assignees=["fporcari"],
+                   head="hx", unresolved=0, last=None,
+                   reviews=[{"who": "genro", "state": "APPROVED", "commit": "hx",
+                             "has_text": False}])
+        cache.clear(REPO)
+        self.assertIn(row["n"], steps(self.mine())["merge"])
+
+    def test_rows_a_loop_works_in_background_say_so(self):
+        n = steps(self.mine())["decide"][0]
+        deskstate.save(REPO, {"requests": {"run:pr-loop": {
+            "status": "running", "payload": {"flow": "pr-loop", "ns": [n]}}}})
+        card = next(c for c in self.mine()["steps"][2]["rows"] if c["n"] == n)
+        self.assertEqual(card["loop"], "running")
+
+
+def analyze_issue(n, **fields):
+    record = {"n": n, "type": "DEFECT", "finding": "f%d" % n, "size": "EASY",
+              "phase": "SINGLE-PHASE", "problem": "p", "cause": "c", "propose": "x",
+              "verify": "v", "decision": None, "fixed_by": None}
+    record.update(fields)
+    jobs.persist_issue_analysis(REPO, record, n)
+
+
+class Issues(unittest.TestCase):
+
+    def setUp(self):
+        self.desk = fresh_desk("fporcari")
+        self.shortlist = [card["n"] for card in self.desk.wizard()["issue"]["pending"]]
+
+    def test_only_the_shortlist_waits_for_the_preparation(self):
+        issue = self.desk.wizard()["issue"]
+        self.assertEqual(len(self.shortlist), 10)
+        self.assertEqual(issue["first"], "prepare")
+        self.assertEqual(issue["count"], len(self.desk.issues()["rows"]))
+
+    def test_each_reading_lands_in_its_step(self):
+        fixed, easy, long, taken = self.shortlist[:4]
+        analyze_issue(fixed, fixed_by=1099)
+        analyze_issue(easy)
+        analyze_issue(long, size="MEDIUM", phase="WORKFLOW")
+        analyze_issue(taken, decision="who owns the print templates?")
+        issue = self.desk.wizard()["issue"]
+        self.assertEqual(steps(issue)["close"], [fixed])
+        self.assertEqual(steps(issue)["claude"], [easy])
+        self.assertEqual(sorted(steps(issue)["decide"]), sorted([long, taken]))
+        self.assertEqual(issue["first"], "close")
+        close = issue["steps"][0]["rows"][0]
+        self.assertEqual(close["body"], "Fixed by #1099, already merged.")
+        self.assertNotIn(fixed, [card["n"] for card in issue["pending"]])
+
+    def test_a_reading_the_issue_moved_past_is_not_used(self):
+        n = self.shortlist[0]
+        analyze_issue(n)
+        deskstate.update(REPO, lambda state: state["issues"][str(n)].update(
+            at="2000-01-01T00:00:00+00:00"))
+        issue = self.desk.wizard()["issue"]
+        self.assertEqual(steps(issue)["claude"], [])
+        self.assertIn(n, [card["n"] for card in issue["pending"]])
+
+
+class WhoseTurn(unittest.TestCase):
+
+    def test_per_person_with_the_user_first_and_nobody_last(self):
+        desk = fresh_desk()
+        whose = desk.wizard()["whose"]
+        self.assertTrue(whose[0]["me"])
+        self.assertEqual(whose[0]["review"], 30)
+        self.assertIsNone(whose[-1]["who"])
+        self.assertGreater(whose[-1]["unassigned"], 0)
+        middle = whose[1:-1]
+        self.assertEqual([e["total"] for e in middle],
+                         sorted((e["total"] for e in middle), reverse=True))
+        fporcari = next(e for e in middle if e["who"] == "fporcari")
+        self.assertTrue(fporcari["wait"] or fporcari["fix"] or fporcari["merge"])
+
+    def test_my_prs_waiting_on_somebody_carry_the_chase(self):
+        whose = fresh_desk("fporcari").wizard()["whose"]
+        cgabriel = next(e for e in whose if e["who"] == "cgabriel")
+        self.assertTrue(cgabriel["review"])
+        self.assertTrue(cgabriel["chase"].startswith("@cgabriel"))
+
+
 class Preparation(unittest.TestCase):
     NOW = datetime(2026, 10, 6, 9, 12)
 

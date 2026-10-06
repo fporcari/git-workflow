@@ -59,6 +59,7 @@ WRITE_TOOLS = (
     "Bash(gh api --input:*),"
     "Bash(gw pr create:*),Bash(gw pr edit:*),Bash(gw pr comment:*),"
     "Bash(gw issue create:*),Bash(gw issue edit:*),Bash(gw issue comment:*),"
+    "Bash(gw issue close:*),"
     "Bash(gw pr merge:*),Bash(gw pr review:*),"
     "Bash(gw label:*),Bash(gw api -X POST:*),Bash(gw api -X PATCH:*),"
     "Bash(gw api -X PUT:*),Bash(gw api -X DELETE:*),Bash(gw api --method:*),"
@@ -539,7 +540,9 @@ def persist_issue_analysis(repo, result, n, state=None):
         record = state.setdefault("issues", {}).setdefault(str(n), {})
         record.update({key: result[key] for key in required})
         record["at"] = datetime.now(timezone.utc).isoformat()
-        for key in ("problem", "cause", "propose", "verify", "decision"):
+        if result.get("fixed_by") is not None and not isinstance(result["fixed_by"], int):
+            raise ValueError("agent returned an invalid fixed_by")
+        for key in ("problem", "cause", "propose", "verify", "decision", "fixed_by"):
             if key in result:
                 record[key] = result[key]
             else:
@@ -619,10 +622,11 @@ def persist_triage(repo, result, flow, exported):
     deskstate.update(repo, mutate)
 
 
-def persist_review(repo, result, payload, state=None):
-    """What the attached chat posted for one review click: every row it was
-    given is either done or refused with the reason, and only the done ones
-    count as sent. Returns the report."""
+def persist_rows(repo, result, payload, ledger, event, state=None):
+    """What the attached chat posted for one click on several rows — reviews
+    or closings: every row it was given is either done or refused with the
+    reason, and only the done ones count as sent, under state[ledger][event].
+    Returns the report."""
     if (not isinstance(result, dict) or result.get("status") not in ("done", "failed")
             or not isinstance(result.get("report"), str) or not result["report"].strip()
             or not isinstance(result.get("provider_changed"), bool)):
@@ -639,10 +643,8 @@ def persist_review(repo, result, payload, state=None):
     accounted = set(done) | {r["n"] for r in refused}
     if accounted != asked or set(done) & {r["n"] for r in refused}:
         raise ValueError("chat reported on other PRs than the ones it was given")
-    event = payload.get("event")
-
     def mutate(state):
-        sent = state.setdefault("session_reviews", {}).setdefault(event, [])
+        sent = state.setdefault(ledger, {}).setdefault(event, [])
         sent.extend(n for n in done if n not in sent)
     deskstate.apply(repo, mutate, state)
     if result["provider_changed"]:

@@ -12,7 +12,9 @@
     "cause": {"type": "string"},
     "propose": {"type": "string"},
     "verify": {"type": "string"},
-    "decision": {"type": ["string", "null"]}
+    "decision": {"type": ["string", "null"]},
+    "fixed_by": {"type": ["integer", "null"]}
   },
-  "required": ["n", "type", "finding", "size", "phase", "problem", "cause", "propose", "verify", "decision"]
+  "required": ["n", "type", "finding", "size", "phase", "problem", "cause", "propose", "verify", "decision",
+               "fixed_by"]
 }

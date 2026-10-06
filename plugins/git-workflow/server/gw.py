@@ -22,6 +22,7 @@ on any repository the user works in.
     gw issue create --title T (--body-file F | --body B) [--label L]... [--assignee L]...
     gw issue edit <n> [--add-assignee L]... [--add-label L]...
     gw issue comment <n> (--body-file F | --body B)
+    gw issue close <n> (--body-file F | --body B)
     gw label ensure <name> [--color HEX] [--description D]
     gw pr create --title T (--body-file F | --body B) --head BRANCH [--base BRANCH]
                  [--draft] [--label L]... [--assignee L]... [--reviewer L]...
@@ -234,6 +235,18 @@ def cmd_pr_review(p, repo, args):
     _out({"n": args.n, "event": event, "commit": head, "url": made.get("url")})
 
 
+def cmd_issue_close(p, repo, args):
+    body = _body(args)
+    if not body.strip():
+        raise RuntimeError("a closing needs its comment: which PR fixed it")
+    if attribution.attributed(body):
+        raise RuntimeError("the comment says which tool wrote it: rewrite it")
+    if p.issue_detail(repo, args.n)["state"] != "open":
+        raise RuntimeError("#%s is already closed" % args.n)
+    made = p.issue_close(repo, args.n, body)
+    _out({"n": args.n, "state": "closed", "url": made.get("url")})
+
+
 def cmd_pr_verified(p, repo, args):
     p.remove_label(repo, args.n, args.label)
     note = deskstate.record_verified(repo, args.n, args.sha)
@@ -362,6 +375,10 @@ def build_parser():
     iview = issue.add_parser("view")
     iview.add_argument("n", type=int)
     iview.set_defaults(run=cmd_issue_view)
+    iclose = issue.add_parser("close", help="comment which PR fixed it, then close")
+    iclose.add_argument("n", type=int)
+    _body_args(iclose)
+    iclose.set_defaults(run=cmd_issue_close)
     icreate = issue.add_parser("create")
     icreate.add_argument("--title", required=True)
     _body_args(icreate)
