@@ -1,6 +1,6 @@
 ---
 name: git-desk
-description: Launch the git desk — one local page over the repository's pull requests, issues and threads (tabs Pull request, Issue, Filoni). The Python server serves provider/cache JSON without keeping Codex or Claude active; the launching chat stays attached by default, so every click except triage is executed in that conversation, command and output visible there; a detached launch (opt-in) hands each click to an ephemeral one-shot agent instead. Use when the user asks for the desk, the PR desk, the issue desk, the review desk, or a PR or issue dashboard.
+description: Launch the git desk — a wizard over the repository's pull requests and issues in four sections (Da rivedere, Mie, Issue, A chi tocca), in a pane beside the chat on Claude Code or in the browser. The Python server serves provider/cache JSON and prepares in background only the analyses that are new or changed; the launching chat stays attached by default, so every click is executed in that conversation, command and output visible there; a detached launch (opt-in) hands each non-public click to an ephemeral one-shot agent instead. Use when the user asks for the desk, the PR desk, the issue desk, the review desk, or a PR or issue dashboard.
 ---
 
 # Git desk
@@ -9,9 +9,9 @@ Read `<PLUGIN_ROOT>/refs/runtime.md` first.
 
 ## Launch
 
-One server serves the whole desk: Pull request, Issue and Filoni are tabs of
-the same page, read in one round trip. Launch it using the host procedure
-from the runtime reference. Select the current host as its one-shot backend
+One server serves the whole desk: Da rivedere, Mie, Issue and A chi tocca are
+sections of the same wizard (*Sections* below), read in one round trip.
+Launch it using the host procedure from the runtime reference. Select the current host as its one-shot backend
 and start it as a background process whose stderr goes to a log:
 
 ```bash
@@ -19,8 +19,8 @@ python3 <PLUGIN_ROOT>/server/prdesk.py --desk pr --agent <claude|codex> \
     >> "${TMPDIR:-/tmp}/git-workflow-pr-desk.log" 2>&1 &
 ```
 
-Always `--desk pr`, also when the user asked for the issues: the page opens on
-Pull request and the Issue tab is one click away. A second server on the same
+Always `--desk pr`, also when the user asked for the issues: the Issue section
+is one click away. A second server on the same
 repository would be a second owner of the same click ledger.
 
 The scope is the checkout the desk is launched from; see *Scope* for an
@@ -36,12 +36,20 @@ server exits by itself after an hour without a request and with no job
 running (`--idle-exit 0` disables), so a desk left behind never squats the
 port of the next one.
 
-Open that URL in the Browser pane beside the chat on Claude Code —
-`preview_start` with `url`, the tool `runtime.md` → *Desks* names; a link
-alone is not the deliverable. The page is local, served by the process you
-just started: no login, nothing to ask first. Codex: the browser panel. There
-is no fixed-port launch configuration: the port is known only once the server
-has bound it.
+Show the desk beside the chat; a link alone is not the deliverable.
+
+- **Claude Code**: call the plugin's own `mcp__git-workflow__desk_pane` tool
+  (load it with ToolSearch when it is listed as deferred). It opens the
+  `/desk` pane, drawn in the host's theme, and its answer names this chat's
+  session id: use that as `<session-id>` below. Only when the tool does not
+  exist (a host that loads no mods) open the URL in the Browser pane instead
+  — `preview_start` with `url`, the tool `runtime.md` → *Desks* names. A
+  request that came from the pane itself already says the pane is open.
+- **Codex**: the browser panel.
+
+The page is local, served by the process you just started: no login, nothing
+to ask first. There is no fixed-port launch configuration: the port is known
+only once the server has bound it.
 
 Then title this chat, when the host has a title tool (`runtime.md` →
 *Session metadata*): `Git desk · <scope> · <YYYY-MM-DD HH:MM>` (`<scope>` is
@@ -53,10 +61,10 @@ desk from a spent one.
 
 The launching chat stays **attached by
 default**: the desk is the remote, this conversation is where the work
-happens. Every click except triage arrives here as the command it stands for
-(`/pr-loop 1099 1055 batch=4`, `/pr-analyze 1099`, `/issue-analyze 7`) and is
-executed here, reasoning and output included, while the desk window sits in
-any browser — or gets ignored.
+happens. Every click arrives here as the command it stands for
+(`/pr-loop 1099 1055 batch=4`, `▶ approva #1164 #1163`, `/pr-analyze 1099`)
+and is executed here, reasoning and output included, while the pane or the
+page shows where the wizard stands.
 
 Open that chat on `fable` at effort `high`: what it produces is read by humans
 and acts without a second ask (`runtime.md` → *Model policy*). The one-shot jobs
@@ -126,13 +134,22 @@ Either way the server itself is detached.
 
 ## Runtime contract
 
-Normal page loads and the 30-second refresh perform no model call. Python
-serves these local artifacts:
+Page loads and polling perform no model call. The boot, and an explicit
+re-read, start the **preparation** in a thread of the server's own
+(`server/preparation.py`, the nightwork's own work): the PR triage grid, one
+read-only `pr-analyze` job per PR whose analysis is missing or stale, at most
+four alive, the conflict readings owed on the user's `DIRTY` PRs, then the
+issue ranking and the shortlist's analyses. An analysis whose keys still
+match the PR is never bought again, so after a `/pr-nightwork` the boot reads
+only what moved overnight; a nightwork still running holds the same lock and
+is shown, not doubled. Its progress is `runs.<kind>-nightwork`. Python serves
+these local artifacts:
 
 - provider cache and a cheap open-item membership snapshot;
-- a rows export consumed by explicit triage jobs;
-- durable triage, analysis and order state;
-- one request/result JSON for each explicit agent job.
+- a rows export consumed by the triage and preparation jobs;
+- durable triage, analysis and order state, and the wizard computed from it
+  on every read (`server/wizard.py`, `/api/wizard`);
+- one request/result JSON for each agent job.
 
 Fresh membership is checked independently from the detailed provider cache.
 Rows no longer open are filtered before they reach the browser; a newly open
@@ -141,12 +158,16 @@ resurrected by a stale search result.
 
 ## Explicit jobs
 
-Only these user actions may start an agent process:
+Only these may start an agent process:
 
-- PR analyze or explain;
-- issue analyze;
+- the preparation, at boot and after a re-read: read-only analyze and triage
+  jobs;
+- PR analyze or explain, issue analyze;
 - PR or issue triage;
 - PR loop, issue loop, or an individual order.
+
+Reviews and issue closings never start one: they are public, so they exist
+only as clicks the attached chat executes.
 
 Each click creates one runtime job JSON, starts exactly one ephemeral `codex
 exec` or `claude -p` process, requires structured output, and exits. Read-only
@@ -165,25 +186,29 @@ validates that the result refers to the requested PRs/issues and then persists
 the allowed fields. A provider refresh is requested only when an operation
 reports that it changed provider state.
 
-A completed `pr-loop`, `issue-loop` or order job asks every open tab for one
-fresh provider read when its result reports a provider mutation. Refreshing
-facts never means pressing triage and never spends model tokens.
+A completed `pr-loop`, `issue-loop`, order, review or closing asks every open
+tab for one fresh provider read when its result reports a provider mutation;
+that read prepares again only what moved.
 
 ## Attached chat (the default)
 
 The launching chat is the workplace: it stays attached unless the user asked
-for a detached launch. The server is detached either way; what non-triage
-buttons do depends on whether a chat is attached at click time:
+for a detached launch. The server is detached either way; what a click does
+depends on whether a chat is attached at click time:
 
-- **No chat attached** (heartbeat stale): every button behaves as above — one
-  ephemeral one-shot process per click, report card included.
-- **A chat is attached**: analyze, explain, order and run clicks are enqueued
-  as `requests` records with `via: "chat-session"`, `desk`, `session` and a unique `id` instead of starting a process. The
+- **No chat attached** (heartbeat stale): analyze, explain, order and run
+  behave as above — one ephemeral one-shot process per click, report card
+  included. Review and close clicks are refused: a public action without a
+  chat to run it in does not leave.
+- **A chat is attached**: analyze, explain, order, run, review and close
+  clicks are enqueued as `requests` records with `via: "chat-session"`,
+  `desk`, `session` and a unique `id` instead of starting a process. The
   attached chat claims them, executes the named skill IN the conversation —
   where the user reads the output — then publishes the result and closes the
-  request so the desk row shows the outcome too. **Triage is the exception:**
-  it always runs on the independent one-shot agent, whatever the chat state,
-  because its artifacts are desk cells, not conversation output.
+  request so the desk row shows the outcome too. **Triage and the
+  preparation are the exception:** they always run on independent one-shot
+  agents, whatever the chat state, because their artifacts are desk cells,
+  not conversation output.
 
 Only a chat that is heartbeating takes a NEW click. `chatdesk.py listen`
 heartbeats for as long as its monitor lives, work included, so clicks made
@@ -404,29 +429,47 @@ and sends each click to the repository it names. The log line then reads
 A desk over a scope refuses to open while any member already has a live desk
 of the same kind: two servers on one ledger would steal each other's clicks.
 
+## Sections
+
+Every section is a wizard that opens on its first step with something to do.
+`server/wizard.py` decides which step a row belongs to, on every read; the
+page and the pane draw the same `/api/wizard`.
+
+- **Da rivedere** — somebody else's PR whose review is asked of the user.
+  *Approvabili*: the analysis' stance is `approve`, prechecked, one key
+  approves the checked rows (a `needs-verification` PR without green checks
+  on the analyzed head is held among the doubts). *Da respingere*: stance
+  `changes`, prechecked, the drafted motivation editable under the row, sent
+  as "Request changes". *Dubbie*: one at a time, the doubt, the hunk, the
+  leaning, keys A / R / S (S puts it off to tomorrow). *Fatto*: what the
+  session sent, and A chi tocca. A row whose analysis is still owed waits in
+  the preparation; one whose analysis failed waits among the doubts with the
+  reason. The merge always stays with the author.
+- **Mie** — the user's own PRs, never approvable. *Da mergiare* (pr-loop's
+  A1), *Le sistema Claude* (a realign, or a request the analysis judged clear
+  and local), *Da decidere* (the reviewer's request quoted, an opinion, three
+  options — each an order with its text), *In attesa* (the chase to paste).
+- **Issue** — *Da chiudere* (the analysis names, in `fixed_by`, the merged PR
+  that already fixed it: closed with a comment naming it), *Le fa Claude*
+  (EASY, SINGLE-PHASE, nobody's, nothing to decide: one issue-loop batch),
+  *Da decidere*, *Fatto*.
+- **A chi tocca** — formerly *Filoni*: per person, the PRs and issues whose
+  next move is theirs, the user first and nobody last, each with a chase
+  ready to copy.
+
 ## Triage
 
-The desk does **not** triage at startup or reload: both are pure provider
-fetches that paint in seconds. Triage arrives only when the user presses its
-button, and the tab decides which one.
-
-- **Pull request** → `pr-triage`. The press reads the provider fresh,
-  computes and publishes the whole deterministic grid on the server, then
-  starts one ephemeral `pr-triage` process only if `model_tasks` names stale
-  artifacts. The process reads the exported rows file; the server validates
-  its structured result and writes the durable state. A PR the provider moves
-  is re-verdicted by the engine itself on every read.
-- **Issue** → `issue-triage`, the ↻ that orders the shortlist. The cross-check
-  and the shortlist are filters, not verdicts: the desk recomputes them on
-  every read. The press exports a fresh rows JSON and starts one ephemeral
-  `issue-triage` process only for the issues that still need model work. The
-  process must not write desk state; the server validates its structured
-  result and persists only the requested issue records.
-
-An unchanged prior result remains reusable without spending tokens.
+The triage is the first half of the preparation: the boot publishes the PR
+grid on the snapshot it just read and asks a model only for what
+`model_tasks` names. `POST /api/triage` still runs one by hand —
+`pr-triage` or `issue-triage` — with the same contract: the process reads the
+exported rows file, must not write desk state, and the server validates its
+structured result and persists only the requested records. A PR the provider
+moves is re-verdicted by the engine itself on every read; an unchanged prior
+result remains reusable without spending tokens.
 
 ## Stop
 
-The Stop button terminates the Python server and the agent jobs it started. A
+The power key terminates the Python server and the agent jobs it started. A
 job stopped this way is recorded as aborted, not left pending. No model or
 watcher should remain resident merely because a browser tab is open.

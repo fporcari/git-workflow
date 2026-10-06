@@ -1,6 +1,6 @@
 {
   "name": "git-workflow",
-  "description": "PR and issue workflow toolkit with detached local dashboards. Python serves provider/cache JSON without keeping an agent active; explicit actions start one ephemeral Codex or Claude process whose sanitized progress is visible live. Fresh open-item membership prevents closed or merged rows from resurfacing through stale detail caches.",
+  "description": "PR and issue workflow toolkit with a wizard desk: a detached local server prepares in background only the analyses that are new or changed and sorts every row into its step \u2014 approvable, to reject, doubtful, yours to merge, fix or decide, issues to close or hand over \u2014 shown in a pane beside the chat (a Claude Code mod in this plugin) or in the browser. Every click runs in the attached chat with its command echoed; public actions only there.",
   "version": "0.59.0",
   "author": {
     "name": "Francesco Porcari",

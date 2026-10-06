@@ -13,12 +13,14 @@ disable-model-invocation: true
 
 Read `<PLUGIN_ROOT>/refs/runtime.md` first.
 
-It does tonight what the desk would ask for in the morning, and nothing else.
-The analyses are the ones the desk's Analizza button starts, with the same
-read-only profile (`ANALYZE` in runtime.md → *Model policy*), saved where the
-desk reads them and keyed to the PR as it was read: a PR that moves before
-morning shows its analysis as stale, and the desk asks for it again. Nothing
-is posted, approved, pushed or commented.
+It does tonight what the desk would do when it opens, and nothing else: it is
+the same preparation (`server/preparation.py`), with the same read-only
+profile (`ANALYZE` in runtime.md → *Model policy*), saved where the desk reads
+it and keyed to the PR as it was read. Each analysis carries the verdict the
+desk's wizard sorts by — approvable, to reject with its motivation, doubtful
+with its hunk — so the desk opens on filled steps, and a PR that moves before
+morning is the only one it reads again. Nothing is posted, approved, pushed or
+commented.
 
 ## Run
 
@@ -37,8 +39,8 @@ caffeinate -i python3 <PLUGIN_ROOT>/server/nightwork.py --kind pr --agent <claud
 does not exist. `--parallel N` sets how many analyses run at once (default 4).
 
 Tell the user in one line that it is running, that the machine must stay on
-until it ends, and that a desk opened meanwhile shows the analyses as they
-land. Then wait for the exit; do not poll the log.
+until it ends, and that a desk opened meanwhile shows the rows moving into
+their steps as they land. Then wait for the exit; do not poll the log.
 
 ## Report
 
@@ -49,5 +51,9 @@ it in Italian and stop. The same report is saved under `runs.pr-nightwork` in
 the desk state and as a line of the desk's feed.
 
 A failure costs only its own PR: the others are analyzed anyway, and the
-desk asks again for the missing one. A run started while another PR
-nightwork is alive on the same repository refuses to start and says so.
+desk shows the missing one among the doubts with the reason, and prepares it
+again when it next opens. A run started while another PR preparation is alive
+on the same repository — this command or a desk opening — refuses to start
+and says so; a desk opened while this one runs shows it instead of doubling
+it. The desk says when the last preparation landed: "preparata stanotte alle
+23:10".
