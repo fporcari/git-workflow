@@ -1,6 +1,6 @@
 ---
 name: issue-loop
-description: Work the open issues in a loop — take the most urgent, analyze it in a fresh agent, propose it in four lines, and on a go-ahead fix it in a worktree and open the PR, then the next until the user says stop. Takes the numbers to work and a batch size: several are analysed by background agents and handed back as one digest, so the user is interrupted only when the proposals are ready and when the PRs are open; `bugfix` does the same for every eligible bug and builds all the approved PRs after one single go-ahead. Notifies the review desk at every step.
+description: Work the open issues in a loop — take the most urgent, analyze it in a fresh agent, propose it in four lines, and on a go-ahead fix it in a worktree and open the PR, then the next until the user says stop. Takes the numbers to work and a batch size — several are analysed by background agents and handed back as one digest, so the user is interrupted only when the proposals are ready and when the PRs are open; `bugfix` does the same for every eligible bug and builds all the approved PRs after one single go-ahead. Notifies the review desk at every step.
 ---
 
 # Issue loop — the most urgent one, then the next

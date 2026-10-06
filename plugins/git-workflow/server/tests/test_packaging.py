@@ -46,6 +46,18 @@ class Packaging(unittest.TestCase):
         self.assertEqual(claude_path.resolve(), PLUGIN)
         self.assertEqual(codex_path.resolve(), PLUGIN)
 
+    def test_every_skill_description_is_a_plain_yaml_scalar(self):
+        """An unquoted `: ` inside the description breaks the frontmatter for
+        a strict YAML reader; issue-loop shipped one in 0.57.0."""
+        for path in (PLUGIN / "skills").glob("*/SKILL.md"):
+            line = next(l for l in path.read_text().splitlines()
+                        if l.startswith("description:"))
+            value = line.split(":", 1)[1].strip()
+            if value[:1] in ("'", '"', "|", ">"):
+                continue
+            self.assertNotIn(": ", value, path.parent.name)
+            self.assertNotIn(" #", value, path.parent.name)
+
     def test_every_shared_skill_has_codex_metadata(self):
         for skill in (PLUGIN / "skills").iterdir():
             if skill.is_dir():
