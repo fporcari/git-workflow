@@ -48,7 +48,7 @@ say `<PLUGIN_ROOT>` instead of any host variable, and `refs/runtime.md` is the
 one place that resolves it and answers the other host-specific questions —
 how to ask the user a question, how to launch a detached desk, how to title a
 session, how to delegate to a background subagent, how to spawn a dedicated one. The
-two Claude Code wrappers in `commands/` are thin by design: they load a skill
+four Claude Code wrappers in `commands/` are thin by design: they load a skill
 and declare that host's tool names, nothing else. Explicit desk actions pick
 their ephemeral backend with `--agent auto|claude|codex`. The launching
 conversation stays attached by default — every click except triage is
@@ -172,6 +172,19 @@ succeeded.
 | **`pr-analyze`** | One PR, read properly: a compact fresh probe first, reusing the desk's normalized row and any still-valid problem statement. When only the head changed after a review, it compares the reviewed SHA with the new head and stops before the full diff if PR-owned behaviour is unchanged. Otherwise it gathers the complete snapshot and diff once. Exact local Git objects accelerate reads without trusting the working tree. Returns author / problem / history / one proposal, asks for confirmation, and prepares any draft worth posting. Read-only — never posts, never pushes. Used headless by the desk's Analizza button. |
 | **`issue-analyze`** | One issue, in a virgin context: verify the root cause in the actual code (DEFECT), walk the reuse ladder (REQUEST), find the proving line (QUESTION/DOCS). Returns a typed verdict with the minimal change and a verification plan. Read-only — never branches, never comments. |
 | **`issue-work`** | The mandate of a session spawned for a single issue: analyze it fresh, then either fix it in a worktree and open the PR when it is one coherent change, or lay out the phases it really needs. |
+
+### Prepare overnight — read-only
+
+Both are **explicit-invocation only**: launched by hand in the evening, they
+start the jobs the desk would start in the morning and nothing else, with the
+read-only `ANALYZE` profile. Every result is keyed to the PR or issue as it
+was read, so whatever moves before morning shows as stale and is asked for
+again. Nothing is posted, pushed or assigned.
+
+| skill | what it does |
+|---|---|
+| **`pr-nightwork`** | One `pr-analyze` job per PR that asks for your judgment and whose analysis is missing or stale, four at a time, plus the conflict readings owed on your own `DIRTY` PRs. A failure costs only its PR. The outcome lands in the desk's feed and under `runs.pr-nightwork`. |
+| **`issue-nightwork`** | Ranks the shortlist — the open issues nobody holds, cited by no open PR, that you never commented — then runs one `issue-analyze` job per shortlisted issue without a current analysis. The outcome lands in the desk's feed and under `runs.issue-nightwork`. |
 
 ### The dashboards
 
