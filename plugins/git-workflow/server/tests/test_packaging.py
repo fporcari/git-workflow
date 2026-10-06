@@ -104,8 +104,9 @@ class Packaging(unittest.TestCase):
     def test_the_nightworks_are_explicit_read_only_and_one_side_each(self):
         """They run unattended at night: nothing may start one by itself, no
         job they start may write, and the PR and issue sides stay apart."""
-        source = (PLUGIN / "server" / "nightwork.py").read_text()
-        self.assertNotIn("operation(", source)
+        for module in ("nightwork.py", "preparation.py"):
+            source = (PLUGIN / "server" / module).read_text()
+            self.assertNotIn("operation(", source, module)
         for kind in ("pr", "issue"):
             name = "%s-nightwork" % kind
             skill = (PLUGIN / "skills" / name / "SKILL.md").read_text()

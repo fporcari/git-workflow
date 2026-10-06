@@ -1522,6 +1522,34 @@ class Http(unittest.TestCase):
         except HTTPError as exc:
             return exc.code, json.loads(exc.read())
 
+    def test_the_wizard_is_served_on_its_own_and_in_the_snapshot(self):
+        status, etag, body = self.get("/api/wizard")
+        payload = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(set(payload), {"review", "prepare"})
+        self.assertEqual(set(payload["prepare"]), {"pr", "issue"})
+        self.assertEqual(self.get("/api/wizard", etag)[0], 304)
+        _, _, desk = self.get("/api/desk")
+        self.assertIn("wizard", json.loads(desk))
+
+    def test_prepare_starts_in_background_and_names_its_kinds(self):
+        desk = self.server.RequestHandlerClass.desk
+        with mock.patch.object(desk, "prepare_async") as started:
+            status, payload = self.post("/api/prepare", {"kinds": ["pr"]})
+            self.assertEqual((status, payload), (202, {"started": ["pr"]}))
+            started.assert_called_once_with(("pr",))
+            status, payload = self.post("/api/prepare", {"kinds": ["nope"]})
+            self.assertEqual(status, 400)
+
+    def test_a_reread_prepares_what_moved_only_when_the_desk_was_told_to(self):
+        desk = self.server.RequestHandlerClass.desk
+        with mock.patch.object(desk, "prepare_async") as started:
+            self.post("/api/fetch")
+            started.assert_not_called()
+            with mock.patch.object(prdesk.Handler, "prepare_on_fetch", True):
+                self.post("/api/fetch")
+            started.assert_called_once_with()
+
     def test_index_is_served(self):
         status, _, body = self.get("/")
         self.assertEqual(status, 200)

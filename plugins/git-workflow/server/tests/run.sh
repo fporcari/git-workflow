@@ -40,7 +40,7 @@ echo "== ui (real page, real server, fixture provider) =="
 # HOME goes with it so a fixture desk can never reach the real gh config.
 UI_HOME=$(mktemp -d -t git-workflow-ui-home.XXXXXX)
 HOME="$UI_HOME" GIT_WORKFLOW_STATE_DIR="$UI_HOME/state" \
-  python3 prdesk.py --provider fixture --port "$PORT" --repo desk-tests/ui 2>/dev/null &
+  python3 prdesk.py --provider fixture --port "$PORT" --repo desk-tests/ui --no-prepare 2>/dev/null &
 DESK=$!
 for _ in $(seq 40); do
   curl -sf -m 1 "http://127.0.0.1:$PORT/api/meta" >/dev/null 2>&1 && break

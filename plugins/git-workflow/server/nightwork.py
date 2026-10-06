@@ -17,178 +17,21 @@ issue  ranks the shortlist (open issues nobody holds, cited by no PR, never
        commented by the user) with one issue-triage pass, then one
        issue-analyze job per shortlisted issue without a reusable analysis.
 
-Nothing is written to the provider. The outcome lands under
-runs.<kind>-nightwork and as one feed line; a second run of the same kind on
-the same repository refuses to start while the first is alive.
+Nothing is written to the provider. The work itself is preparation.py's,
+the same function the desk runs at boot: the outcome lands under
+runs.<kind>-nightwork as it goes and as one feed line, and a run of the same
+kind on the same repository — this command or a desk opening — refuses to
+start while another is alive.
 """
 
 import argparse
-import fcntl
-import json
-import os
 import signal
 import sys
-import time
-from contextlib import contextmanager
-from pathlib import Path
 
-import deskstate
 import jobs
-import notify
 import prdesk
+import preparation
 from providers import PROVIDERS
-
-POLL = 2
-CONFLICTS = "conflitti"
-RANKING = "classifica"
-
-
-def bounded(repo, work, parallel):
-    """Run `work`, (label, start) pairs whose start() returns a job id, with at
-    most `parallel` jobs alive; return the final job record per label.
-
-    A job is over when this process no longer runs it, not when its file stops
-    saying `running`: a desk launched meanwhile may stamp a job it cannot
-    verify as orphaned while this process is still preparing it."""
-    waiting = list(work)
-    alive = {}
-    done = {}
-    while waiting or alive:
-        while waiting and len(alive) < parallel:
-            label, start = waiting.pop(0)
-            try:
-                alive[start()] = label
-            except Exception as exc:
-                done[label] = {"status": "error", "error": str(exc)[:300]}
-        live = {record.get("id") for record in jobs.active(repo)}
-        for job_id, label in list(alive.items()):
-            if job_id not in live:
-                done[label] = (jobs.get(repo, job_id)
-                               or {"status": "error", "error": "job record missing"})
-                del alive[job_id]
-        if alive:
-            time.sleep(POLL)
-    return done
-
-
-def conflict_rows(desk):
-    """The triage export narrowed to its conflict readings: the analyses are
-    this run's own jobs, one per PR, not one long triage process."""
-    path = Path(desk.run_triage("pr-triage"))
-    rows = json.loads(path.read_text())
-    tasks = {n: ["conflict"] for n, kinds in rows["model_tasks"].items()
-             if "conflict" in kinds}
-    rows.update(model_tasks=tasks, needs_model=[int(n) for n in tasks])
-    path.write_text(json.dumps(rows, indent=1))
-    return path
-
-
-def pr_work(desk):
-    tasks = json.loads(Path(desk.run_triage("pr-triage")).read_text())["model_tasks"]
-    work = [(int(n), lambda n=int(n): jobs.analyze_pr(
-                desk.repo, n, desk.me, desk.cwd, desk.agent,
-                lambda: desk.analysis_inputs(n)))
-            for n, kinds in tasks.items() if "analysis" in kinds]
-    if any("conflict" in kinds for kinds in tasks.values()):
-        work.append((CONFLICTS, lambda: jobs.triage(
-            desk.repo, "pr-triage", lambda: conflict_rows(desk),
-            desk.me, desk.cwd, desk.agent)))
-    return work
-
-
-def issue_due(desk):
-    """The shortlisted issues, in the ranked order, whose analysis is missing
-    or older than the issue's last activity."""
-    issues = desk.issues()
-    updated = {row["n"]: row.get("updated") for row in issues["rows"]}
-    notes = deskstate.load(desk.repo).get("issues") or {}
-    return [row["n"] for row in (issues["shortlist"] or {}).get("rows", [])
-            if not deskstate.issue_analysis_reusable(
-                notes.get(str(row["n"])) or {}, updated.get(row["n"]))]
-
-
-def pr_night(desk, parallel):
-    return bounded(desk.repo, pr_work(desk), parallel)
-
-
-def issue_night(desk, parallel):
-    ranked = bounded(desk.repo, [(RANKING, lambda: jobs.triage(
-        desk.repo, "issue-triage", lambda: desk.run_triage("issue-triage"),
-        desk.me, desk.cwd, desk.agent))], 1)
-    work = [(n, lambda n=n: jobs.analyze_issue(
-                desk.repo, n, desk.me, desk.cwd, desk.agent))
-            for n in issue_due(desk)]
-    return {**ranked, **bounded(desk.repo, work, parallel)}
-
-
-def _why(record):
-    return str(record.get("error") or record.get("status") or "?")[:120]
-
-
-def summary(kind, done):
-    """(status, report): failed only when there was work and none of it
-    landed; a run that analyzed ten and lost one did its job and says so."""
-    items = {k: v for k, v in done.items() if isinstance(k, int)}
-    passes = {k: v for k, v in done.items() if not isinstance(k, int)}
-    ok = [k for k, v in items.items() if v.get("status") == "done"]
-    noun = "PR" if kind == "pr" else "issue"
-    parts = (["%d %s analizzate" % (len(ok), noun)] if items
-             else ["nessuna %s da analizzare" % noun])
-    for label, text in ((RANKING, "shortlist classificata"),
-                        (CONFLICTS, "conflitti letti")):
-        if (passes.get(label) or {}).get("status") == "done":
-            parts.append(text)
-    failed = (["#%s (%s)" % (k, _why(v)) for k, v in sorted(items.items())
-               if v.get("status") != "done"] +
-              ["%s (%s)" % (k, _why(v)) for k, v in passes.items()
-               if v.get("status") != "done"])
-    if failed:
-        parts.append("non riuscite: " + ", ".join(failed))
-    landed = ok or any(v.get("status") == "done" for v in passes.values())
-    return ("failed" if done and not landed else "done"), ", ".join(parts)
-
-
-def record(repo, label, status, report):
-    def mutate(state):
-        state.setdefault("runs", {})[label] = {
-            "status": status, "report": report,
-            "at": time.strftime("%Y-%m-%dT%H:%M:%S")}
-    deskstate.update(repo, mutate)
-
-
-@contextmanager
-def exclusive(repo, label):
-    path = deskstate.runtime_path(repo, "%s.lock" % label)
-    descriptor = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
-    try:
-        try:
-            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            yield False
-            return
-        try:
-            yield True
-        finally:
-            fcntl.flock(descriptor, fcntl.LOCK_UN)
-    finally:
-        os.close(descriptor)
-
-
-def night(desk, kind, parallel):
-    """One repository's run: (status, report)."""
-    label = "%s-nightwork" % kind
-    with exclusive(desk.repo, label) as free:
-        if not free:
-            return "failed", "%s già in corso su questo repository" % label
-        notify.notify(desk.repo, "%s partito" % label)
-        try:
-            done = (pr_night if kind == "pr" else issue_night)(desk, parallel)
-            status, report = summary(kind, done)
-        except Exception as exc:
-            status, report = "failed", "interrotto: %s" % str(exc)[:200]
-        record(desk.repo, label, status, report)
-        notify.notify(desk.repo, "%s: %s" % (label, report))
-        return status, report
 
 
 def main():
@@ -213,7 +56,7 @@ def main():
     failed = False
     try:
         for desk in desks:
-            status, report = night(desk, args.kind, max(1, args.parallel))
+            status, report = preparation.prepare(desk, args.kind, max(1, args.parallel))
             failed = failed or status == "failed"
             sys.stdout.write("%s %s-nightwork %s: %s\n"
                              % (desk.repo, args.kind, status, report))
