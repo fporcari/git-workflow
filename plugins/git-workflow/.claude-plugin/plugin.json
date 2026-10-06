@@ -14,5 +14,6 @@
     "pull-request",
     "triage",
     "review"
-  ]
+  ],
+  "types": "./types/index.d.ts"
 }
