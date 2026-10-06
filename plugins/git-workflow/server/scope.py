@@ -43,7 +43,11 @@ def _origin(path):
 
 
 def _is_checkout(path):
-    return (Path(path) / ".git").exists()
+    # a folder the user cannot read holds no clone of theirs
+    try:
+        return (Path(path) / ".git").exists()
+    except OSError:
+        return False
 
 
 def clones(*roots):
@@ -54,8 +58,11 @@ def clones(*roots):
         if not root:
             continue
         root = Path(root).expanduser().resolve()
-        candidates = [root] + (sorted(p for p in root.iterdir() if p.is_dir())
-                               if root.is_dir() else [])
+        try:
+            children = sorted(p for p in root.iterdir() if p.is_dir()) if root.is_dir() else []
+        except OSError:
+            children = []
+        candidates = [root] + children
         for path in candidates:
             if not _is_checkout(path):
                 continue

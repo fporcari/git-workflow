@@ -102,6 +102,16 @@ class ScopeResolution(unittest.TestCase):
         self.assertEqual([m["repo"] for m in members], [ENGINE, EXT])
         self.assertTrue(all(m["cwd"] and m["host"] == "forge.example" for m in members))
 
+    def test_a_folder_nobody_can_read_is_not_a_clone_and_breaks_nothing(self):
+        locked = self.root / "locked"
+        locked.mkdir()
+        locked.chmod(0)
+        self.addCleanup(locked.chmod, 0o755)
+        with mock.patch("scope.provider_for", return_value="forgejo"):
+            _, members = scope.build(cwd=self.root, get_provider=self.fake_provider)
+        self.assertEqual([m["repo"] for m in members], [ENGINE, EXT])
+        self.assertEqual(scope.clones(locked), {})
+
     def test_an_org_reads_its_repositories_and_finds_their_clones(self):
         with mock.patch("scope.provider_for", return_value="forgejo"):
             name, members = scope.build(orgs=["acme"], cwd=self.root,
