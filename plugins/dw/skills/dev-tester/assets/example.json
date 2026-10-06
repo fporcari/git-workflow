@@ -1,0 +1,53 @@
+{
+  "id": "shop-collaudo-2026-03-12",
+  "version": 1,
+  "lang": "en",
+  "eyebrow": "Example Co · Shop",
+  "title": "Shop – fixes and tests of 12 March",
+  "meta": "12 March 2026 · Answer to this week's reports and acceptance checklist",
+  "lead": "The two reports of this week are fixed and merged in `main`. They can be tested on the real orders once the release is deployed.",
+  "open_questions": ["Release date, and the environment where the tests should run."],
+  "cases": [
+    {
+      "id": "discount-rounding",
+      "title": "Order total – discount rounding",
+      "instance": "production",
+      "real_case": "order 10482 of 02/03/26 (EUR 119.90)",
+      "issues": [{"label": "shop#41", "url": "https://example.com/shop/issues/41"}],
+      "fixes": [{"label": "shop#42", "url": "https://example.com/shop/pull/42"}],
+      "state": {"text": "Merged · issue closed", "kind": "done"},
+      "answer": [
+        "A 10% discount on a basket with three lines is now rounded once on the total, as the invoice does. Before, each line was rounded and the order could differ from the invoice by one cent.",
+        "Existing orders are not recalculated: order 10482 needs **Recalculate** after the release."
+      ],
+      "steps": [
+        {"do": "Open order 10482, tab Totals. Take a screenshot before going on.", "expect": "As before: total EUR 107.92, invoice EUR 107.91."},
+        {"do": "Press «Recalculate».", "expect": "Total EUR 107.91, the same as the invoice.", "modifies_data": true},
+        {"do": "Create a test order with the same three lines and the 10% code.", "expect": "Total EUR 107.91 without pressing Recalculate.", "modifies_data": true}
+      ],
+      "watch": [
+        "Orders already invoiced are not touched: Recalculate on them is refused, and that refusal is expected.",
+        "The fix was checked on a copy of last week's data; this is the first run on real orders."
+      ]
+    },
+    {
+      "id": "export-timeout",
+      "title": "Monthly export – timeout",
+      "instance": "production",
+      "real_case": "export of February 2026",
+      "issues": [{"label": "shop#44", "url": "https://example.com/shop/issues/44"}],
+      "fixes": [{"label": "shop#45", "url": "https://example.com/shop/pull/45"}],
+      "state": {"text": "Merged · issue closed", "kind": "done"},
+      "answer": ["The monthly export now runs in the background and sends an email when the file is ready, instead of stopping after 60 seconds."],
+      "steps": [
+        {"do": "Reports, Monthly export: pick February 2026 and press «Export».", "expect": "The message says the file will arrive by email; the page does not wait."},
+        {"do": "Open the email and the attached file.", "expect": "One row per order of February, 3,214 rows."}
+      ],
+      "watch": ["If the email does not arrive within 10 minutes, send us the time you pressed Export."]
+    }
+  ],
+  "extra_references": [
+    {"title": "Same rounding in the mobile app", "issues": [{"label": "app#7", "url": "https://example.com/app/issues/7"}], "state": {"text": "Open", "kind": "wait"}}
+  ],
+  "footer": "Example Co · acceptance document of 12/03/2026"
+}
