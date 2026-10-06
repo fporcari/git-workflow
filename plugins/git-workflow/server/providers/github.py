@@ -421,6 +421,12 @@ class GitHubProvider(Provider):
         made = self._rest("repos/%s/issues/%s/comments" % (repo, n), "POST", body={"body": body})
         return {"url": made["html_url"]}
 
+    def issue_close(self, repo, n, body):
+        made = self.comment(repo, n, body)
+        self._rest("repos/%s/issues/%s" % (repo, n), "PATCH",
+                   body={"state": "closed", "state_reason": "completed"})
+        return made
+
     def review(self, repo, n, event, body, commit):
         made = self._rest("repos/%s/pulls/%s/reviews" % (repo, n), "POST", body={
             "event": {"approve": "APPROVE", "changes": "REQUEST_CHANGES"}[event],

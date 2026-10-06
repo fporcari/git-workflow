@@ -556,10 +556,11 @@ class Desk:
         return {kind: preparation.running(self.repo, kind)
                 for kind in preparation.KINDS}
 
-    def wizard(self):
-        queue = self.queue()
+    def wizard(self, queue=None, issues=None):
+        queue = queue or self.queue()
+        issues = issues or self.issues()
         return wizardlib.build(queue, deskstate.load(self.repo), self.me,
-                               jobs.active(self.repo), self.preparing())
+                               jobs.active(self.repo), self.preparing(), issues)
 
     def live_state(self):
         st = deskstate.load(self.repo)
@@ -603,8 +604,7 @@ class Desk:
                          "scope": self.scope_info()},
                 "queue": queue, "issues": issues,
                 "threads": threads.build(queue["rows"], every_issue, self.me),
-                "wizard": wizardlib.build(queue, deskstate.load(self.repo), self.me,
-                                          jobs.active(self.repo), self.preparing()),
+                "wizard": self.wizard(queue, issues),
                 "state": self.live_state(),
                 "timings": dict(self.timings),
                 "generated": time.strftime("%H:%M:%S")}
@@ -676,6 +676,12 @@ class Desk:
         cards = ([card for step in section["steps"] for card in step["rows"]]
                  + section["pending"] + section["skipped"])
         return {card["n"]: card for card in cards}
+
+    def close_targets(self):
+        """{n: card} of the issues the analysis found already fixed: the only
+        ones a closing click may name."""
+        section = wizardlib.issue_section(self.issues(), deskstate.load(self.repo))
+        return {card["n"]: card for card in section["steps"][0]["rows"]}
 
     def analysis_inputs(self, n):
         """The keys and the compact evidence a pr-analyze job of PR `n`
@@ -1184,6 +1190,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._run(body)
             elif parts == ["api", "review"]:
                 self._review(body)
+            elif parts == ["api", "close"]:
+                self._close(body)
             elif parts == ["api", "ping"]:
                 self._send(200, {"pong": body.get("token") or "",
                                  "mode": "detached"})
@@ -1345,6 +1353,49 @@ class Handler(BaseHTTPRequestHandler):
                 return
             responses.append(dict(response, repo=desk.repo))
         self._send(202, responses[0] if len(responses) == 1 else {"reviews": responses})
+
+    def _close(self, body):
+        """Close the issues a merged PR already fixed, each with the comment
+        shown: public like a review, so only through the attached chat."""
+        items = body.get("items")
+        if not isinstance(items, list) or not 1 <= len(items) <= MAX_REVIEW:
+            self._send(400, {"error": "da 1 a %d righe per clic" % MAX_REVIEW})
+            return
+        try:
+            groups = self._item_groups(items)
+        except (KeyError, TypeError, ValueError) as exc:
+            self._send(400, {"error": str(exc)})
+            return
+        for desk, group in groups:
+            targets = desk.close_targets()
+            for item in group:
+                text = item.get("body")
+                if item["n"] not in targets:
+                    self._send(409, {"error": "#%s non risulta già risolta da una PR "
+                                              "mergiata" % item["n"]})
+                    return
+                if not isinstance(text, str) or not text.strip():
+                    self._send(400, {"error": "#%s: manca il commento di chiusura" % item["n"]})
+                    return
+                if attribution.attributed(text):
+                    self._send(400, {"error": "#%s: il testo dice quale strumento "
+                                              "l'ha scritto" % item["n"]})
+                    return
+        if not all(deskstate.chat_listening(desk.repo, desk=desk.kind) for desk, _ in groups):
+            self._send(409, {"error": "serve la chat collegata: le chiusure partono da lì, "
+                                      "con il comando visibile"})
+            return
+        responses = []
+        for desk, group in groups:
+            payload = {"items": [{"n": item["n"], "body": item["body"]} for item in group]}
+            label = "chiudi %s" % " ".join("#%s" % item["n"] for item in group)
+            response = self._chat_handoff(desk, "close", None, payload, label,
+                                          key="close:issues")
+            if response is None:
+                self._send(409, {"error": "la chat collegata non risponde più"})
+                return
+            responses.append(dict(response, repo=desk.repo))
+        self._send(202, responses[0] if len(responses) == 1 else {"closes": responses})
 
     def _analyze_pr(self, desk, n):
         # the payload is a callable: an attached chat needs the context in its

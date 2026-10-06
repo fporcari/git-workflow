@@ -23,6 +23,7 @@ sys.path.insert(0, str(ROOT))
 import cache            # noqa: E402
 import chatdesk         # noqa: E402
 import deskstate        # noqa: E402
+import jobs             # noqa: E402
 import prdesk           # noqa: E402
 from providers import get_provider  # noqa: E402
 
@@ -195,6 +196,79 @@ class ReviewClicks(unittest.TestCase):
         state = deskstate.load(REPO)
         self.assertEqual(state["requests"]["review:approve"]["status"], "failed")
         self.assertNotIn("session_reviews", state)
+
+
+class ClosingClicks(unittest.TestCase):
+    """Closing an issue a merged PR already fixed is public too: the comment
+    shown, the attached chat, nothing else."""
+
+    @classmethod
+    def setUpClass(cls):
+        cache.clear(REPO)
+        cls.desk = prdesk.Desk(get_provider("fixture"), REPO, "fporcari", str(ROOT))
+        prdesk.Handler.desk = cls.desk
+        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), prdesk.Handler)
+        cls.port = cls.server.server_address[1]
+        threading.Thread(target=cls.server.serve_forever, daemon=True).start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.server.server_close()
+
+    def setUp(self):
+        deskstate.save(REPO, {})
+        self.shortlist = [c["n"] for c in self.desk.wizard()["issue"]["pending"]]
+        self.fixed = self.shortlist[0]
+        jobs.persist_issue_analysis(REPO, {
+            "n": self.fixed, "type": "DEFECT", "finding": "f", "size": "EASY",
+            "phase": "SINGLE-PHASE", "problem": "p", "cause": "c", "propose": "x",
+            "verify": "v", "decision": None, "fixed_by": 1099}, self.fixed)
+
+    def close(self, *items):
+        req = Request("http://127.0.0.1:%s/api/close" % self.port,
+                      data=json.dumps({"items": list(items)}).encode(),
+                      headers={"Content-Type": "application/json",
+                               "X-Git-Workflow-Token": self.desk.write_token})
+        try:
+            with urlopen(req, timeout=30) as resp:
+                return resp.status, json.loads(resp.read())
+        except HTTPError as exc:
+            return exc.code, json.loads(exc.read())
+
+    def test_a_close_goes_to_the_chat_with_the_comment_shown(self):
+        deskstate.chat_heartbeat(REPO, SESSION, "pr")
+        status, payload = self.close({"n": self.fixed, "body": "Fixed by #1099."})
+        self.assertEqual((status, payload["request"]), (202, "close:issues"))
+        record = deskstate.load(REPO)["requests"]["close:issues"]
+        self.assertEqual(record["payload"], {"items": [{"n": self.fixed,
+                                                        "body": "Fixed by #1099."}]})
+        self.assertEqual(chatdesk.command_for(record), "chiudi #%d" % self.fixed)
+        claimed = deskstate.claim_request(REPO, SESSION, "pr")
+        path = Path(tempfile.mkdtemp()) / "result.json"
+        path.write_text(json.dumps({"status": "done", "report": "1 chiusa",
+                                    "provider_changed": True, "done": [self.fixed],
+                                    "refused": []}))
+        chatdesk.result(REPO, "close:issues", str(path), SESSION, claimed["id"])
+        self.assertEqual(deskstate.load(REPO)["session_closed"], {"close": [self.fixed]})
+        issue = self.desk.wizard()["issue"]
+        self.assertTrue(issue["steps"][0]["rows"][0]["sent"])
+        self.assertEqual(issue["steps"][-1]["summary"]["close"], [self.fixed])
+
+    def test_closing_refusals(self):
+        other = self.shortlist[1]
+        for item, code, why in (
+                ({"n": other, "body": "Fixed."}, 409, "già risolta"),
+                ({"n": self.fixed, "body": " "}, 400, "commento"),
+                ({"n": self.fixed, "body": "Fixed, co-authored-by: a bot"}, 400,
+                 "quale strumento"),
+                ({"n": self.fixed, "body": "Fixed."}, 409, "chat collegata"),
+        ):
+            with self.subTest(item=item):
+                status, payload = self.close(item)
+                self.assertEqual(status, code, payload)
+                self.assertIn(why, payload["error"])
+        self.assertEqual(deskstate.load(REPO).get("requests") or {}, {})
 
 
 if __name__ == "__main__":

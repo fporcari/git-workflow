@@ -46,7 +46,11 @@ Return (and persist, section 4):
    of phases to respect;
 3. size EASY / MEDIUM / HARD;
 4. a verification plan naming the existing test infra;
-5. any open decision, with the options and their one-line consequences.
+5. any open decision, with the options and their one-line consequences;
+6. `fixed_by`: the number of the merged PR whose change already resolves the
+   issue on the base, when the code shows it does — the issue then only needs
+   closing, with a comment naming that PR. `null` otherwise, and `null` when
+   in doubt: the desk offers to close what this field names.
 
 ## 4 · Publish to the review desk
 
@@ -62,6 +66,7 @@ keys and replacing every analysis field, including null decisions:
                      "problem": "<problem>", "cause": "<verified cause or gap>",
                      "propose": "<minimal change, naming files>",
                      "verify": "<verification plan>", "decision": null,
+                     "fixed_by": null,
                      "at": "<ISO timestamp with timezone, now>"}}}
 ```
 

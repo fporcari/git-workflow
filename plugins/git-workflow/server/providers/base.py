@@ -253,6 +253,11 @@ class Provider:
         """{url} of the new comment on issue or pull request `n`."""
         raise NotImplementedError
 
+    def issue_close(self, repo, n, body):
+        """Comment `body` on issue `n`, then close it as completed. {url} of
+        the comment."""
+        raise NotImplementedError
+
     def review(self, repo, n, event, body, commit):
         """Submit a review of pull request `n` on `commit`: `event` is
         "approve" or "changes". {url} of the review. The caller has checked

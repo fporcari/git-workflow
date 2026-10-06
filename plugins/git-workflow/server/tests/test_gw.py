@@ -318,6 +318,21 @@ class FixtureVerbsTest(unittest.TestCase):
                 self.assertIn(why, err)
                 review.assert_not_called()
 
+    def test_an_issue_closes_with_the_comment_that_says_what_fixed_it(self):
+        with mock.patch("providers.fixture.FixtureProvider.issue_close",
+                        return_value={"url": "u"}) as close:
+            made = self.verb("issue", "close", "3", "--body", "Fixed by #7.")
+        self.assertEqual(made, {"n": 3, "state": "closed", "url": "u"})
+        self.assertEqual(close.call_args.args[1:], (3, "Fixed by #7."))
+        for argv, why in ((("--body", " "), "comment"),
+                          (("--body", "Fixed. Generated with a tool"), "which tool")):
+            with self.subTest(argv=argv), mock.patch(
+                    "providers.fixture.FixtureProvider.issue_close") as close:
+                code, out, err = run(*self.R, "issue", "close", "3", *argv)
+                self.assertEqual((code, out), (1, ""))
+                self.assertIn(why, err)
+                close.assert_not_called()
+
     def test_squash_is_the_callers_reading_and_reaches_the_provider(self):
         with mock.patch("providers.fixture.FixtureProvider.merge") as merge:
             merge.return_value = {"state": "merged", "merge": "MERGED", "closes": []}
@@ -563,6 +578,20 @@ class ForgejoShapeTest(unittest.TestCase):
             p.merge("acme/widgets", 12, method="squash", delete_branch=True)
         self.assertEqual(sent[0], ("POST", "/repos/acme/widgets/pulls/12/merge",
                                    {"Do": "squash", "delete_branch_after_merge": True}))
+
+    def test_an_issue_close_comments_then_closes(self):
+        p = self.provider()
+        sent = []
+
+        def record(path, method="GET", params=None, fields=None, accept=None):
+            sent.append((method, path, fields))
+            return json.dumps({"html_url": "https://hub/issues/4#c"})
+        with mock.patch.object(ForgejoProvider, "_request", side_effect=record):
+            p.issue_close("acme/widgets", 4, "Fixed by #12.")
+        self.assertEqual([(m, path) for m, path, _ in sent],
+                         [("POST", "/repos/acme/widgets/issues/4/comments"),
+                          ("PATCH", "/repos/acme/widgets/issues/4")])
+        self.assertEqual(sent[1][2], {"state": "closed"})
 
     def test_a_review_uses_forgejos_event_names(self):
         p = self.provider()

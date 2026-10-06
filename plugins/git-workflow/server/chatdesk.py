@@ -106,6 +106,9 @@ def command_for(record):
         command = "/pr-explain %s" % n
     elif kind == "issue-analyze":
         command = "/issue-analyze %s" % n
+    elif kind == "close":
+        command = "chiudi %s" % " ".join("#%s" % item.get("n")
+                                         for item in payload.get("items") or [])
     elif kind == "review":
         verb = {"approve": "approva", "changes": "chiedi modifiche"}.get(
             payload.get("event"), payload.get("event"))
@@ -346,7 +349,11 @@ def _persist(repo, record, result, state):
         jobs.persist_issue_analysis(repo, result, n, state=state)
         return result["finding"]
     if kind == "review":
-        return jobs.persist_review(repo, result, payload, state=state)
+        return jobs.persist_rows(repo, result, payload, "session_reviews",
+                                 payload.get("event"), state=state)
+    if kind == "close":
+        return jobs.persist_rows(repo, result, payload, "session_closed", "close",
+                                 state=state)
     if kind in ("order", "run"):
         parsed = jobs.parse_operation("chat", raw)
         flow = payload.get("flow")

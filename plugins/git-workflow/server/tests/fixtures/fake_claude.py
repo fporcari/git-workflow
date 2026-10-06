@@ -3,7 +3,7 @@
 with schema-valid JSON, for end-to-end runs that spend no tokens.
 
 Put it on PATH as `claude`. The verdict of PR n follows n % 3: approve,
-changes, doubt. FAKE_FAIL=<n> makes the analysis of PR n exit 3;
+changes, doubt; issue n % 3 is easy, already fixed, or a workflow. FAKE_FAIL=<n> makes the analysis of PR n exit 3;
 FAKE_LOG=<file> appends one line per call, the job it answered."""
 
 import json
@@ -53,9 +53,12 @@ if "skills/pr-analyze" in prompt:
 elif "skills/issue-analyze" in prompt:
     n = int(re.search(r"issue #(\d+)", prompt).group(1))
     log("issue %d" % n)
-    emit({"n": n, "type": "DEFECT", "finding": "f", "size": "EASY",
-          "phase": "SINGLE-PHASE", "problem": "p", "cause": "c", "propose": "x",
-          "verify": "v", "decision": None})
+    shape = n % 3
+    emit({"n": n, "type": "DEFECT", "finding": "f%d" % n,
+          "size": "EASY" if shape < 2 else "MEDIUM",
+          "phase": "SINGLE-PHASE" if shape < 2 else "WORKFLOW",
+          "problem": "p", "cause": "c", "propose": "x", "verify": "v",
+          "decision": None, "fixed_by": n - 1 if shape == 1 else None})
 else:
     rows = json.load(open(re.search(r"JSON at (\S+) for", prompt).group(1)))
     if "skills/pr-triage" in prompt:

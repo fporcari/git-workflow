@@ -1526,7 +1526,7 @@ class Http(unittest.TestCase):
         status, etag, body = self.get("/api/wizard")
         payload = json.loads(body)
         self.assertEqual(status, 200)
-        self.assertEqual(set(payload), {"review", "prepare"})
+        self.assertEqual(set(payload), {"review", "mine", "issue", "whose", "prepare"})
         self.assertEqual(set(payload["prepare"]), {"pr", "issue"})
         self.assertEqual(self.get("/api/wizard", etag)[0], 304)
         _, _, desk = self.get("/api/desk")
