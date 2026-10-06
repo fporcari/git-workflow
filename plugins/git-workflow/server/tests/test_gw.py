@@ -292,6 +292,32 @@ class FixtureVerbsTest(unittest.TestCase):
         self.assertEqual(merged["closes"],
                          [{"issue": 3, "source": "provider", "state": "closed"}])
 
+    def test_review_is_of_the_head_the_user_read(self):
+        with mock.patch("providers.fixture.FixtureProvider.review",
+                        return_value={"url": "u"}) as review:
+            made = self.verb("pr", "review", "8", "--approve", "--commit", "h8")
+            self.assertEqual(made, {"n": 8, "event": "approve", "commit": "h8", "url": "u"})
+            self.assertEqual(review.call_args.args[1:], (8, "approve", "", "h8"))
+            self.verb("pr", "review", "8", "--request-changes", "--commit", "h8",
+                      "--body", "Please split it.")
+            self.assertEqual(review.call_args.args[1:],
+                             (8, "changes", "Please split it.", "h8"))
+
+    def test_review_refusals_post_nothing(self):
+        for argv, why in (
+                (("8", "--approve", "--commit", "h0"), "moved"),
+                (("7", "--approve", "--commit", "h7"), "yours"),
+                (("8", "--request-changes", "--commit", "h8"), "motivation"),
+                (("8", "--request-changes", "--commit", "h8", "--body",
+                  "Split it.\n\nGenerated with Claude Code"), "which tool"),
+        ):
+            with self.subTest(argv=argv), mock.patch(
+                    "providers.fixture.FixtureProvider.review") as review:
+                code, out, err = run(*self.R, "pr", "review", *argv)
+                self.assertEqual((code, out), (1, ""))
+                self.assertIn(why, err)
+                review.assert_not_called()
+
     def test_squash_is_the_callers_reading_and_reaches_the_provider(self):
         with mock.patch("providers.fixture.FixtureProvider.merge") as merge:
             merge.return_value = {"state": "merged", "merge": "MERGED", "closes": []}
@@ -399,6 +425,20 @@ class GitHubShapeTest(unittest.TestCase):
         self.assertEqual(len(pr["reviews"]), 2)
         self.assertEqual(code, 0, err)
         self.assertEqual([row["author"] for row in json.loads(out)], ["alice"])
+
+    def test_a_review_names_the_commit_and_the_event(self):
+        calls = []
+
+        def gh(*args, **kw):
+            calls.append((args, json.loads(kw.get("stdin") or "null")))
+            return json.dumps({"html_url": "https://x/pull/12#review"})
+        with mock.patch("providers.github._gh", side_effect=gh):
+            made = GitHubProvider().review("acme/widgets", 12, "changes", "Split it.", "abc")
+        args, body = calls[0]
+        self.assertEqual(args[:4], ("api", "repos/acme/widgets/pulls/12/reviews", "-X", "POST"))
+        self.assertEqual(body, {"event": "REQUEST_CHANGES", "commit_id": "abc",
+                                "body": "Split it."})
+        self.assertEqual(made, {"url": "https://x/pull/12#review"})
 
     def test_issue_comments_include_later_pages(self):
         def gh(*args):
@@ -523,6 +563,19 @@ class ForgejoShapeTest(unittest.TestCase):
             p.merge("acme/widgets", 12, method="squash", delete_branch=True)
         self.assertEqual(sent[0], ("POST", "/repos/acme/widgets/pulls/12/merge",
                                    {"Do": "squash", "delete_branch_after_merge": True}))
+
+    def test_a_review_uses_forgejos_event_names(self):
+        p = self.provider()
+        sent = []
+
+        def record(path, method="GET", params=None, fields=None, accept=None):
+            sent.append((method, path, fields))
+            return json.dumps({"html_url": "https://hub/pulls/12#r"})
+        with mock.patch.object(ForgejoProvider, "_request", side_effect=record):
+            made = p.review("acme/widgets", 12, "approve", "", "abc")
+        self.assertEqual(sent[0], ("POST", "/repos/acme/widgets/pulls/12/reviews",
+                                   {"event": "APPROVED", "commit_id": "abc", "body": ""}))
+        self.assertEqual(made, {"url": "https://hub/pulls/12#r"})
 
     def test_a_reviewer_who_answered_is_no_longer_pending(self):
         """Forgejo keeps `requested_reviewers` after the review lands; an

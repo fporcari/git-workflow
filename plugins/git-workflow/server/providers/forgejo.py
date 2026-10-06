@@ -384,6 +384,12 @@ class ForgejoProvider(Provider):
         made = self._send("POST", "/repos/%s/issues/%s/comments" % (repo, n), {"body": body})
         return {"url": made["html_url"]}
 
+    def review(self, repo, n, event, body, commit):
+        made = self._send("POST", "/repos/%s/pulls/%s/reviews" % (repo, n), {
+            "event": {"approve": "APPROVED", "changes": "REQUEST_CHANGES"}[event],
+            "commit_id": commit, "body": body or ""})
+        return {"url": (made or {}).get("html_url")}
+
     def label_ensure(self, repo, name, color, description):
         if name not in {label["name"] for label in self._get_all("/repos/%s/labels" % repo)}:
             self._send("POST", "/repos/%s/labels" % repo,

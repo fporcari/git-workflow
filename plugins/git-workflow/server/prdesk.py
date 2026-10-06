@@ -68,6 +68,7 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 from urllib.request import urlopen
 
+import attribution
 import cache
 import deskstate
 import gate as gatelib
@@ -86,6 +87,9 @@ STATIC = Path(__file__).resolve().parent / "static"
 
 # a batch is one digest line per item; the loop caps its parallel agents itself
 MAX_BATCH = 20
+# a review click is one gw call per row, no model: a whole Approvabili step
+MAX_REVIEW = 50
+REVIEW_EVENTS = {"approve": "approva", "changes": "chiedi modifiche", "skip": "salta"}
 
 
 # the fields a verdict is a function of, and nothing else: hashing the whole
@@ -664,6 +668,15 @@ class Desk:
         path.write_text(json.dumps(payload, indent=1))
         return path
 
+    def review_targets(self):
+        """{n: card} of the PRs whose review is asked of the user now, in any
+        step of Da rivedere: the only rows a review click may name."""
+        section = wizardlib.review_section(self.queue(), deskstate.load(self.repo),
+                                           self.me)
+        cards = ([card for step in section["steps"] for card in step["rows"]]
+                 + section["pending"] + section["skipped"])
+        return {card["n"]: card for card in cards}
+
     def analysis_inputs(self, n):
         """The keys and the compact evidence a pr-analyze job of PR `n`
         receives. It READS THE PROVIDER, so callers run it inside the job."""
@@ -1169,6 +1182,8 @@ class Handler(BaseHTTPRequestHandler):
                                  args=(self.server,), daemon=True).start()
             elif parts == ["api", "run"]:
                 self._run(body)
+            elif parts == ["api", "review"]:
+                self._review(body)
             elif parts == ["api", "ping"]:
                 self._send(200, {"pong": body.get("token") or "",
                                  "mode": "detached"})
@@ -1243,6 +1258,93 @@ class Handler(BaseHTTPRequestHandler):
             responses.append(dict(response, repo=desk.repo))
         self._send(202, responses[0] if len(responses) == 1 else
                    {"runs": responses, "flow": flow, "batch": batch})
+
+    def _item_groups(self, items):
+        """[(desk, [item])] per repository, in click order; every item's `n`
+        an int."""
+        groups = []
+        for entry in items:
+            if not isinstance(entry, dict):
+                raise ValueError("ogni riga è un oggetto {repo, n}")
+            desk = self.desk.member(entry.get("repo"))
+            group = next((g for g in groups if g[0] is desk), None)
+            if group is None:
+                group = (desk, [])
+                groups.append(group)
+            group[1].append(dict(entry, n=int(entry["n"])))
+        return groups
+
+    def _review_refusal(self, desk, event, group):
+        """(code, why) of the first row the click may not carry, or None.
+        Exactly the rows shown, on the head shown, with the text shown."""
+        targets = desk.review_targets()
+        mine = {row["n"] for row in desk.queue()["rows"] if row.get("author") == desk.me}
+        for item in group:
+            n = item["n"]
+            target = targets.get(n)
+            if target is None:
+                return 409, (("#%s è tua: si mergia, si sistema o si risponde, "
+                              "non si approva" if n in mine else
+                              "#%s non è una review che ti è chiesta") % n)
+            if event == "skip":
+                continue
+            if not target.get("head") or item.get("head") != target["head"]:
+                return 409, "#%s è cambiata dopo che l'hai vista: rileggila" % n
+            text = item.get("body") or ""
+            if not isinstance(text, str):
+                return 400, "#%s: il testo deve essere una stringa" % n
+            if event == "changes" and not text.strip():
+                return 400, "#%s: manca la motivazione" % n
+            if attribution.attributed(text):
+                return 400, "#%s: il testo dice quale strumento l'ha scritto" % n
+        return None
+
+    def _review(self, body):
+        """Approve, request changes or skip to tomorrow, from the wizard. A
+        review is public: it goes to the attached chat, which runs it with
+        the command echoed, and only with one; a skip is the desk's own."""
+        event, items = body.get("event"), body.get("items")
+        if event not in REVIEW_EVENTS:
+            self._send(400, {"error": "unknown review event"})
+            return
+        if not isinstance(items, list) or not 1 <= len(items) <= MAX_REVIEW:
+            self._send(400, {"error": "da 1 a %d righe per clic" % MAX_REVIEW})
+            return
+        try:
+            groups = self._item_groups(items)
+        except (KeyError, TypeError, ValueError) as exc:
+            self._send(400, {"error": str(exc)})
+            return
+        for desk, group in groups:
+            refusal = self._review_refusal(desk, event, group)
+            if refusal:
+                self._send(refusal[0], {"error": refusal[1]})
+                return
+        if event == "skip":
+            for desk, group in groups:
+                deskstate.skip_today(desk.repo, [item["n"] for item in group])
+            self._send(200, {"skipped": [item["n"] for _, group in groups
+                                         for item in group]})
+            return
+        if not all(deskstate.chat_listening(desk.repo, desk=desk.kind)
+                   for desk, _ in groups):
+            self._send(409, {"error": "serve la chat collegata: approvazioni e richieste "
+                                      "di modifica partono da lì, con il comando visibile"})
+            return
+        responses = []
+        for desk, group in groups:
+            payload = {"event": event,
+                       "items": [{"n": item["n"], "head": item["head"],
+                                  "body": item.get("body") or ""} for item in group]}
+            label = "%s %s" % (REVIEW_EVENTS[event],
+                               " ".join("#%s" % item["n"] for item in group))
+            response = self._chat_handoff(desk, "review", None, payload, label,
+                                          key="review:%s" % event)
+            if response is None:
+                self._send(409, {"error": "la chat collegata non risponde più"})
+                return
+            responses.append(dict(response, repo=desk.repo))
+        self._send(202, responses[0] if len(responses) == 1 else {"reviews": responses})
 
     def _analyze_pr(self, desk, n):
         # the payload is a callable: an attached chat needs the context in its

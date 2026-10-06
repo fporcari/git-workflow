@@ -573,6 +573,17 @@ def add_order(repo, n, propose, draft, instruction):
     return update(repo, mutate)
 
 
+def skip_today(repo, ns):
+    """A doubt the user put off to tomorrow: out of today's steps, first among
+    tomorrow's."""
+    today = datetime.now().date().isoformat()
+
+    def mutate(state):
+        for n in ns:
+            state.setdefault("prs", {}).setdefault(str(n), {})["skipped"] = today
+    return update(repo, mutate)
+
+
 def record_verified(repo, n, sha):
     """The verification pass passed on THIS commit.
 

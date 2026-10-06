@@ -241,6 +241,24 @@ it in this conversation, by `kind`:
   - `issue-analyze` → the `issue-analyze` skill on `n`;
   - `order` → the pr-loop order flow for the order recorded under `orders.<n>`
     (the click was the go-ahead for that displayed proposal);
+  - `review` → post the reviews in `payload.items`, one call per row, with
+    exactly the `event`, `head` and `body` the click carries — never another
+    row, never a reworded text, never a merge (the merge stays the author's):
+
+    ```sh
+    gw --repo <owner/repo> pr review <n> --approve --commit <head> [--body-file <f>]
+    gw --repo <owner/repo> pr review <n> --request-changes --commit <head> --body-file <f>
+    ```
+
+    A row `gw` refuses (the PR moved after the user saw it, it closed) is not
+    retried and not reworded: it goes in `refused` with gw's reason. Publish
+    with `chatdesk.py result` the review-result JSON
+    (`server/schemas/review-result.json`): `status` (`failed` only when
+    nothing was posted), a one-line Italian `report` (`8 approvate`),
+    `provider_changed`, `done` with the numbers posted and `refused` with
+    `{n, why}` for the rest — every row of the click in one of the two. A
+    review click exists only in an attached chat: with none, the desk refuses
+    it instead of starting an agent.
   - `run` → `pr-loop`/`issue-loop` with the `ns` and `batch` in `payload`.
     With `batch` > 1 the loop hands its work to background agents and parks
     the request (`chatdesk.py park`, `refs/batch.md`): the row reads
@@ -331,9 +349,9 @@ python3 <PLUGIN_ROOT>/server/notify.py --repo <owner/repo> \
 ```
 
 Keys: `analyze:<n>`, `explain:<n>`, `order:<n>`, `issue-analyze:<n>`,
-`triage:<flow>`, `run:<flow>`. A request never closed goes stale after half an
-hour so a dead session cannot wedge the button forever — a backstop, not a
-substitute for closing it.
+`triage:<flow>`, `run:<flow>`, `review:<approve|changes>`. A request never
+closed goes stale after half an hour so a dead session cannot wedge the button
+forever — a backstop, not a substitute for closing it.
 
 **One request per loop, not per item.** `run:<flow>` stays a single request
 however wide the loop's batches: closing it per item would re-arm the ▶

@@ -664,7 +664,7 @@ class HeadlessAgents(unittest.TestCase):
         command = jobs.command("claude", "p", jobs.READ_TOOLS, ".",
                                schema=None, read_only=True)
         denied = command[command.index("--disallowedTools") + 1]
-        for verb in ("Bash(gh pr merge:*)", "Bash(git push:*)", "Write",
+        for verb in ("Bash(gh pr merge:*)", "Bash(gw pr review:*)", "Bash(git push:*)", "Write",
                      "Bash(gh api -X POST:*)"):
             self.assertIn(verb, denied)
         operation = jobs.command("claude", "p", "", ".", schema=None,

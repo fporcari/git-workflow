@@ -106,6 +106,11 @@ def command_for(record):
         command = "/pr-explain %s" % n
     elif kind == "issue-analyze":
         command = "/issue-analyze %s" % n
+    elif kind == "review":
+        verb = {"approve": "approva", "changes": "chiedi modifiche"}.get(
+            payload.get("event"), payload.get("event"))
+        command = "%s %s" % (verb, " ".join("#%s" % item.get("n")
+                                            for item in payload.get("items") or []))
     else:
         command = "/%s %s" % (kind, n if n is not None else "")
     return command + (" --repo %s" % record["repo"] if record.get("repo") else "")
@@ -340,6 +345,8 @@ def _persist(repo, record, result, state):
     if kind == "issue-analyze":
         jobs.persist_issue_analysis(repo, result, n, state=state)
         return result["finding"]
+    if kind == "review":
+        return jobs.persist_review(repo, result, payload, state=state)
     if kind in ("order", "run"):
         parsed = jobs.parse_operation("chat", raw)
         flow = payload.get("flow")
@@ -404,7 +411,7 @@ def result(repo, key, path, session, request_id):
             deskstate.close_request(repo, key, "failed", str(exc), state=state)
             _release(state, record)
             return None, str(exc)
-        status = data.get("status")
+        status = data.get("status") if isinstance(data, dict) else None
         if status not in ("needs-input", "failed"):
             status = "done"
         deskstate.close_request(repo, key, status, report, state=state)

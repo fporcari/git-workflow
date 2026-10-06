@@ -32,8 +32,8 @@ Issue detail:
     n, title, body, state, author, assignees, labels, created, updated, url,
     comments [{who, t, body}]
 
-Writes (gw issue create / pr create / edit / comment, label ensure) return
-{n, url} for a new item, {url} for a comment; labels, assignees and reviewers
+Writes (gw issue create / pr create / edit / comment / review, label ensure)
+return {n, url} for a new item, {url} for a comment or a review; labels, assignees and reviewers
 are added after creation through the add_* methods, one path on every service.
 """
 
@@ -251,6 +251,12 @@ class Provider:
 
     def comment(self, repo, n, body):
         """{url} of the new comment on issue or pull request `n`."""
+        raise NotImplementedError
+
+    def review(self, repo, n, event, body, commit):
+        """Submit a review of pull request `n` on `commit`: `event` is
+        "approve" or "changes". {url} of the review. The caller has checked
+        that `commit` is still the head: a review is of the code it read."""
         raise NotImplementedError
 
     def label_ensure(self, repo, name, color, description):

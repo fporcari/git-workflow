@@ -28,12 +28,18 @@ on any repository the user works in.
     gw pr edit <n> [--add-assignee L]... [--add-label L]... [--add-reviewer L]...
     gw pr comment <n> (--body-file F | --body B)
     gw pr merge <n> [--squash] [--delete-branch]
+    gw pr review <n> (--approve | --request-changes) --commit SHA [--body-file F | --body B]
     gw pr verified <n> --sha SHA [--label NAME]
 
 `gw pr merge` reads the pull request back and reports the state of every
 issue its body closes, so the merge and its traceability are one answer.
 `--squash` belongs to a branch carrying fixups or merge commits: that is a
 reading of the branch, and the caller makes it.
+
+`gw pr review` reviews the code the user read, or nothing: it refuses when
+`--commit` is no longer the head, on the user's own PR, on a closed one,
+on a request for changes with no body, and on a body that says which tool
+wrote it. The merge stays the author's.
 
 `gw pr verified` closes a verification pass: it removes the
 `needs-verification` label and records the tested SHA in the desk state
@@ -59,6 +65,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import attribution  # noqa: E402
 import deskstate  # noqa: E402
 from providers import PROVIDERS, detect, get_provider  # noqa: E402
 from providers.base import closes_from_body, diff_paths  # noqa: E402
@@ -206,6 +213,27 @@ def cmd_pr_edit(p, repo, args):
     _out({"n": args.n})
 
 
+def cmd_pr_review(p, repo, args):
+    event = "approve" if args.approve else "changes"
+    body = _body(args) if (args.body or args.body_file) else ""
+    if event == "changes" and not body.strip():
+        raise RuntimeError("a request for changes needs its motivation (--body or --body-file)")
+    if attribution.attributed(body):
+        raise RuntimeError("the review body says which tool wrote it: rewrite it")
+    detail = p.pr_detail(repo, args.n)
+    if detail["state"] != "open":
+        raise RuntimeError("#%s is %s: nothing to review" % (args.n, detail["state"]))
+    if detail["author"] == p.whoami():
+        raise RuntimeError("#%s is yours: your own PR is merged, fixed or answered, "
+                           "never reviewed" % args.n)
+    head = detail["head"]["sha"]
+    if head != args.commit:
+        raise RuntimeError("#%s moved: its head is %s, the review was of %s"
+                           % (args.n, (head or "?")[:9], args.commit[:9]))
+    made = p.review(repo, args.n, event, body, head)
+    _out({"n": args.n, "event": event, "commit": head, "url": made.get("url")})
+
+
 def cmd_pr_verified(p, repo, args):
     p.remove_label(repo, args.n, args.label)
     note = deskstate.record_verified(repo, args.n, args.sha)
@@ -312,6 +340,16 @@ def build_parser():
                         help="only when the branch carries fixups or merge commits")
     pmerge.add_argument("--delete-branch", action="store_true")
     pmerge.set_defaults(run=cmd_pr_merge)
+
+    preview = pr.add_parser("review", help="approve or request changes on the head you read")
+    preview.add_argument("n", type=int)
+    what = preview.add_mutually_exclusive_group(required=True)
+    what.add_argument("--approve", action="store_true")
+    what.add_argument("--request-changes", action="store_true")
+    preview.add_argument("--commit", required=True, help="the head the review is of")
+    preview.add_argument("--body")
+    preview.add_argument("--body-file", metavar="FILE")
+    preview.set_defaults(run=cmd_pr_review)
 
     pverified = pr.add_parser("verified", help="close a verification pass: drop the label, record the tested SHA")
     pverified.add_argument("n", type=int)

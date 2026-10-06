@@ -421,6 +421,12 @@ class GitHubProvider(Provider):
         made = self._rest("repos/%s/issues/%s/comments" % (repo, n), "POST", body={"body": body})
         return {"url": made["html_url"]}
 
+    def review(self, repo, n, event, body, commit):
+        made = self._rest("repos/%s/pulls/%s/reviews" % (repo, n), "POST", body={
+            "event": {"approve": "APPROVE", "changes": "REQUEST_CHANGES"}[event],
+            "commit_id": commit, "body": body or ""})
+        return {"url": made.get("html_url")}
+
     def label_ensure(self, repo, name, color, description):
         try:
             self._rest("repos/%s/labels/%s" % (repo, quote(name, safe="")))
