@@ -19,6 +19,7 @@ from datetime import date, datetime, timedelta
 import verdicts
 
 REVIEW_TODOS = ("review it", "review it (maintainer)", "re-review it")
+OPEN = ("preparing", "queued", "taken", "running")
 GREEN = "SUCCESS"
 STAGE_WORDS = {"queued": "in coda", "starting": "parte…", "inspecting": "legge…",
                "testing": "verifica i test…", "working": "legge…",
@@ -70,9 +71,23 @@ def progress_of(active_jobs):
     return out
 
 
+def in_flight(state):
+    """{n: event} of the rows a review click has handed to the chat and the
+    chat has not closed yet."""
+    out = {}
+    for key, record in (state.get("requests") or {}).items():
+        if key.startswith("review:") and record.get("status") in OPEN:
+            for item in (record.get("payload") or {}).get("items") or []:
+                out[int(item["n"])] = (record.get("payload") or {}).get("event")
+    return out
+
+
 def review_section(queue, state, me, active_jobs=()):
     rows, gates = queue["rows"], queue.get("gates") or {}
     notes = state.get("prs") or {}
+    sending = in_flight(state)
+    sent = {n: event for event, ns in (state.get("session_reviews") or {}).items()
+            for n in ns}
     run = (state.get("runs") or {}).get("pr-nightwork") or {}
     failed = run.get("failed") or {}
     chips = progress_of(active_jobs)
@@ -88,6 +103,9 @@ def review_section(queue, state, me, active_jobs=()):
             continue
         note = notes.get(str(row["n"])) or {}
         advice = row.get("advice")
+        marks = {key: value for key, value in (
+            ("sending", sending.get(row["n"])), ("sent", sent.get(row["n"])),
+            ("skipped_before", note.get("skipped"))) if value}
         if skipped_today(note):
             skipped.append(card(row))
             continue
@@ -95,13 +113,15 @@ def review_section(queue, state, me, active_jobs=()):
             reason = failed.get(str(row["n"]))
             if reason:
                 steps["doubt"].append(card(row, stance=None, doubt=(
-                    "analisi non riuscita: %s" % reason), why="da leggere a mano"))
+                    "analisi non riuscita: %s" % reason), why="da leggere a mano",
+                    **marks))
             else:
-                pending.append(card(row, chip=chips.get(row["n"], "in coda")))
+                pending.append(card(row, chip=chips.get(row["n"], "in coda"), **marks))
             continue
         stance = advice.get("stance")
         extra = {key: advice.get(key) for key in (
             "stance", "draft", "doubt", "lean", "hunk", "checks")}
+        extra.update(marks)
         if stance == "approve" and held_for_verification(row, advice):
             extra.update(stance="doubt", lean="approve", doubt=(
                 "needs-verification: i test non sono verdi sull'head letto"))
@@ -112,8 +132,9 @@ def review_section(queue, state, me, active_jobs=()):
             steps["doubt"].append(card(row, **dict(
                 extra, stance="doubt", doubt=advice.get("doubt") or advice.get("why"))))
     for items in steps.values():
-        items.sort(key=lambda c: -c["n"])
-    done = (state.get("session_reviews") or {})
+        items.sort(key=lambda c: (not c.get("skipped_before"), -c["n"]))
+    done = {event: list(ns) for event, ns in (state.get("session_reviews") or {}).items()}
+    done["skip"] = [c["n"] for c in skipped]
     order = ("approve", "changes", "doubt")
     first = next((step for step in order if steps[step]),
                  "prepare" if pending else "done")

@@ -8,7 +8,6 @@ The server validates the result and is the only writer of durable desk state.
 import json
 import os
 import queue
-import re
 import shlex
 import shutil
 import subprocess
@@ -19,6 +18,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+import attribution
 import deskstate
 import safejson
 
@@ -59,7 +59,7 @@ WRITE_TOOLS = (
     "Bash(gh api --input:*),"
     "Bash(gw pr create:*),Bash(gw pr edit:*),Bash(gw pr comment:*),"
     "Bash(gw issue create:*),Bash(gw issue edit:*),Bash(gw issue comment:*),"
-    "Bash(gw pr merge:*),"
+    "Bash(gw pr merge:*),Bash(gw pr review:*),"
     "Bash(gw label:*),Bash(gw api -X POST:*),Bash(gw api -X PATCH:*),"
     "Bash(gw api -X PUT:*),Bash(gw api -X DELETE:*),Bash(gw api --method:*),"
     "Bash(gw api -f:*),Bash(gw api --field:*),"
@@ -407,16 +407,6 @@ def _execute(cmd, cwd, timeout, agent, progress, started=None):
 STANCES = ("approve", "changes", "doubt", "fix", "decide")
 LEANS = ("approve", "changes")
 VERDICT_KEYS = ("stance", "why", "doubt", "lean", "hunk", "ask", "options")
-# public text never says which tool wrote it, whatever the model was told
-ATTRIBUTION = re.compile(
-    r"co-authored-by|generated (?:with|by)|ai[- ]generated|\U0001F916|"
-    r"\b(?:claude|anthropic|codex|chatgpt|openai)\b", re.I)
-
-
-def attributed(text):
-    return bool(text and ATTRIBUTION.search(text))
-
-
 def _text(item, key):
     return isinstance(item.get(key), str) and bool(item[key].strip())
 
@@ -449,7 +439,7 @@ def check_verdict(item):
             and hunk["path"].strip() and isinstance(hunk.get("header"), str)
             and hunk["header"].startswith("@@")):
         raise ValueError("agent returned an invalid hunk reference")
-    if attributed(item.get("draft")):
+    if attribution.attributed(item.get("draft")):
         raise ValueError("the draft names the tool that wrote it")
 
 
@@ -627,6 +617,37 @@ def persist_triage(repo, result, flow, exported):
                 else:
                     entry.pop(key, None)
     deskstate.update(repo, mutate)
+
+
+def persist_review(repo, result, payload, state=None):
+    """What the attached chat posted for one review click: every row it was
+    given is either done or refused with the reason, and only the done ones
+    count as sent. Returns the report."""
+    if (not isinstance(result, dict) or result.get("status") not in ("done", "failed")
+            or not isinstance(result.get("report"), str) or not result["report"].strip()
+            or not isinstance(result.get("provider_changed"), bool)):
+        raise ValueError("chat returned an invalid review result")
+    asked = {int(item["n"]) for item in payload.get("items") or []}
+    done = result.get("done")
+    refused = result.get("refused")
+    if not (isinstance(done, list) and all(isinstance(n, int) for n in done)
+            and isinstance(refused, list)
+            and all(isinstance(r, dict) and isinstance(r.get("n"), int)
+                    and isinstance(r.get("why"), str) and r["why"].strip()
+                    for r in refused)):
+        raise ValueError("chat returned an invalid review outcome")
+    accounted = set(done) | {r["n"] for r in refused}
+    if accounted != asked or set(done) & {r["n"] for r in refused}:
+        raise ValueError("chat reported on other PRs than the ones it was given")
+    event = payload.get("event")
+
+    def mutate(state):
+        sent = state.setdefault("session_reviews", {}).setdefault(event, [])
+        sent.extend(n for n in done if n not in sent)
+    deskstate.apply(repo, mutate, state)
+    if result["provider_changed"]:
+        deskstate.request_provider_refresh(repo, state=state)
+    return result["report"]
 
 
 def parse_operation(agent, stdout, output_path=None):
