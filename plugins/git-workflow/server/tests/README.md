@@ -42,6 +42,22 @@ Two properties the suite exists to hold:
   never the verdict's sentence. The test that used to pin the sentence broke
   the moment the wording changed — which is the point.
 
+- **`fixtures/fake_claude.py`** — a `claude` that answers every one-shot
+  desk job at once with schema-valid JSON, verdict included (PR n gets
+  approve, changes or doubt by n % 3). `test_nightwork.py` puts it on PATH to
+  run the real jobs end to end; `FAKE_FAIL=<n>` fails the analysis of PR n,
+  `FAKE_LOG=<file>` records each call. By hand, with a throwaway home:
+
+  ```sh
+  H=$(mktemp -d); mkdir $H/bin
+  cp server/tests/fixtures/fake_claude.py $H/bin/claude; chmod +x $H/bin/claude
+  HOME=$H GIT_WORKFLOW_STATE_DIR=$H/state PATH=$H/bin:$PATH \
+    python3 server/nightwork.py --kind pr --provider fixture --repo genropy/genropy --agent claude
+  ```
+
+  Never `HOME=$(mktemp -d) GIT_WORKFLOW_STATE_DIR=$HOME/state` on one line:
+  the shell expands `$HOME` before the assignment, into the real state.
+
 Run a desk on the fixture by hand to poke at the UI:
 
 ```sh

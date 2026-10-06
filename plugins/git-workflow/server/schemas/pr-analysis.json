@@ -11,7 +11,23 @@
     "draft": {"type": ["string", "null"]},
     "verified": {"type": "array", "items": {"type": "string"}},
     "not_verified": {"type": "array", "items": {"type": "string"}},
-    "plan": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1}, "minItems": 1}
+    "plan": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1}, "minItems": 1},
+    "stance": {"enum": ["approve", "changes", "doubt", "fix", "decide", null]},
+    "why": {"type": "string", "minLength": 1},
+    "doubt": {"type": ["string", "null"]},
+    "lean": {"enum": ["approve", "changes", null]},
+    "hunk": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "header": {"type": "string", "minLength": 1}
+      },
+      "required": ["path", "header"]
+    },
+    "ask": {"type": ["string", "null"]},
+    "options": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1}, "minItems": 3, "maxItems": 3}
   },
-  "required": ["n", "author", "problem", "history", "propose", "draft", "verified", "not_verified", "plan"]
+  "required": ["n", "author", "problem", "history", "propose", "draft", "verified", "not_verified", "plan",
+               "stance", "why", "doubt", "lean", "hunk", "ask", "options"]
 }

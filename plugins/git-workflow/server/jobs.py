@@ -8,6 +8,7 @@ The server validates the result and is the only writer of durable desk state.
 import json
 import os
 import queue
+import re
 import shlex
 import shutil
 import subprocess
@@ -403,6 +404,63 @@ def _execute(cmd, cwd, timeout, agent, progress, started=None):
         cmd, returncode, "".join(stdout), "".join(stderr))
 
 
+STANCES = ("approve", "changes", "doubt", "fix", "decide")
+LEANS = ("approve", "changes")
+VERDICT_KEYS = ("stance", "why", "doubt", "lean", "hunk", "ask", "options")
+# public text never says which tool wrote it, whatever the model was told
+ATTRIBUTION = re.compile(
+    r"co-authored-by|generated (?:with|by)|ai[- ]generated|\U0001F916|"
+    r"\b(?:claude|anthropic|codex|chatgpt|openai)\b", re.I)
+
+
+def attributed(text):
+    return bool(text and ATTRIBUTION.search(text))
+
+
+def _text(item, key):
+    return isinstance(item.get(key), str) and bool(item[key].strip())
+
+
+def check_verdict(item):
+    """The structured verdict a wizard row is made of: what each stance
+    cannot do without, and a draft that may be posted as it stands."""
+    stance = item.get("stance")
+    if stance is not None and stance not in STANCES:
+        raise ValueError("agent returned an unknown stance")
+    if not _text(item, "why"):
+        raise ValueError("agent returned no why line")
+    if stance == "changes" and not _text(item, "draft"):
+        raise ValueError("agent asked for changes without a motivation")
+    if stance == "doubt":
+        if not _text(item, "doubt") or item.get("lean") not in LEANS:
+            raise ValueError("agent returned a doubt without its text or leaning")
+        if item["lean"] == "changes" and not _text(item, "draft"):
+            raise ValueError("agent leans to changes without a motivation")
+    if stance == "decide":
+        options = item.get("options")
+        if not _text(item, "ask") or not (
+                isinstance(options, list) and len(options) == 3
+                and all(isinstance(o, str) and o.strip() for o in options)):
+            raise ValueError("agent returned a decision without the request "
+                             "or three options")
+    hunk = item.get("hunk")
+    if hunk is not None and not (
+            isinstance(hunk, dict) and isinstance(hunk.get("path"), str)
+            and hunk["path"].strip() and isinstance(hunk.get("header"), str)
+            and hunk["header"].startswith("@@")):
+        raise ValueError("agent returned an invalid hunk reference")
+    if attributed(item.get("draft")):
+        raise ValueError("the draft names the tool that wrote it")
+
+
+def _keep_verdict(target, item):
+    for key in VERDICT_KEYS:
+        if item.get(key) is None:
+            target.pop(key, None)
+        else:
+            target[key] = item[key]
+
+
 def parse_result(agent, stdout, output_path=None, expected_n=None):
     result = parse_structured(agent, stdout, output_path)
     required = {"n", "author", "problem", "history", "propose", "draft",
@@ -430,6 +488,7 @@ def parse_result(agent, stdout, output_path=None, expected_n=None):
                                  all(isinstance(step, str) and step.strip()
                                      for step in plan)):
         raise ValueError("agent returned an invalid verification plan")
+    check_verdict(result)
     return result
 
 
@@ -451,6 +510,8 @@ def persist(repo, result, analysis_keys=None, state=None):
                 record[target] = keys[source]
         if keys.get("problem_head"):
             record["problem_head"] = keys["problem_head"]
+        if keys.get("checks"):
+            record["checks"] = keys["checks"]
         if result.get("draft"):
             record["draft"] = result["draft"]
         if result.get("plan"):
@@ -461,6 +522,7 @@ def persist(repo, result, analysis_keys=None, state=None):
         if not result.get("plan"):
             target.pop("plan", None)
         target.update(record)
+        _keep_verdict(target, result)
     deskstate.apply(repo, mutate, state)
 
 
@@ -515,6 +577,8 @@ def persist_triage(repo, result, flow, exported):
                 if not all(isinstance(item.get(key), str) and item[key].strip()
                            for key in required):
                     raise ValueError("agent returned an incomplete analysis for #%s" % n)
+                check_verdict(item)
+                record["verdict"] = {key: item.get(key) for key in VERDICT_KEYS}
                 record.update(
                     author=item["author"], problem=item["problem"],
                     history=item["history"],
@@ -538,7 +602,10 @@ def persist_triage(repo, result, flow, exported):
             target = state.setdefault("prs", {})
             for n, record in records.items():
                 entry = target.setdefault(n, {})
+                verdict = record.pop("verdict", None)
                 entry.update(record)
+                if verdict is not None:
+                    _keep_verdict(entry, verdict)
                 if "plan" in record and record["plan"] is None:
                     entry.pop("plan")
         deskstate.update(repo, mutate)
