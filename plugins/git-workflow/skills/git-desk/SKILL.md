@@ -42,11 +42,12 @@ Show the desk beside the chat; a link alone is not the deliverable.
   (load it with ToolSearch when it is listed as deferred). It opens the
   `/desk` pane, drawn in the host's theme, and its answer names this chat's
   session id: use that as `<session-id>` below. While the boot's preparation
-  still runs it opens nothing and says so: when the preparation ends, a
-  `DESK PRONTO` notice with an *Apri il desk* key appears above the prompt,
-  with a toast, and the desk opens on the whole situation. Tell the user in
-  one line that you will let them know (`Preparo le analisi: ti avviso sopra
-  il prompt quando il desk è pronto`), then carry on with the attached chat. Only when the tool does not
+  still runs it opens nothing and says so: every five PRs read, and once
+  more when the review preparation ends, a `DESK PRONTO` notice with an
+  *Apri il desk* key appears above the prompt, with a toast, so the user
+  starts on the first five while the rest is read. Tell the user in one line
+  that you will let them know (`Preparo le analisi: ti avviso sopra il prompt
+  ogni cinque PR pronte`), then carry on with the attached chat. Only when the tool does not
   exist (a host that loads no mods) open the URL in the Browser pane instead
   — `preview_start` with `url`, the tool `runtime.md` → *Desks* names. A
   request that came from the pane itself already says the pane is open.

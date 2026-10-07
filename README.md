@@ -224,8 +224,8 @@ up to 0.58; if you installed it, remove it with
   holds, what works, what waits for you;
 - **a toast** when a preparation ends, and when a loop starts waiting for
   you or closes;
-- **a `DESK PRONTO` notice** when the desk the skill launched has finished
-  preparing, with *Apri il desk* and ✕;
+- **a `DESK PRONTO` notice** every five PRs the launched desk has read, and
+  when it has finished, with *Apri il desk* and ✕;
 - **a guard on a bare `vai`**: with two candidates waiting for an answer it
   does not enter and asks which one; with one loop, the chat is told which it
   answers; with a doubt in view, the vai is that doubt's leaning, sent as its
@@ -293,8 +293,9 @@ or stale, smallest first, the conflict readings owed on your `DIRTY` PRs,
 and beside them the issue ranking and the shortlist's analyses, four jobs at
 a time with one kept for the issues. A PR over 1500 changed lines waits among
 the doubts to be read by hand instead. Launched from Claude Code, the pane
-opens when the preparation ends: a `DESK PRONTO` notice above the prompt says
-what waits and *Apri il desk* opens it. While the desk is looked at, a
+waits for the preparation: every five PRs read, and at its end, a `DESK
+PRONTO` notice above the prompt says what waits and *Apri il desk* opens it,
+so you start on the first five while the rest is read. While the desk is looked at, a
 provider read older than 30 minutes is repeated and what moved is prepared
 again. A PR that did not move
 since the last preparation keeps its verdict and costs nothing; each row

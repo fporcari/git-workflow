@@ -191,21 +191,41 @@ export function preparedToasts(before: Record<string, string>, wizard: Wizard | 
   return out
 }
 
-export const preparing = (wizard: Wizard | null) =>
-  (['pr', 'issue'] as const).some(kind => wizard?.prepare?.[kind]?.status === 'running')
+export const preparing = (wizard: Wizard | null) => wizard?.prepare?.pr?.status === 'running'
 
-export type ReadyWait = { sawRunning: boolean; quiet: number }
+export const BLOCK = 5
+
+export type ReadyWait = { sawRunning: boolean; quiet: number; told: number }
+export type ReadyNews = { wait: ReadyWait | null; say: string | null }
+
+const isPr = (label: unknown) => /^\d+$/.test(String(label))
+
+/** The PRs the review preparation owes, and how many of them it has read (landed or failed). */
+export function prProgress(wizard: Wizard | null) {
+  const p = wizard?.prepare?.pr
+  return { due: (p?.due ?? []).filter(isPr).length,
+           read: (p?.landed ?? []).filter(isPr).length + Object.keys(p?.failed ?? {}).filter(isPr).length }
+}
 
 /**
- * One poll of the wait for the boot's preparation: the next wait, or null once
- * the desk is ready. A run seen going ends when it stops; one never seen (it
- * ended before the first read, or there was nothing to do) after two quiet polls.
+ * One poll of the wait for the boot's review preparation: the next wait (null
+ * once it ended) and what to tell the user, if anything. Every BLOCK PRs read
+ * is one notice while the rest is still being read; the end is one more. A run
+ * never seen going (it ended before the first read, or had nothing to do) ends
+ * after two quiet polls.
  */
-export function readyStep(wait: ReadyWait, wizard: Wizard | null): ReadyWait | null {
-  if (!wizard) return wait
-  if (preparing(wizard)) return { sawRunning: true, quiet: 0 }
-  if (wait.sawRunning || wait.quiet >= 1) return null
-  return { ...wait, quiet: wait.quiet + 1 }
+export function readyStep(wait: ReadyWait, wizard: Wizard | null): ReadyNews {
+  if (!wizard) return { wait, say: null }
+  const { due, read } = prProgress(wizard)
+  if (preparing(wizard)) {
+    const going = { ...wait, sawRunning: true, quiet: 0 }
+    if (read < wait.told + BLOCK || read >= due) return { wait: going, say: null }
+    const told = read - (read % BLOCK)
+    return { wait: { ...going, told },
+             say: wait.told ? `altre ${told - wait.told} PR pronte (${told} su ${due})` : `${told} PR pronte su ${due}` }
+  }
+  if (!wait.sawRunning && wait.quiet < 1) return { wait: { ...wait, quiet: wait.quiet + 1 }, say: null }
+  return { wait: null, say: wait.told ? `tutte le ${due} PR pronte` : '' }
 }
 
 const READY: [string, string, [string, string][]][] = [

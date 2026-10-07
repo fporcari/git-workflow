@@ -10,7 +10,7 @@ import { drawPane } from './pane'
 import type { Handlers } from './pane'
 import {
   EMPTY_VIEW, bandLine, currentStep, doubtAction, key, loopAction, moved, optionAction,
-  preparedToasts, preparing, primary, readyLine, readyStep, sectionOf, selected, toggled, wizardStatus,
+  BLOCK, preparedToasts, preparing, primary, readyLine, readyStep, sectionOf, selected, toggled, wizardStatus,
 } from './wizard'
 import type { Action, ReadyWait } from './wizard'
 
@@ -221,18 +221,18 @@ function handlers($: EngineInterface, view: View, wizard: Wizard | null): Handle
   }
 }
 
-/** The boot's preparation, polled until it ends: then the band offers the desk. */
+/** The boot's review preparation, polled until it ends: each block read, and the end, is a notice offering the desk. */
 async function awaitReady($: EngineInterface) {
   const wizard = await read($, wizardAtom)
-  memo.wait = readyStep(memo.wait!, wizard)
-  if (memo.wait) return
-  const line = readyLine(wizard)
+  const news = readyStep(memo.wait!, wizard)
+  memo.wait = news.wait
+  if (news.say == null) return
+  const line = [news.say, readyLine(wizard)].filter(Boolean).join(' · ')
   await update($, readyAtom, () => line)
-  $.ui.toast(`Desk pronto · ${line}`, { timeoutMs: 10000 })
+  $.ui.toast(`Git desk · ${line}`, { timeoutMs: 10000 })
 }
 
 async function showPane($: EngineInterface) {
-  memo.wait = null
   await update($, readyAtom, () => null)
   const opened = await $.ui.open({ id: PANE, title: TITLE, focus: true })
   repoll($)
@@ -268,12 +268,12 @@ export const register: Register = on => {
     await poll($).catch(() => undefined)
     const wizard = await read($, wizardAtom)
     if (!memo.paneAsked && (!wizard || preparing(wizard))) {
-      memo.wait = { sawRunning: preparing(wizard), quiet: 0 }
+      memo.wait = { sawRunning: preparing(wizard), quiet: 0, told: 0 }
       const p = wizard?.prepare?.pr
       return { result: 'The desk is preparing its analyses' + (p?.due?.length ? ` (${p.due.length} PRs due)` : '') +
-        ': the pane is not opened now. When the preparation ends, a "Desk pronto" notice with an ' +
-        '"Apri il desk" button appears above the prompt and a toast fires; the user opens the desk from ' +
-        'there. Tell the user so in one line.' + attach }
+        `: the pane is not opened now. Every ${BLOCK} PRs read, and when the preparation ends, a "Desk ` +
+        'pronto" notice with an "Apri il desk" button appears above the prompt and a toast fires; the user ' +
+        'opens the desk from there and goes on while the rest is read. Tell the user so in one line.' + attach }
     }
     memo.paneAsked = false
     const opened = await showPane($)

@@ -128,17 +128,30 @@ describe('the wizard, as the pane reads it', () => {
     expect(doubt.doubt?.n).toBe(1152)
   })
 
-  test('the wait for the boot ends when its preparation stops, or after two quiet polls', () => {
-    const RUNNING = { ...WIZARD, prepare: { ...WIZARD.prepare,
-      pr: { status: 'running', phrase: 'preparo', due: [1, 2], landed: [], failed: {} } } }
-    const fresh = { sawRunning: false, quiet: 0 }
-    expect(readyStep(fresh, null)).toEqual(fresh)
-    const seen = readyStep(fresh, RUNNING)!
-    expect(seen.sawRunning).toBe(true)
-    expect(readyStep(seen, WIZARD)).toBeNull()
-    const quiet = readyStep(fresh, WIZARD)!
-    expect(quiet).toEqual({ sawRunning: false, quiet: 1 })
-    expect(readyStep(quiet, WIZARD)).toBeNull()
+  test('the boot tells every five PRs read, then once more at the end', () => {
+    const running = (due: number, read: number) => ({ ...WIZARD, prepare: { ...WIZARD.prepare,
+      pr: { status: 'running', phrase: 'preparo', due: [...Array(due).keys()].map(n => n + 1),
+            landed: [...Array(read).keys()].map(n => n + 1), failed: {} } } })
+    const fresh = { sawRunning: false, quiet: 0, told: 0 }
+    expect(readyStep(fresh, null)).toEqual({ wait: fresh, say: null })
+    const four = readyStep(fresh, running(12, 4))
+    expect(four.say).toBeNull()
+    const first = readyStep(four.wait!, running(12, 6))
+    expect(first.say).toBe('5 PR pronte su 12')
+    expect(readyStep(first.wait!, running(12, 9)).say).toBeNull()
+    const second = readyStep(first.wait!, running(12, 11))
+    expect(second.say).toBe('altre 5 PR pronte (10 su 12)')
+    expect(readyStep(second.wait!, running(12, 12)).say).toBeNull()
+    const end = readyStep(second.wait!, { ...WIZARD, prepare: { ...WIZARD.prepare,
+      pr: { status: 'done', phrase: '', due: [...Array(12).keys()], landed: [], failed: {} } } })
+    expect(end).toEqual({ wait: null, say: 'tutte le 12 PR pronte' })
+  })
+
+  test('a boot with nothing to read is ready after two quiet polls, in one notice', () => {
+    const fresh = { sawRunning: false, quiet: 0, told: 0 }
+    const quiet = readyStep(fresh, WIZARD)
+    expect(quiet).toEqual({ wait: { sawRunning: false, quiet: 1, told: 0 }, say: null })
+    expect(readyStep(quiet.wait!, WIZARD)).toEqual({ wait: null, say: '' })
   })
 
   test('the ready line says what waits for the user, section by section', () => {
