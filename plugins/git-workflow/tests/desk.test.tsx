@@ -2,7 +2,7 @@ import type { On } from 'claude-code'
 import { describe, expect, test } from 'claude-code/testing'
 
 import type { DeskItem } from '../types'
-import { bareGoAhead, itemsOf, statusLine, transitions } from '../hooks/desk'
+import { bareGoAhead, itemsOf, shownAs, statusLine, transitions, unclosed } from '../hooks/desk'
 
 const NOW = 1_800_000_000
 const TYPED = { wait: false, origin: { kind: 'composer' } } as const
@@ -134,6 +134,21 @@ describe('the band', () => {
       expect(texts).toContain('in background dalle 22:00')
       await ui.unmount()
     }
+  })
+
+  test('a closed row stays closed until what it shows changes', () => {
+    const running = item({ key: 'a' })
+    const closed = { a: shownAs(running) }
+    expect(unclosed([running], closed)).toEqual([])
+    expect(unclosed([{ ...running, status: 'needs-input' }], closed)).toHaveLength(1)
+    expect(unclosed([{ ...running, report: 'PR #1150 aperta' }], closed)).toHaveLength(1)
+  })
+
+  test('every row has its close key', async ($, on) => {
+    seed(on, [item({ key: 'a' })])
+    const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+    expect(await ui.find({ key: 'close-a' })).toBeDefined()
+    await ui.unmount()
   })
 
   test('nothing open: the band yields', async ($, on) => {

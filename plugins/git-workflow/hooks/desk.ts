@@ -73,6 +73,12 @@ export function itemsOf(repo: string, state: unknown, nowSec: number): DeskItem[
 
 export const isOpen = (item: DeskItem) => OPEN.includes(item.status)
 
+/** What a closed row was showing: a new status or report brings it back. */
+export const shownAs = (item: DeskItem) => `${item.status}|${item.report}`
+
+export const unclosed = (items: DeskItem[], closed: Record<string, string> = {}) =>
+  items.filter(i => closed[i.key] !== shownAs(i))
+
 export function mentions(state: unknown, session: string): boolean {
   const s = state as { chats?: Record<string, unknown>; requests?: Record<string, Raw> } | null
   if (!s || !session) return false

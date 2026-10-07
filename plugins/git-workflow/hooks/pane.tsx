@@ -1,6 +1,6 @@
 import type { ElementTable, Elements, RenderElement } from 'claude-code'
 
-import type { Card, Desk, Person, View, Wizard, Zoom } from '../types'
+import type { Card, Desk, DeskItem, Person, View, Wizard, Zoom } from '../types'
 import {
   SECTIONS, currentStep, draftOf, isChecked, key, primary, section, sectionOf, selected,
   stepRows,
@@ -22,6 +22,7 @@ export type Handlers = {
   draft: (card: Card, text: string) => void
   launch: () => void
   hush: (text: string) => void
+  close: (item: DeskItem, open: DeskItem[]) => void
 }
 
 export type Model = {

@@ -3,7 +3,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { Card, Desk, DeskItem, View, Wizard, Zoom } from '../types'
 import {
-  bareGoAhead, deskTarget, isOpen, itemsOf, mentions, statusLine, transitions, waiting, wordOf,
+  bareGoAhead, deskTarget, isOpen, itemsOf, mentions, shownAs, statusLine, transitions, unclosed, waiting, wordOf,
 } from './desk'
 import type { StateFile } from './desk'
 import { drawPane } from './pane'
@@ -192,6 +192,8 @@ function handlers($: EngineInterface, view: View, wizard: Wizard | null): Handle
     },
     zoom: card => { void openZoom($, card) },
     hush: text => change(v => ({ ...v, hushed: text })),
+    close: (item, open) => change(v => ({ ...v, closed: Object.fromEntries([
+      ...Object.entries(v.closed ?? {}).filter(([k]) => open.some(i => i.key === k)), [item.key, shownAs(item)]]) })),
     primary: () => { void send($, primary(view, wizard)?.action ?? null) },
     next: () => {
       const def = sectionOf(view.section)
@@ -279,8 +281,9 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    const items = await read($, shown)
+    const open = await read($, shown)
     const view = (await read($, viewAtom)) ?? EMPTY_VIEW
+    const items = unclosed(open, view.closed)
     const wizard = await read($, wizardAtom)
     const band = bandLine(view, wizard)
     if (e.props.hasSurvey || (!items.length && !band)) return next(e)
@@ -304,13 +307,16 @@ export const register: Register = on => {
             <Button key="band-hush" role="dismiss" plain dimColor onPress={() => act.hush(band.text)}>✕</Button>
           </Box>) : null}
         {rows.slice(0, Math.max(1, e.props.maxRows - (band ? 2 : 1))).map(item => (
-          <Box key={item.key}>
-            <Text color={COLOR[item.tag]} bold>● {item.tag === 'PR' ? 'PR   ' : 'ISSUE'} </Text>
-            <Text wrap="truncate-end">
-              {repos.size > 1 ? `${item.repo} · ` : ''}{item.label} · </Text>
-            <Text color={STATUS_COLOR[item.status]} bold={item.status === 'needs-input'}>
-              {wordOf(item.status)}{item.at ? ` dalle ${item.at}` : ''}</Text>
-            {item.report ? <Text dimColor wrap="truncate-end"> · {item.report}</Text> : null}
+          <Box key={item.key} flexDirection="row">
+            <Box flexDirection="row" flexGrow={1} flexShrink={1}>
+              <Text color={COLOR[item.tag]} bold>● {item.tag === 'PR' ? 'PR   ' : 'ISSUE'} </Text>
+              <Text wrap="truncate-end">
+                {repos.size > 1 ? `${item.repo} · ` : ''}{item.label} · </Text>
+              <Text color={STATUS_COLOR[item.status]} bold={item.status === 'needs-input'}>
+                {wordOf(item.status)}{item.at ? ` dalle ${item.at}` : ''}</Text>
+              {item.report ? <Text dimColor wrap="truncate-end"> · {item.report}</Text> : null}
+            </Box>
+            <Button key={`close-${item.key}`} role="dismiss" plain dimColor onPress={() => act.close(item, open)}>✕</Button>
           </Box>
         ))}
       </Box>
