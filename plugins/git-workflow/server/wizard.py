@@ -488,6 +488,28 @@ def build(queue, state, me, active_jobs=(), running=None, issues=None):
                         for kind in ("pr", "issue")}}
 
 
+READY = {"pr": (("review", "review", (("approve", "approvabili"),
+                                       ("changes", "da respingere"),
+                                       ("doubt", "dubbie"))),
+                ("mine", "tue", (("merge", "da mergiare"), ("fix", "le sistema Claude"),
+                                 ("decide", "da decidere")))),
+         "issue": (("issue", "issue", (("close", "da chiudere"), ("claude", "le fa Claude"),
+                                       ("decide", "da decidere"))),)}
+
+
+def ready_line(wizard, kind):
+    """What a preparation left waiting for the user, in one line: the steps
+    that hold rows, never the ones whose move is somebody else's."""
+    parts = []
+    for section, title, steps in READY[kind]:
+        rows = {step["id"]: len(step["rows"])
+                for step in (wizard.get(section) or {}).get("steps") or []}
+        said = ["%d %s" % (rows[step], words) for step, words in steps if rows.get(step)]
+        if said:
+            parts.append("%s: %s" % (title, ", ".join(said)))
+    return " · ".join(parts) or "niente che aspetti te"
+
+
 def _merge_section(sections, last):
     """Sections of several members as one: counts summed, lists joined,
     rows concatenated per step, the first step recomputed."""

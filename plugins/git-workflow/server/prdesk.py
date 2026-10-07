@@ -556,9 +556,9 @@ class Desk:
         return {kind: preparation.running(self.repo, kind)
                 for kind in preparation.KINDS}
 
-    def wizard(self, queue=None, issues=None):
+    def wizard(self, queue=None, issues=None, with_issues=True):
         queue = queue or self.queue()
-        issues = issues or self.issues()
+        issues = issues or (self.issues() if with_issues else None)
         return wizardlib.build(queue, deskstate.load(self.repo), self.me,
                                jobs.active(self.repo), self.preparing(), issues)
 

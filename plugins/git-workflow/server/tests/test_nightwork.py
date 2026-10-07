@@ -1,6 +1,7 @@
 """Nightwork: the jobs the desk would start in the morning, started the
 evening before — exactly those, the PR side and the issue side apart, a few
-at a time, a failure costing only its own item."""
+at a time, a failure costing only its own item, and one line per kind saying
+what now waits for the user."""
 
 import json
 import os
@@ -18,8 +19,10 @@ sys.path.insert(0, str(ROOT))
 import cache            # noqa: E402
 import deskstate        # noqa: E402
 import jobs             # noqa: E402
+import nightwork        # noqa: E402
 import preparation      # noqa: E402
 import prdesk           # noqa: E402
+import wizard           # noqa: E402
 from providers import get_provider  # noqa: E402
 
 REPO = "genropy/genropy"
@@ -386,6 +389,35 @@ class WithTheFakeAgent(unittest.TestCase):
         notes = deskstate.load(REPO)["prs"]
         self.assertNotIn("stance", notes.get(str(due[0])) or {})
         self.assertTrue(all("stance" in notes[str(n)] for n in due[1:]))
+
+
+class BothKinds(unittest.TestCase):
+
+    def test_prs_first_then_issues_each_closed_by_its_ready_line(self):
+        desk = fresh_desk()
+        fake = FakeJobs()
+        with fake.patch():
+            lines = [line for line, _ in nightwork.night([desk], ("issue", "pr"), 4)]
+        self.assertEqual([line.split(":")[0] for line in lines],
+                         ["%s pr-nightwork done" % REPO, "pronta pr",
+                          "%s issue-nightwork done" % REPO, "pronta issue"])
+        kinds = [call[0] for call in fake.calls]
+        self.assertLess(max(i for i, k in enumerate(kinds) if k == "pr"),
+                        min(i for i, k in enumerate(kinds) if k == "issue"))
+
+    def test_the_ready_line_counts_what_the_wizard_holds(self):
+        desk = fresh_desk()
+        with FakeJobs().patch():
+            lines = dict(line.split(": ", 1) for line, _ in
+                         nightwork.night([desk], ("pr",), 4))
+        self.assertEqual(lines["pronta pr"], wizard.ready_line(desk.wizard(), "pr"))
+
+    def test_a_failed_run_is_reported_and_the_line_still_comes(self):
+        desk = fresh_desk()
+        with mock.patch.object(preparation, "pr_night", side_effect=RuntimeError("gh down")):
+            out = list(nightwork.night([desk], ("pr",), 4))
+        self.assertTrue(out[-1][1], "the run is failed")
+        self.assertTrue(out[-1][0].startswith("pronta pr: "))
 
 
 class Outcome(unittest.TestCase):

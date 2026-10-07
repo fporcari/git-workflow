@@ -1,0 +1,4 @@
+interface:
+  display_name: "Nightwork"
+  short_description: "Prepare tomorrow's PR and issue analyses tonight."
+  default_prompt: "Use $nightwork to prepare tomorrow's PR and issue analyses."

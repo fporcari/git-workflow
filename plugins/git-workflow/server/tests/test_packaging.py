@@ -101,21 +101,26 @@ class Packaging(unittest.TestCase):
             for tool in ("Agent", "mcp__ccd_session_mgmt__set_session_title"):
                 self.assertIn(tool, allowed, "%s in %s" % (tool, name))
 
-    def test_the_nightworks_are_explicit_read_only_and_one_side_each(self):
-        """They run unattended at night: nothing may start one by itself, no
-        job they start may write, and the PR and issue sides stay apart."""
+    def test_the_nightwork_is_explicit_read_only_and_asks_its_kinds(self):
+        """It runs unattended at night: nothing may start it by itself, no
+        job it starts may write, one command asks for the PRs, the issues or
+        both, and it ends on one push and the desk."""
         for module in ("nightwork.py", "preparation.py"):
             source = (PLUGIN / "server" / module).read_text()
             self.assertNotIn("operation(", source, module)
+        skill = (PLUGIN / "skills" / "nightwork" / "SKILL.md").read_text()
+        wrapper = (PLUGIN / "commands" / "nightwork.md").read_text()
+        for text in (skill, wrapper):
+            self.assertIn("disable-model-invocation: true", text)
+        self.assertIn("skills/nightwork/SKILL.md", wrapper)
+        for needed in ("--kind pr --kind issue", "multi-select", "*Questions*",
+                       "*Telling the user*", "git-desk", "pronta "):
+            self.assertIn(needed, skill)
+        for tool in ("AskUserQuestion", "ToolSearch"):
+            self.assertIn(tool, wrapper)
         for kind in ("pr", "issue"):
-            name = "%s-nightwork" % kind
-            skill = (PLUGIN / "skills" / name / "SKILL.md").read_text()
-            wrapper = (PLUGIN / "commands" / ("%s.md" % name)).read_text()
-            self.assertIn("disable-model-invocation: true", skill, name)
-            self.assertIn("disable-model-invocation: true", wrapper, name)
-            self.assertIn("skills/%s/SKILL.md" % name, wrapper, name)
-            self.assertIn("--kind %s" % kind, skill, name)
-            self.assertTrue((PLUGIN / "evals" / ("%s-not-auto" % name)).is_dir(), name)
+            self.assertFalse((PLUGIN / "skills" / ("%s-nightwork" % kind)).exists(), kind)
+            self.assertTrue((PLUGIN / "evals" / ("nightwork-%s-not-auto" % kind)).is_dir(), kind)
 
     def test_the_desk_opens_in_the_browser_pane_not_as_a_link(self):
         """The port is known only at bind time, so no launch.json recipe can

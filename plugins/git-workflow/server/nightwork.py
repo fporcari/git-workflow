@@ -1,8 +1,9 @@
 """Nightwork — the analyses the desk would owe in the morning, paid the
 evening before, read-only.
 
-    python3 nightwork.py --kind pr|issue [--repo owner/repo]... [--org [host/]owner]...
-                         [--folder DIR] [--agent auto|claude|codex] [--parallel 4]
+    python3 nightwork.py --kind pr|issue [--kind ...] [--repo owner/repo]...
+                         [--org [host/]owner]... [--folder DIR]
+                         [--agent auto|claude|codex] [--parallel 4]
 
 It starts the very jobs the desk's own buttons start, with their read-only
 profiles, so the server's validators persist the results where the desk reads
@@ -16,6 +17,10 @@ pr     publishes the triage grid as the triage button does, then one pr-analyze
 issue  ranks the shortlist (open issues nobody holds, cited by no PR, never
        commented by the user) with one issue-triage pass, then one
        issue-analyze job per shortlisted issue without a reusable analysis.
+
+Both kinds run the PRs first, then the issues, member by member. After each
+kind one line `pronta <kind>: ...` says what the wizard now holds for the
+user across the scope, the line the skill pushes as its notification.
 
 Nothing is written to the provider. The work itself is preparation.py's,
 the same function the desk runs at boot: the outcome lands under
@@ -31,13 +36,32 @@ import sys
 import jobs
 import prdesk
 import preparation
+import wizard as wizardlib
 from providers import PROVIDERS
+
+
+def night(desks, kinds, parallel):
+    """Each kind over every member, PRs first; yield the log lines and
+    whether any run failed."""
+    failed = False
+    for kind in [k for k in preparation.KINDS if k in kinds]:
+        for desk in desks:
+            status, report = preparation.prepare(desk, kind, max(1, parallel))
+            failed = failed or status == "failed"
+            yield "%s %s-nightwork %s: %s" % (desk.repo, kind, status, report), failed
+        try:
+            ready = wizardlib.ready_line(wizardlib.merge(
+                [desk.wizard(with_issues=kind == "issue") for desk in desks]), kind)
+        except Exception as exc:
+            ready = "conteggi non letti (%s)" % str(exc)[:120]
+        yield "pronta %s: %s" % (kind, ready), failed
 
 
 def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--kind", required=True, choices=("pr", "issue"))
+    parser.add_argument("--kind", required=True, action="append",
+                        choices=preparation.KINDS, help="repeatable")
     parser.add_argument("--repo", action="append", default=[],
                         help="[host/]owner/repo, repeatable (default: the origin of the cwd)")
     parser.add_argument("--org", action="append", default=[], metavar="[HOST/]OWNER")
@@ -51,15 +75,12 @@ def main():
     args = parser.parse_args()
 
     _, desks = prdesk.build_desks(args.repo, args.org, args.folder, args.clones,
-                                  args.provider, args.me, args.kind, args.agent)
+                                  args.provider, args.me, args.kind[0], args.agent)
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     failed = False
     try:
-        for desk in desks:
-            status, report = preparation.prepare(desk, args.kind, max(1, args.parallel))
-            failed = failed or status == "failed"
-            sys.stdout.write("%s %s-nightwork %s: %s\n"
-                             % (desk.repo, args.kind, status, report))
+        for line, failed in night(desks, args.kind, args.parallel):
+            sys.stdout.write(line + "\n")
             sys.stdout.flush()
     finally:
         jobs.shutdown()

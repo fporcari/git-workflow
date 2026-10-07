@@ -18,7 +18,8 @@ variable in a shared skill.
 
 ## Questions
 
-Use the host's structured user-input tool when it supports the question. When a
+Use the host's structured user-input tool when it supports the question
+(Claude Code: `AskUserQuestion`, `multiSelect: true` for several checks). When a
 batch needs multi-select and the available tool cannot express it, print the
 numbered proposals and accept one compact typed answer such as `1,3 vai; 2 no`.
 Never split one batch into several questions merely to fit a tool schema.
@@ -151,7 +152,8 @@ Codex task/thread for this internal work.
 ## Telling the user
 
 A batch interrupts the user twice (`refs/batch.md`): when its digest is ready
-and when its work is done. Each time, reach him where he is:
+and when its work is done; a nightwork once, when it ends and the desk opens.
+Each time, reach him where he is:
 
 - Claude Code: `PushNotification`, a deferred tool — load it with ToolSearch
   before the call. One short line: the loop's tag and what waits for him
@@ -160,7 +162,7 @@ and when its work is done. Each time, reach him where he is:
   notice.
 
 Never for anything else: a notification per agent is the noise the batch
-exists to remove.
+and the nightwork exist to remove.
 
 ## Dedicated work
 

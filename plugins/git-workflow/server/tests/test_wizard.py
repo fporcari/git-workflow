@@ -355,5 +355,36 @@ class Preparation(unittest.TestCase):
         self.assertEqual(wizard.prepare_info({}, "pr")["status"], "never")
 
 
+class ReadyLine(unittest.TestCase):
+    """The line the nightwork pushes: what waits for the user, nothing else."""
+
+    @staticmethod
+    def section(**counts):
+        return {"steps": [{"id": step, "rows": [{}] * n} for step, n in counts.items()]}
+
+    def test_only_the_steps_that_hold_rows_are_said(self):
+        built = {"review": self.section(approve=3, changes=0, doubt=2, done=0),
+                 "mine": self.section(merge=1, fix=0, decide=0, waiting=4),
+                 "issue": self.section(close=2, claude=0, decide=1, done=0)}
+        self.assertEqual(wizard.ready_line(built, "pr"),
+                         "review: 3 approvabili, 2 dubbie · tue: 1 da mergiare")
+        self.assertEqual(wizard.ready_line(built, "issue"),
+                         "issue: 2 da chiudere, 1 da decidere")
+
+    def test_nothing_waiting_is_said_so(self):
+        built = {"review": self.section(approve=0), "mine": self.section(waiting=2),
+                 "issue": None}
+        self.assertEqual(wizard.ready_line(built, "pr"), "niente che aspetti te")
+        self.assertEqual(wizard.ready_line(built, "issue"), "niente che aspetti te")
+
+    def test_a_desk_wizard_without_issues_still_counts_the_prs(self):
+        desk = fresh_desk()
+        n = sorted(card["n"] for card in desk.wizard()["review"]["pending"])[0]
+        analyze(desk, n, stance="approve")
+        built = desk.wizard(with_issues=False)
+        self.assertIsNone(built["issue"])
+        self.assertTrue(wizard.ready_line(built, "pr").startswith("review: 1 approvabili"))
+
+
 if __name__ == "__main__":
     unittest.main()

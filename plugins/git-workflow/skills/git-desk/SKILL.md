@@ -140,7 +140,7 @@ re-read, start the **preparation** in a thread of the server's own
 read-only `pr-analyze` job per PR whose analysis is missing or stale, at most
 four alive, the conflict readings owed on the user's `DIRTY` PRs, then the
 issue ranking and the shortlist's analyses. An analysis whose keys still
-match the PR is never bought again, so after a `/pr-nightwork` the boot reads
+match the PR is never bought again, so after a `/nightwork` the boot reads
 only what moved overnight; a nightwork still running holds the same lock and
 is shown, not doubled. Its progress is `runs.<kind>-nightwork`. Python serves
 these local artifacts:

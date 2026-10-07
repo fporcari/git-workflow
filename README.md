@@ -126,7 +126,7 @@ person, whose move it is) — in a pane beside the chat on Claude Code, or in
 the browser on Codex and on a wide screen. It opens on facts in seconds and
 prepares in background only what is new or changed since the last
 preparation — the nightwork's own work, so a desk opened the morning after
-`/pr-nightwork` has nothing left to read. Da rivedere then asks you three
+`/nightwork` has nothing left to read. Da rivedere then asks you three
 things: approve the PRs the analysis would sign (prechecked, one key), send
 the changes it would ask for (prechecked, the motivation editable under the
 row), and decide the doubtful ones, one at a time, with the hunk and the
@@ -180,8 +180,9 @@ succeeded.
 
 ### Prepare overnight — read-only
 
-Both are **explicit-invocation only**: launched by hand in the evening, they
-run the preparation the desk runs when it opens (`server/preparation.py`) and
+`/nightwork` is **explicit-invocation only**: launched by hand in the evening,
+it asks with two checks whether to prepare the PRs, the issues or both, and
+runs the preparation the desk runs when it opens (`server/preparation.py`) and
 nothing else, with the read-only `ANALYZE` profile. Every result is keyed to
 the PR or issue as it was read, so whatever moves before morning shows as
 stale and is the only thing prepared again at open; the two triggers share
@@ -190,8 +191,7 @@ the desk, not doubled. Nothing is posted, pushed or assigned.
 
 | skill | what it does |
 |---|---|
-| **`pr-nightwork`** | One `pr-analyze` job per PR that asks for your judgment and whose analysis is missing or stale, four at a time, plus the conflict readings owed on your own `DIRTY` PRs. A failure costs only its PR. The outcome lands in the desk's feed and under `runs.pr-nightwork`. |
-| **`issue-nightwork`** | Ranks the shortlist — the open issues nobody holds, cited by no open PR, that you never commented — then runs one `issue-analyze` job per shortlisted issue without a current analysis. The outcome lands in the desk's feed and under `runs.issue-nightwork`. |
+| **`nightwork`** | PR: one `pr-analyze` job per PR that asks for your judgment and whose analysis is missing or stale, four at a time, plus the conflict readings owed on your own `DIRTY` PRs. Issue: ranks the shortlist — the open issues nobody holds, cited by no open PR, that you never commented, at most ten per repository — then one `issue-analyze` job per shortlisted issue without a current analysis. A failure costs only its item. When it ends, one push notification says what waits for you (`review: 3 approvabili, 1 da respingere · tue: 2 da mergiare`) and the desk opens in the same chat, attached. The outcome also lands in the desk's feed and under `runs.<kind>-nightwork`. |
 
 ### The dashboards
 
@@ -389,6 +389,13 @@ preparation filled with a fake `claude` (`tests/fixtures/fake_claude.py`).
 `plugins/git-workflow/server/tests/README.md` says what each file is for.
 The pane's tests run with `claude plugin test plugins/git-workflow`, on the
 terminal, desktop and mobile surfaces.
+
+## One nightwork — 0.60.0
+
+`/pr-nightwork` and `/issue-nightwork` are one `/nightwork`: it asks with two
+checks what to prepare, runs the PRs first, and when it ends sends one push
+notification with what waits for you in the wizard, then opens the desk in
+the same chat so every click runs there in the morning.
 
 ## The desk as a wizard — 0.59.0
 

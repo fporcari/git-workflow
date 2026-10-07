@@ -1,4 +1,0 @@
-interface:
-  display_name: "PR Nightwork"
-  short_description: "Prepare tomorrow's PR analyses tonight."
-  default_prompt: "Use $pr-nightwork to prepare tomorrow's PR analyses."
