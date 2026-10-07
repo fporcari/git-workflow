@@ -38,13 +38,15 @@ Start it in the background with stderr on a log and open the URL of the
 at bind time (default when free, otherwise one the OS picks, or the running
 twin's URL), so no launch configuration may hard-code it.
 
-- Claude Code: call the plugin's `mcp__git-workflow__desk_pane` tool, which
-  opens the `/desk` pane the plugin's mod draws beside the chat in the host's
-  own theme, and keep the session id its answer names for the listener.
-  Where the tool does not exist (a host that loads no mods), open the URL in
-  the Browser pane beside the chat with `mcp__Claude_Browser__preview_start`,
-  `url` set to the printed URL (`mcp__Claude_Browser__navigate` does the same
-  once the pane is open). Either pane IS the desk; a pasted link is not it.
+- Claude Code: call the plugin's `mcp__git-workflow__desk_open` tool and keep
+  the session id its answer names for the listener. It says whether to open
+  the page now or leave it to the mod's notice above the prompt, which
+  appears only when a PR comes to review, naming the desk and who opened it.
+  The page opens in the Browser pane beside the chat with
+  `mcp__Claude_Browser__preview_start`, `url` set to the printed URL
+  (`mcp__Claude_Browser__navigate` does the same once the pane is open);
+  without the tool (a host that loads no mods) open it there all the same.
+  The Browser pane IS the desk; a pasted link is not it.
   The page is local, served on 127.0.0.1 by the process just started: no
   login, nothing to state or ask first — open it. Not the `launch.json`
   browser-preview recipe: it needs a port known in advance.

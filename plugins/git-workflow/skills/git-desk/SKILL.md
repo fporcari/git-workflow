@@ -1,6 +1,6 @@
 ---
 name: git-desk
-description: Launch the git desk — a wizard over the repository's pull requests and issues in four sections (Da rivedere, Mie, Issue, A chi tocca), in a pane beside the chat on Claude Code or in the browser. The Python server serves provider/cache JSON and prepares in background only the analyses that are new or changed; the launching chat stays attached by default, so every click is executed in that conversation, command and output visible there; a detached launch (opt-in) hands each non-public click to an ephemeral one-shot agent instead. Use when the user asks for the desk, the PR desk, the issue desk, the review desk, or a PR or issue dashboard.
+description: Launch the git desk — a local web page over the repository's pull requests and issues in three sections (Pull request, Issue, A chi tocca), with the PRs whose review is asked already sorted into Approvabili, Da respingere and Dubbie, shown in the Browser pane beside the chat on Claude Code or in the browser. The Python server serves provider/cache JSON and prepares in background only the analyses that are new or changed; the launching chat stays attached by default, so every click is executed in that conversation, command and output visible there; a detached launch (opt-in) hands each non-public click to an ephemeral one-shot agent instead. Use when the user asks for the desk, the PR desk, the issue desk, the review desk, or a PR or issue dashboard.
 ---
 
 # Git desk
@@ -9,8 +9,8 @@ Read `<PLUGIN_ROOT>/refs/runtime.md` first.
 
 ## Launch
 
-One server serves the whole desk: Da rivedere, Mie, Issue and A chi tocca are
-sections of the same wizard (*Sections* below), read in one round trip.
+One server serves the whole desk: Pull request, Issue and A chi tocca are
+sections of the same page (*Sections* below), read in one round trip.
 Launch it using the host procedure from the runtime reference. Select the current host as its one-shot backend
 and start it as a background process whose stderr goes to a log:
 
@@ -34,25 +34,23 @@ same desk) prints the twin's URL and exits instead of starting a second
 server. Do not pass `--port`: it is strict and fails on a busy port. The
 server exits by itself after two hours nobody used it and with no job
 running (`--idle-exit 0` disables), so a desk left behind never squats the
-port of the next one. A poll from a closed pane or a hidden page is not a
-use: only an open pane, a page in view, or a click keeps it alive, and only
-they let the 30-minute re-read run.
+port of the next one. A poll from a hidden page, or the mod's own, is not a
+use: only a page in view, or a click, keeps it alive, and only they let the
+30-minute re-read run.
 
 Show the desk beside the chat; a link alone is not the deliverable.
 
-- **Claude Code**: call the plugin's own `mcp__git-workflow__desk_pane` tool
-  (load it with ToolSearch when it is listed as deferred). It opens the
-  `/desk` pane, drawn in the host's theme, and its answer names this chat's
-  session id: use that as `<session-id>` below. While the boot's preparation
-  still runs it opens nothing and says so: every five PRs read, and once
-  more when the review preparation ends, a `DESK PRONTO` notice with an
-  *Apri il desk* key appears above the prompt, with a toast, so the user
-  starts on the first five while the rest is read. Tell the user in one line
-  that you will let them know (`Preparo le analisi: ti avviso sopra il prompt
-  ogni cinque PR pronte`), then carry on with the attached chat. Only when the tool does not
-  exist (a host that loads no mods) open the URL in the Browser pane instead
-  — `preview_start` with `url`, the tool `runtime.md` → *Desks* names. A
-  request that came from the pane itself already says the pane is open.
+- **Claude Code**: call the plugin's own `mcp__git-workflow__desk_open` tool
+  (load it with ToolSearch when it is listed as deferred). Its answer names
+  this chat's session id — use that as `<session-id>` below — and says what
+  to do with the page. A desk whose preparation is still reading is not
+  opened: a notice above the prompt appears only when a PR comes to review,
+  naming the desk and who opened each PR (`● DESK genropy · 2 da rivedere —
+  dgpaci #1616 #1610`), with an *Apri il desk* key and a toast; while nothing
+  waits, nothing shows. Tell the user so in one line, naming the repository,
+  then carry on with the attached chat. A ready desk is opened in the Browser
+  pane — `preview_start` with `url`, the tool `runtime.md` → *Desks* names.
+  Without the tool (a host that loads no mods) open it there all the same.
 - **Codex**: the browser panel.
 
 The page is local, served by the process you just started: no login, nothing
@@ -71,8 +69,8 @@ The launching chat stays **attached by
 default**: the desk is the remote, this conversation is where the work
 happens. Every click arrives here as the command it stands for
 (`/pr-loop 1099 1055 batch=4`, `▶ approva #1164 #1163`, `/pr-analyze 1099`)
-and is executed here, reasoning and output included, while the pane or the
-page shows where the wizard stands.
+and is executed here, reasoning and output included, while the page shows
+where every row stands.
 
 Open that chat on `fable` at effort `high`: what it produces is read by humans
 and acts without a second ask (`runtime.md` → *Model policy*). The one-shot jobs
@@ -153,8 +151,8 @@ tests, generated bundles, docs and lock files not counted, read from the file
 list of the PRs whose whole change is over it — is a giant: its analysis gets
 twice the time and reads the code folder by folder up to 5000 lines, naming
 what it left, and whatever its stance the desk keeps it among the doubts with
-Claude's leaning, never among the approvable or the rejected. While the pane or the
-page is polling, a provider read older than 30 minutes (`--refresh-after`
+Claude's leaning, never among the approvable or the rejected. While the page
+is polling in view, a provider read older than 30 minutes (`--refresh-after`
 seconds, 0 off) is repeated in background and prepares what moved, so a desk
 left open does not show the morning's state in the afternoon. An analysis whose keys still
 match the PR is never bought again, so after a `/pr-nightwork` the boot reads
@@ -164,8 +162,9 @@ these local artifacts:
 
 - provider cache and a cheap open-item membership snapshot;
 - a rows export consumed by the triage and preparation jobs;
-- durable triage, analysis and order state, and the wizard computed from it
-  on every read (`server/wizard.py`, `/api/wizard`);
+- durable triage, analysis and order state, and the stances computed from
+  it on every read (`server/stances.py`, `stances` in `/api/desk`, the rows
+  waiting for the user in `/api/todo`);
 - one request/result JSON for each agent job.
 
 Fresh membership is checked independently from the detailed provider cache.
@@ -448,31 +447,37 @@ of the same kind: two servers on one ledger would steal each other's clicks.
 
 ## Sections
 
-Every section is a wizard that opens on its first step with something to do.
-`server/wizard.py` decides which step a row belongs to, on every read; the
-page and the pane draw the same `/api/wizard`.
+One header row holds the scope, the three sections as a segmented control,
+the preparation while it reads, the chat state and *Chiudi il desk*; under it
+a toolbar of its own colour holds the section's filters, the triage and loop
+keys and the search. A row opens in place on a click — what it is for, what
+Claude read, the facts and gate of its base, its keys — and every row has its
+link out to the provider. Jobs, reports and the feed live in a drawer at the
+bottom, its last line always in view. `server/stances.py` decides where a row
+stands, on every read.
 
-- **Da rivedere** — somebody else's PR whose review is asked of the user.
-  *Approvabili*: the analysis' stance is `approve`, prechecked, one key
-  approves the checked rows (a `needs-verification` PR without green checks
-  on the analyzed head is held among the doubts). *Da respingere*: stance
-  `changes`, prechecked, the drafted motivation editable under the row, sent
-  as "Request changes". *Dubbie*: one at a time, the doubt, the hunk, the
-  leaning, keys A / R / S (S puts it off to tomorrow). *Fatto*: what the
-  session sent, and A chi tocca. A row whose analysis is still owed waits in
-  the preparation; one whose analysis failed waits among the doubts with the
-  reason. The merge always stays with the author.
-- **Mie** — the user's own PRs, never approvable. *Da mergiare* (pr-loop's
-  A1), *Le sistema Claude* (a realign, or a request the analysis judged clear
-  and local), *Da decidere* (the reviewer's request quoted, an opinion, three
-  options — each an order with its text), *In attesa* (the chase to paste).
+- **Pull request** — *Approvabili*: somebody else's PR whose review is asked,
+  the analysis' stance `approve` (a `needs-verification` PR without green
+  checks on the analyzed head is held among the doubts); one key on the row,
+  or pick several and approve them together. *Da respingere*: stance
+  `changes`, the drafted motivation editable in the open row, sent as
+  "Request changes". *Dubbie*: the doubt and Claude's leaning in the open
+  row, with *Approva*, *Chiedi modifiche*, *Salta a domani*. *In analisi*
+  shows only while the preparation still owes rows, with what each job is
+  doing; a failed analysis waits among the doubts with the reason. Then *Da
+  fare* (the user's other moves: merge, fix, decide), *In attesa*, *Senza
+  verdetto* (only while some are), *Tutte* and *Chase*. Reviews and closings
+  are public: they leave only through the attached chat, with the command in
+  view. The merge always stays with the author.
 - **Issue** — *Da chiudere* (the analysis names, in `fixed_by`, the merged PR
-  that already fixed it: closed with a comment naming it), *Le fa Claude*
-  (EASY, SINGLE-PHASE, nobody's, nothing to decide: one issue-loop batch),
-  *Da decidere*, *Fatto*.
-- **A chi tocca** — formerly *Filoni*: per person, the PRs and issues whose
-  next move is theirs, the user first and nobody last, each with a chase
-  ready to copy.
+  that already fixed it: closed with a comment naming it), *Per Claude*
+  (EASY, SINGLE-PHASE, nobody's, nothing to decide: issue-loop on the row),
+  then *Da prendere*, *Shortlist*, *Unassigned*, *Con PR*, *Di altri*.
+- **A chi tocca** — per person, the PRs and issues whose next move is theirs,
+  the user first and nobody last, each with a chase ready to copy.
+
+A failed preparation is a banner with its reason and *Riprova*
+(`POST /api/prepare`), never "nothing to prepare".
 
 ## Triage
 
@@ -487,6 +492,6 @@ result remains reusable without spending tokens.
 
 ## Stop
 
-The power key terminates the Python server and the agent jobs it started. A
+*Chiudi il desk*, in view in the header, asks once more and then terminates the Python server and the agent jobs it started. A
 job stopped this way is recorded as aborted, not left pending. No model or
 watcher should remain resident merely because a browser tab is open.

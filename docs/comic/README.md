@@ -18,7 +18,7 @@ This is the short version. Pick the page that matches what you need.
 ### `git-desk`
 
 - **Use when:** you want the PR or issue dashboard.
-- **Starts:** a local server and opens a small web application in the browser, with Pull request, Issue and Filoni as tabs.
+- **Starts:** a local server and opens a small web application in the browser, with Pull request, Issue and A chi tocca as tabs.
 - **Does:** fetches and groups the PR queue and cross-checks issues, branches and PRs at startup and reload; web-app buttons send selected work to the current chat.
 - **Highlights:** PRs whose triage is missing or stale after their provider facts change.
 - **Does not:** publish a triage until its button is pressed, analyze every diff, or act by itself.

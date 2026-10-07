@@ -17,8 +17,8 @@ It does tonight what the desk would do when it opens, and nothing else: it is
 the same preparation (`server/preparation.py`), with the same read-only
 profile (`ANALYZE` in runtime.md → *Model policy*), saved where the desk reads
 it and keyed to the PR as it was read. Each analysis carries the verdict the
-desk's wizard sorts by — approvable, to reject with its motivation, doubtful
-with its hunk — so the desk opens on filled steps, and a PR that moves before
+desk's filters group by — approvable, to reject with its motivation, doubtful
+with its hunk — so the desk opens on filled filters, and a PR that moves before
 morning is the only one it reads again. Nothing is posted, approved, pushed or
 commented.
 

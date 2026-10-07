@@ -413,7 +413,7 @@ def _text(item, key):
 
 
 def check_verdict(item):
-    """The structured verdict a wizard row is made of: what each stance
+    """The structured verdict a desk row is filtered by: what each stance
     cannot do without, and a draft that may be posted as it stands."""
     stance = item.get("stance")
     if stance is not None and stance not in STANCES:

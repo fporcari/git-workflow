@@ -102,7 +102,7 @@ class ReviewClicks(unittest.TestCase):
             {"n": b, "head": "h%d" % b, "body": ""}]})
         self.assertEqual(chatdesk.command_for(record), "approva #%d #%d" % (a, b))
         sending = {card["n"]: card.get("sending") for card in
-                   self.desk.wizard()["review"]["pending"]}
+                   self.desk.stances()["review"]["pending"]}
         self.assertEqual((sending[a], sending[b]), ("approve", "approve"))
         status, again = self.post({"event": "approve", "items": self.items(a)})
         self.assertEqual((status, again["created"]), (202, False))
@@ -158,7 +158,7 @@ class ReviewClicks(unittest.TestCase):
         self.assertEqual((status, payload), (200, {"skipped": [n]}))
         self.assertEqual(deskstate.load(REPO)["prs"][str(n)]["skipped"],
                          date.today().isoformat())
-        review = self.desk.wizard()["review"]
+        review = self.desk.stances()["review"]
         self.assertEqual([card["n"] for card in review["skipped"]], [n])
         self.assertNotIn(n, [card["n"] for card in review["pending"]])
 
@@ -177,7 +177,7 @@ class ReviewClicks(unittest.TestCase):
         self.assertEqual(state["session_reviews"], {"approve": [a]})
         self.assertEqual(state["requests"]["review:approve"]["status"], "done")
         self.assertTrue(state["provider_refresh"]["token"])
-        review = self.desk.wizard()["review"]
+        review = self.desk.stances()["review"]
         sent = {card["n"]: card.get("sent") for card in review["pending"]}
         self.assertEqual((sent[a], sent[b]), ("approve", None))
         self.assertEqual(review["steps"][-1]["summary"]["approve"], [a])
@@ -218,7 +218,7 @@ class ClosingClicks(unittest.TestCase):
 
     def setUp(self):
         deskstate.save(REPO, {})
-        self.shortlist = [c["n"] for c in self.desk.wizard()["issue"]["pending"]]
+        self.shortlist = [c["n"] for c in self.desk.stances()["issue"]["pending"]]
         self.fixed = self.shortlist[0]
         jobs.persist_issue_analysis(REPO, {
             "n": self.fixed, "type": "DEFECT", "finding": "f", "size": "EASY",
@@ -251,7 +251,7 @@ class ClosingClicks(unittest.TestCase):
                                     "refused": []}))
         chatdesk.result(REPO, "close:issues", str(path), SESSION, claimed["id"])
         self.assertEqual(deskstate.load(REPO)["session_closed"], {"close": [self.fixed]})
-        issue = self.desk.wizard()["issue"]
+        issue = self.desk.stances()["issue"]
         self.assertTrue(issue["steps"][0]["rows"][0]["sent"])
         self.assertEqual(issue["steps"][-1]["summary"]["close"], [self.fixed])
 

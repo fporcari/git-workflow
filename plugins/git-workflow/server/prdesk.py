@@ -80,7 +80,7 @@ import preparation
 import scope as scopelib
 import threads
 import verdicts
-import wizard as wizardlib
+import stances as stanceslib
 from providers import PROVIDERS, get_provider
 from verdicts import decorate, handoff, issue_handoff, issue_type
 
@@ -557,11 +557,15 @@ class Desk:
         return {kind: preparation.running(self.repo, kind)
                 for kind in preparation.KINDS}
 
-    def wizard(self, queue=None, issues=None):
+    def stances(self, queue=None, issues=None):
         queue = queue or self.queue()
         issues = issues or self.issues()
-        return wizardlib.build(queue, deskstate.load(self.repo), self.me,
+        return stanceslib.build(queue, deskstate.load(self.repo), self.me,
                                jobs.active(self.repo), self.preparing(), issues)
+
+    def todo(self):
+        section = stanceslib.review_section(self.queue(), deskstate.load(self.repo), self.me)
+        return {"rows": stanceslib.todo(section)}
 
     def live_state(self):
         st = deskstate.load(self.repo)
@@ -576,7 +580,7 @@ class Desk:
                 "chat": {"attached": bool(chat),
                          "at": (chat or {}).get("at")},
                 "runs": st.get("runs") or {},
-                "prepare": {kind: wizardlib.prepare_info(st, kind, held)
+                "prepare": {kind: stanceslib.prepare_info(st, kind, held)
                             for kind, held in self.preparing().items()},
                 "working": deskstate.working(self.repo, st),
                 "provider_refresh": st.get("provider_refresh"),
@@ -605,7 +609,7 @@ class Desk:
                          "scope": self.scope_info()},
                 "queue": queue, "issues": issues,
                 "threads": threads.build(queue["rows"], every_issue, self.me),
-                "wizard": self.wizard(queue, issues),
+                "stances": self.stances(queue, issues),
                 "state": self.live_state(),
                 "timings": dict(self.timings),
                 "generated": time.strftime("%H:%M:%S")}
@@ -672,37 +676,16 @@ class Desk:
     def review_targets(self):
         """{n: card} of the PRs whose review is asked of the user now, in any
         step of Da rivedere: the only rows a review click may name."""
-        section = wizardlib.review_section(self.queue(), deskstate.load(self.repo),
+        section = stanceslib.review_section(self.queue(), deskstate.load(self.repo),
                                            self.me)
         cards = ([card for step in section["steps"] for card in step["rows"]]
                  + section["pending"] + section["skipped"])
         return {card["n"]: card for card in cards}
 
-    def zoom(self, n):
-        """One PR's whole situation; the diff is read only for the hunk the
-        analysis pointed at, and cached under the head it belongs to."""
-        queue = self.queue()
-        row = next((row for row in queue["rows"] if row["n"] == n), None)
-        if row is None:
-            raise KeyError("#%s non è nella coda" % n)
-        note = (deskstate.load(self.repo).get("prs") or {}).get(str(n)) or {}
-        ref = (row.get("advice") or {}).get("hunk")
-        hunk = None
-        if ref and row.get("head"):
-            try:
-                diff = cache.get(self.repo, "diff:%s:%s" % (n, row["head"]),
-                                 lambda: self.provider.pr_diff(self.repo, n))[0]
-                hunk = (wizardlib.cut_hunk(diff, ref["path"], ref["header"])
-                        or dict(ref, lines=[], missing=True))
-            except Exception as exc:
-                hunk = dict(ref, lines=[], error=str(exc)[:160])
-        return wizardlib.zoom(row, note, self.me, (queue.get("gates") or {}).get(
-            row.get("base")), hunk)
-
     def close_targets(self):
         """{n: card} of the issues the analysis found already fixed: the only
         ones a closing click may name."""
-        section = wizardlib.issue_section(self.issues(), deskstate.load(self.repo))
+        section = stanceslib.issue_section(self.issues(), deskstate.load(self.repo))
         return {card["n"]: card for card in section["steps"][0]["rows"]}
 
     def analysis_inputs(self, n):
@@ -737,7 +720,7 @@ class Desk:
         keys = dict(keys, problem_head=row.get("head"))
         if probe and probe.get("fresh") and probe.get("head"):
             # the tests as they stood on the head this analysis reads: the
-            # wizard's gate, decided here and never by the model
+            # approvable filter's gate, decided here and never by the model
             keys["checks"] = {"head": probe["head"],
                               "state": (probe.get("checks") or {}).get("state")}
         giant = None
@@ -912,8 +895,11 @@ class ScopeDesk:
                         found.append(label)
         return cited
 
-    def wizard(self):
-        return wizardlib.merge(self._each(lambda d: d.wizard()))
+    def stances(self):
+        return stanceslib.merge(self._each(lambda d: d.stances()))
+
+    def todo(self):
+        return {"rows": [row for part in self._each(lambda d: d.todo()) for row in part["rows"]]}
 
     def prepare_async(self, kinds=preparation.KINDS):
         threading.Thread(target=preparation.prepare_all,
@@ -971,7 +957,7 @@ class ScopeDesk:
                          "scope": self.scope_info()},
                 "queue": queue, "issues": issues,
                 "threads": threads.build(queue["rows"], every_issue, self.me),
-                "wizard": self.wizard(),
+                "stances": self.stances(),
                 "state": self.live_state(),
                 "timings": dict(self.timings),
                 "generated": time.strftime("%H:%M:%S")}
@@ -1102,15 +1088,8 @@ class Handler(BaseHTTPRequestHandler):
             elif url.path == "/api/issues":
                 self._send_tagged(dict(self.desk.issues(refresh),
                                        generated=time.strftime("%H:%M:%S")))
-            elif url.path == "/api/wizard":
-                self._send_tagged(self.desk.wizard())
-            elif url.path.startswith("/api/pr/") and url.path.endswith("/zoom"):
-                n = int(url.path.split("/")[3])
-                try:
-                    desk = self.desk.member((parse_qs(url.query).get("repo") or [None])[0])
-                    self._send_tagged(desk.zoom(n))
-                except KeyError as exc:
-                    self._send(404, {"error": str(exc).strip("'")})
+            elif url.path == "/api/todo":
+                self._send_tagged(self.desk.todo())
             elif url.path == "/api/feed":
                 self._send(200, {"feed": self.desk.live_state()["feed"]})
             elif url.path == "/api/state":
@@ -1358,7 +1337,7 @@ class Handler(BaseHTTPRequestHandler):
         return None
 
     def _review(self, body):
-        """Approve, request changes or skip to tomorrow, from the wizard. A
+        """Approve, request changes or skip to tomorrow, from the desk. A
         review is public: it goes to the attached chat, which runs it with
         the command echoed, and only with one; a skip is the desk's own."""
         event, items = body.get("event"), body.get("items")

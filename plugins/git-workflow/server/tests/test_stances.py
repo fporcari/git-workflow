@@ -1,5 +1,5 @@
-"""The wizard: which step every row belongs to, read off the provider facts,
-the engine's verdict and the analysis' stance — never off a model's copy."""
+"""The stances: where every row stands, read off the provider facts, the
+engine's verdict and the analysis' stance — never off a model's copy."""
 
 import json
 import os
@@ -16,8 +16,7 @@ import cache            # noqa: E402
 import deskstate        # noqa: E402
 import jobs             # noqa: E402
 import prdesk           # noqa: E402
-import verdicts         # noqa: E402
-import wizard           # noqa: E402
+import stances          # noqa: E402
 from providers import get_provider  # noqa: E402
 
 REPO = "genropy/genropy"
@@ -26,7 +25,7 @@ _SAVED = {}
 
 
 def setUpModule():
-    home = tempfile.mkdtemp(prefix="wizard-")
+    home = tempfile.mkdtemp(prefix="stances-")
     _SAVED.update(home=os.environ.get("HOME"), state=deskstate.STATE_DIR,
                   runtime=deskstate.RUNTIME_DIR)
     os.environ["HOME"] = home
@@ -70,7 +69,7 @@ class DaRivedere(unittest.TestCase):
 
     def setUp(self):
         self.desk = fresh_desk()
-        self.review = self.desk.wizard()["review"]
+        self.review = self.desk.stances()["review"]
         self.ns = sorted(card["n"] for card in self.review["pending"])
 
     def test_only_others_prs_whose_review_is_asked_and_all_pending_at_first(self):
@@ -86,7 +85,7 @@ class DaRivedere(unittest.TestCase):
         analyze(self.desk, c, stance="changes", draft="Please split it.")
         analyze(self.desk, d, stance="doubt", doubt="l'ordine cambia", lean="changes",
                 draft="Please add a test.", hunk={"path": "a.js", "header": "@@ -1 +1 @@"})
-        review = self.desk.wizard()["review"]
+        review = self.desk.stances()["review"]
         self.assertEqual(steps(review)["approve"], [a])
         self.assertEqual(steps(review)["changes"], [c])
         self.assertEqual(steps(review)["doubt"], [d])
@@ -98,11 +97,30 @@ class DaRivedere(unittest.TestCase):
         self.assertEqual(rows[d]["hunk"]["path"], "a.js")
         self.assertTrue(rows[a]["url"].endswith("/%d" % a))
 
+    def test_what_is_to_do_names_who_asks_and_never_a_pending_row(self):
+        self.assertEqual(self.desk.todo()["rows"], [])
+        a, c = self.ns[:2]
+        analyze(self.desk, a)
+        analyze(self.desk, c, stance="changes", draft="Please split it.")
+        rows = self.desk.todo()["rows"]
+        self.assertEqual(sorted((row["n"], row["step"]) for row in rows),
+                         sorted([(a, "approve"), (c, "changes")]))
+        authors = {row["n"]: row["author"] for row in self.desk.queue()["rows"]}
+        self.assertTrue(all(row["author"] == authors[row["n"]] for row in rows))
+        self.assertTrue(all(row["repo"] == REPO for row in rows))
+
+    def test_a_review_already_sent_is_no_longer_to_do(self):
+        n = self.ns[0]
+        analyze(self.desk, n)
+        deskstate.update(REPO, lambda state: state.setdefault(
+            "session_reviews", {}).setdefault("approve", []).append(n))
+        self.assertEqual(self.desk.todo()["rows"], [])
+
     def test_a_failed_analysis_waits_among_the_doubts_with_the_reason(self):
         n = self.ns[0]
         deskstate.save(REPO, {"runs": {"pr-nightwork": {
             "status": "done", "failed": {str(n): "claude exited 3"}}}})
-        review = self.desk.wizard()["review"]
+        review = self.desk.stances()["review"]
         doubt = next(card for card in review["steps"][2]["rows"] if card["n"] == n)
         self.assertIn("claude exited 3", doubt["doubt"])
         self.assertNotIn(n, [card["n"] for card in review["pending"]])
@@ -125,7 +143,7 @@ class DaRivedere(unittest.TestCase):
             self.assertNotIn("giant", self.desk.analysis_inputs(self.ns[2])[1])
             analyze(self.desk, n)
             analyze(self.desk, m, stance="changes", draft="Please split it.")
-            review = self.desk.wizard()["review"]
+            review = self.desk.stances()["review"]
             self.assertEqual(steps(review)["approve"], [])
             self.assertEqual(steps(review)["changes"], [])
             doubts = {card["n"]: card for card in review["steps"][2]["rows"]}
@@ -149,7 +167,7 @@ class DaRivedere(unittest.TestCase):
             rows = self.desk._queue_facts(complete_gates=True)[0]
             self.assertEqual(next(r for r in rows if r["n"] == n)["code_size"], 320)
             self.assertIn(str(n), owed(self.desk))
-            self.assertIn(n, [card["n"] for card in self.desk.wizard()["review"]["pending"]])
+            self.assertIn(n, [card["n"] for card in self.desk.stances()["review"]["pending"]])
         finally:
             del row["size"], row["files"]
             cache.clear(REPO)
@@ -160,20 +178,20 @@ class DaRivedere(unittest.TestCase):
         source.update(labels=["needs-verification"], head="h%d" % n)
         cache.clear(REPO)
         analyze(self.desk, n, keys={"checks": {"head": "h%d" % n, "state": "FAILURE"}})
-        review = self.desk.wizard()["review"]
+        review = self.desk.stances()["review"]
         self.assertEqual(steps(review)["approve"], [])
         held = review["steps"][2]["rows"][0]
         self.assertEqual((held["n"], held["lean"]), (n, "approve"))
         self.assertIn("needs-verification", held["doubt"])
         analyze(self.desk, n, keys={"checks": {"head": "h%d" % n, "state": "SUCCESS"}})
-        self.assertEqual(steps(self.desk.wizard()["review"])["approve"], [n])
+        self.assertEqual(steps(self.desk.stances()["review"])["approve"], [n])
 
     def test_a_doubt_skipped_to_tomorrow_leaves_the_steps_for_today(self):
         n = self.ns[0]
         analyze(self.desk, n, stance="doubt", doubt="d", lean="approve")
         deskstate.update(REPO, lambda state: state["prs"][str(n)].update(
             skipped=date.today().isoformat()))
-        review = self.desk.wizard()["review"]
+        review = self.desk.stances()["review"]
         self.assertEqual(steps(review)["doubt"], [])
         self.assertEqual([card["n"] for card in review["skipped"]], [n])
 
@@ -182,58 +200,9 @@ class DaRivedere(unittest.TestCase):
         job = {"kind": "analyze", "request": {"n": n},
                "progress": {"stage": "testing"}}
         queue = self.desk.queue()
-        section = wizard.review_section(queue, deskstate.load(REPO), ME, [job])
+        section = stances.review_section(queue, deskstate.load(REPO), ME, [job])
         chip = next(card["chip"] for card in section["pending"] if card["n"] == n)
         self.assertEqual(chip, "verifica i test…")
-
-
-class Mie(unittest.TestCase):
-    """fporcari's own PRs on the fixture: none approvable, ever."""
-
-    def setUp(self):
-        self.desk = fresh_desk("fporcari")
-
-    def mine(self):
-        return self.desk.wizard()["mine"]
-
-    def test_own_prs_are_split_by_whose_move_it_is(self):
-        mine = self.mine()
-        own = [row for row in self.desk.queue()["rows"] if row["author"] == "fporcari"]
-        self.assertEqual(mine["count"], len(own))
-        self.assertEqual({k: len(v) for k, v in steps(mine).items()},
-                         {"merge": 0, "fix": 0, "decide": 8, "waiting": 28})
-        self.assertEqual(mine["first"], "decide")
-        self.assertIn("cgabriel", mine["chase"])
-        self.assertNotIn(1145, steps(self.desk.wizard()["review"])["approve"])
-
-    def test_a_clear_request_goes_to_claude_a_choice_comes_with_its_options(self):
-        decide = steps(self.mine())["decide"]
-        fix, choice = decide[:2]
-        options = ["Dividila", "Rispondi a cgabriel", "Lascia com'è"]
-        analyze(self.desk, fix, stance="fix")
-        analyze(self.desk, choice, stance="decide", ask="Dividila in tre", options=options)
-        mine = self.mine()
-        self.assertEqual(steps(mine)["fix"], [fix])
-        card = next(c for c in mine["steps"][2]["rows"] if c["n"] == choice)
-        self.assertEqual((card["ask"], card["options"]), ("Dividila in tre", options))
-
-    def test_an_approved_clean_pr_of_mine_is_to_merge(self):
-        rows = self.desk.provider.data["rows"]
-        row = next(r for r in rows if r["author"] == "fporcari" and not r["draft"]
-                   and r.get("base") == "develop")
-        row.update(decision="APPROVED", req=[], merge="CLEAN", assignees=["fporcari"],
-                   head="hx", unresolved=0, last=None,
-                   reviews=[{"who": "genro", "state": "APPROVED", "commit": "hx",
-                             "has_text": False}])
-        cache.clear(REPO)
-        self.assertIn(row["n"], steps(self.mine())["merge"])
-
-    def test_rows_a_loop_works_in_background_say_so(self):
-        n = steps(self.mine())["decide"][0]
-        deskstate.save(REPO, {"requests": {"run:pr-loop": {
-            "status": "running", "payload": {"flow": "pr-loop", "ns": [n]}}}})
-        card = next(c for c in self.mine()["steps"][2]["rows"] if c["n"] == n)
-        self.assertEqual(card["loop"], "running")
 
 
 def analyze_issue(n, **fields):
@@ -248,10 +217,10 @@ class Issues(unittest.TestCase):
 
     def setUp(self):
         self.desk = fresh_desk("fporcari")
-        self.shortlist = [card["n"] for card in self.desk.wizard()["issue"]["pending"]]
+        self.shortlist = [card["n"] for card in self.desk.stances()["issue"]["pending"]]
 
     def test_only_the_shortlist_waits_for_the_preparation(self):
-        issue = self.desk.wizard()["issue"]
+        issue = self.desk.stances()["issue"]
         self.assertEqual(len(self.shortlist), 10)
         self.assertEqual(issue["first"], "prepare")
         self.assertEqual(issue["count"], len(self.desk.issues()["rows"]))
@@ -262,7 +231,7 @@ class Issues(unittest.TestCase):
         analyze_issue(easy)
         analyze_issue(long, size="MEDIUM", phase="WORKFLOW")
         analyze_issue(taken, decision="who owns the print templates?")
-        issue = self.desk.wizard()["issue"]
+        issue = self.desk.stances()["issue"]
         self.assertEqual(steps(issue)["close"], [fixed])
         self.assertEqual(steps(issue)["claude"], [easy])
         self.assertEqual(sorted(steps(issue)["decide"]), sorted([long, taken]))
@@ -276,99 +245,16 @@ class Issues(unittest.TestCase):
         analyze_issue(n)
         deskstate.update(REPO, lambda state: state["issues"][str(n)].update(
             at="2000-01-01T00:00:00+00:00"))
-        issue = self.desk.wizard()["issue"]
+        issue = self.desk.stances()["issue"]
         self.assertEqual(steps(issue)["claude"], [])
         self.assertIn(n, [card["n"] for card in issue["pending"]])
-
-
-class WhoseTurn(unittest.TestCase):
-
-    def test_per_person_with_the_user_first_and_nobody_last(self):
-        desk = fresh_desk()
-        whose = desk.wizard()["whose"]
-        self.assertTrue(whose[0]["me"])
-        self.assertEqual(whose[0]["review"], 30)
-        self.assertIsNone(whose[-1]["who"])
-        self.assertGreater(whose[-1]["unassigned"], 0)
-        middle = whose[1:-1]
-        self.assertEqual([e["total"] for e in middle],
-                         sorted((e["total"] for e in middle), reverse=True))
-        fporcari = next(e for e in middle if e["who"] == "fporcari")
-        self.assertTrue(fporcari["wait"] or fporcari["fix"] or fporcari["merge"])
-
-    def test_my_prs_waiting_on_somebody_carry_the_chase(self):
-        whose = fresh_desk("fporcari").wizard()["whose"]
-        cgabriel = next(e for e in whose if e["who"] == "cgabriel")
-        self.assertTrue(cgabriel["review"])
-        self.assertTrue(cgabriel["chase"].startswith("@cgabriel"))
-
-
-DIFF = """diff --git a/gnrjs/gnrbag.js b/gnrjs/gnrbag.js
---- a/gnrjs/gnrbag.js
-+++ b/gnrjs/gnrbag.js
-@@ -10,2 +10,2 @@ setItem
--a
-+b
-@@ -1204,9 +1204,11 @@ triggerDispatch
-   var path = node.getFullpath();
--  this._subscribers.forEach(fire);
-+  var hits = this._triggerIndex.lookup(path);
-diff --git a/CHANGELOG.md b/CHANGELOG.md
-@@ -1204,9 +1204,11 @@ triggerDispatch
-+not this one
-"""
-
-
-class Zoom(unittest.TestCase):
-
-    def test_the_hunk_is_the_one_the_analysis_pointed_at(self):
-        hunk = wizard.cut_hunk(DIFF, "gnrjs/gnrbag.js", "@@ -1204,9 +1204,11 @@")
-        self.assertEqual(hunk["header"], "@@ -1204,9 +1204,11 @@ triggerDispatch")
-        self.assertEqual(hunk["lines"], ["   var path = node.getFullpath();",
-                                         "-  this._subscribers.forEach(fire);",
-                                         "+  var hits = this._triggerIndex.lookup(path);"])
-        self.assertIsNone(wizard.cut_hunk(DIFF, "gnrjs/other.js", "@@ -1204,9 +1204,11 @@"))
-
-    def test_the_whole_situation_of_one_pr(self):
-        desk = fresh_desk()
-        n = sorted(desk.review_targets())[0]
-        source = next(row for row in desk.provider.data["rows"] if row["n"] == n)
-        source["head"] = "h%d" % n
-        desk.provider.data["diffs"] = {str(n): DIFF}
-        cache.clear(REPO)
-        analyze(desk, n, stance="doubt", doubt="l'ordine cambia", lean="changes",
-                draft="Please add a test.", verified=["i test passano"],
-                not_verified=["le pagine dei clienti"],
-                hunk={"path": "gnrjs/gnrbag.js", "header": "@@ -1204,9 +1204,11 @@"},
-                keys={"checks": {"head": "h%d" % n, "state": "SUCCESS"}})
-        zoom = desk.zoom(n)
-        self.assertEqual(zoom["card"]["stance"], "doubt")
-        self.assertEqual((zoom["verified"], zoom["not_verified"]),
-                         (["i test passano"], ["le pagine dei clienti"]))
-        self.assertEqual(len(zoom["hunk"]["lines"]), 3)
-        self.assertEqual(zoom["state"]["tests"], "SUCCESS")
-        self.assertEqual(zoom["timeline"][-1], {"on": "oggi", "now": True,
-                                                "text": "tocca a te: sei revisore richiesto"})
-        self.assertEqual(zoom["timeline"][0]["text"], "%s apre la PR" % source["author"])
-        with self.assertRaises(KeyError):
-            desk.zoom(1)
-
-    def test_a_diff_the_provider_cannot_give_is_said_not_hidden(self):
-        desk = fresh_desk()
-        n = sorted(desk.review_targets())[0]
-        source = next(row for row in desk.provider.data["rows"] if row["n"] == n)
-        source["head"] = "h%d" % n
-        cache.clear(REPO)
-        analyze(desk, n, stance="doubt", doubt="d", lean="approve",
-                hunk={"path": "a.js", "header": "@@ -1 +1 @@"})
-        self.assertIn("no diff", desk.zoom(n)["hunk"]["error"])
 
 
 class Preparation(unittest.TestCase):
     NOW = datetime(2026, 10, 6, 9, 12)
 
     def info(self, run, running=None, kind="pr"):
-        return wizard.prepare_info({"runs": {"%s-nightwork" % kind: run}}, kind,
+        return stances.prepare_info({"runs": {"%s-nightwork" % kind: run}}, kind,
                                    running, self.NOW)
 
     def test_a_run_going_says_how_far(self):
@@ -383,7 +269,7 @@ class Preparation(unittest.TestCase):
         info = self.info({"status": "done", "prepared_by": "night",
                           "prepared_at": "2026-10-06T02:10:00"})
         self.assertEqual(info["phrase"], "preparata stanotte alle 02:10")
-        evening = wizard.prepare_info({"runs": {"pr-nightwork": {
+        evening = stances.prepare_info({"runs": {"pr-nightwork": {
             "status": "done", "prepared_by": "night",
             "prepared_at": "2026-10-06T20:55:00"}}}, "pr", None, datetime(2026, 10, 6, 21, 30))
         self.assertEqual(evening["phrase"], "preparata stasera alle 20:55")
@@ -405,7 +291,11 @@ class Preparation(unittest.TestCase):
                           "prepared_at": "2026-10-06T09:00:00", "failed": {"7": "x"}},
                          kind="issue")
         self.assertEqual(info["phrase"], "preparata alle 09:00 · 1 non riuscite")
-        self.assertEqual(wizard.prepare_info({}, "pr")["status"], "never")
+        self.assertEqual(stances.prepare_info({}, "pr")["status"], "never")
+
+    def test_a_failed_run_says_why_instead_of_nothing_to_do(self):
+        info = self.info({"status": "failed", "report": "interrotto: gh api failed"})
+        self.assertEqual(info["phrase"], "preparazione non riuscita · interrotto: gh api failed")
 
 
 if __name__ == "__main__":

@@ -337,7 +337,7 @@ class TheRunRecord(unittest.TestCase):
 
 class WithTheFakeAgent(unittest.TestCase):
     """The real jobs, the real persistence, a `claude` that answers at once:
-    what the night prepares is the verdict the wizard is built on."""
+    what the night prepares is the verdict the desk's filters group by."""
 
     def setUp(self):
         self.bin = Path(tempfile.mkdtemp(prefix="fake-claude-"))
@@ -391,19 +391,19 @@ class WithTheFakeAgent(unittest.TestCase):
         cache.clear(REPO)
         deskstate.save(REPO, {})
         desk = prdesk.Desk(provider, REPO, "genro", str(ROOT), agent="claude")
-        before = desk.wizard()["review"]
+        before = desk.stances()["review"]
         self.assertEqual(before["first"], "prepare")
         self.assertEqual(len(before["pending"]), before["count"])
         self.assertTrue(before["count"])
         desk.prepare_async(("pr",))
         deadline = time.time() + 60
         while time.time() < deadline:
-            info = desk.wizard()
+            info = desk.stances()
             if (info["prepare"]["pr"]["status"] == "done"
                     and not info["review"]["pending"]):
                 break
             time.sleep(0.2)
-        after = desk.wizard()["review"]
+        after = desk.stances()["review"]
         self.assertEqual(after["pending"], [])
         steps = {step["id"]: [c["n"] for c in step["rows"]] for step in after["steps"]}
         for stance in ("approve", "changes", "doubt"):

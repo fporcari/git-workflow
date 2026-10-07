@@ -17,11 +17,12 @@ server/tests/run.sh --bench      # plus the live benchmark (needs gh)
 - **`test_ui.mjs`** (plain node) — drives the **real**
   `static/index.html` against a **real** desk process on the fixture
   provider, through a small DOM shim, after `seed_ui.py` has run the real
-  preparation with the fake agent for `--me genro`. It walks the wizard the
-  way the user does — the four sections, the steps, the keys, the zoom, the
-  status bar — and records what each action posts instead of sending it.
-- **`test_wizard.py`**, **`test_review.py`** — which step every row belongs
-  to, and the public actions (review, close) with every refusal.
+  preparation with the fake agent for `--me genro`. It walks the page the
+  way the user does — the three sections, the filters, a row opened in
+  place, the keys, the preparation banner, the drawer and the status line —
+  and records what each action posts instead of sending it.
+- **`test_stances.py`**, **`test_review.py`** — where every row stands,
+  what waits for the user (`/api/todo`), and the public actions (review, close) with every refusal.
 - **`bench.py`** — where the time goes. `--queries` is the interesting one:
   it shows that the search itself is cheap, that resolving the per-PR
   nested connections is what costs, and that `mergeStateStatus` alone costs

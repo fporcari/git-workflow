@@ -1,4 +1,4 @@
-import type { DeskItem, Tag } from '../types'
+import type { DeskItem, Preparation, Tag, TodoRow } from '../types'
 
 type Raw = {
   session?: string
@@ -73,11 +73,17 @@ export function itemsOf(repo: string, state: unknown, nowSec: number): DeskItem[
 
 export const isOpen = (item: DeskItem) => OPEN.includes(item.status)
 
-/** A poll with the pane closed is not somebody using the desk: it neither keeps it alive nor refreshes it. */
-export function pollHeaders(etag: string | null | undefined, paneOpen: boolean): Record<string, string> {
+/** The mod's poll is never somebody using the desk: it neither keeps it alive nor refreshes it. */
+export function pollHeaders(etag: string | null | undefined): Record<string, string> {
   const headers: Record<string, string> = etag ? { 'If-None-Match': etag } : {}
-  if (!paneOpen) headers['X-Git-Workflow-Background'] = '1'
+  headers['X-Git-Workflow-Background'] = '1'
   return headers
+}
+
+/** A repository by its short name, unless another one in view shares it. */
+export function projectOf(repo: string, all: string[] = []): string {
+  const short = repo.split('/').pop() ?? repo
+  return all.some(other => other !== repo && other.split('/').pop() === short) ? repo : short
 }
 
 /** What a closed row was showing: a new status or report brings it back. */
@@ -107,26 +113,27 @@ const short = (text: string, max: number) =>
 /** One line per transition worth a toast: a loop now waits for you, or closed. */
 export function transitions(before: Record<string, string>, items: DeskItem[]): string[] {
   const out: string[] = []
+  const repos = items.map(i => i.repo)
   for (const item of items) {
     const was = before[item.key]
     if (was === undefined || was === item.status) continue
     if (item.status === 'needs-input' || CLOSED.includes(item.status)) {
       const report = item.report ? `: ${short(item.report, 80)}` : ''
-      out.push(`${item.tag} · ${item.label} ${wordOf(item.status)}${report}`)
+      out.push(`${item.tag} ${projectOf(item.repo, repos)} · ${item.label} ${wordOf(item.status)}${report}`)
     }
   }
   return out
 }
 
-/** `PR ✓8 ✕3 ?4 ⏳1 · ISSUE 5 per Claude`: what the desk holds, then what works and waits. */
-export function statusLine(items: DeskItem[], desk: Partial<Record<Tag, string>> = {}): string | undefined {
+/** `PR ⏳1 ⏸1 · ISSUE ⏳1`: the loops at work and the ones waiting for you, per kind. */
+export function statusLine(items: DeskItem[]): string | undefined {
   const open = items.filter(isOpen)
   const parts: string[] = []
   for (const tag of ['PR', 'ISSUE'] as const) {
     const mine = open.filter(i => i.tag === tag)
     const wait = mine.filter(i => i.status === 'needs-input').length
     const busy = mine.length - wait
-    const words = [desk[tag], busy ? `⏳${busy}` : '', wait ? `⏸${wait}` : ''].filter(Boolean)
+    const words = [busy ? `⏳${busy}` : '', wait ? `⏸${wait}` : ''].filter(Boolean)
     if (words.length) parts.push(`${tag} ${words.join(' ')}`)
   }
   return parts.length ? parts.join(' · ') : undefined
@@ -163,4 +170,30 @@ export function deskTarget(files: Record<string, StateFile>, session: string, no
   found.sort((a, b) => Number(b.mine) - Number(a.mine) || b.mtime - a.mtime)
   const best = found[0]
   return best ? { port: best.port, repo: best.repo, attached: best.attached } : null
+}
+
+export const preparing = (prepare: Record<string, Preparation> | null | undefined) => prepare?.pr?.status === 'running'
+
+const todoKey = (row: TodoRow) => `${row.repo}#${row.n}`
+
+/**
+ * One look at what waits for the user: the rows to announce now. The first
+ * look announces everything already waiting; after it, only a row that was
+ * not to do at the previous look. `announced` drops whatever is no longer to
+ * do, so a review sent elsewhere leaves the notice by itself.
+ */
+export function freshTodo(seen: Set<string> | null, announced: TodoRow[], rows: TodoRow[]) {
+  const now = new Set(rows.map(todoKey))
+  const added = seen ? rows.filter(row => !seen.has(todoKey(row))) : rows
+  const kept = announced.filter(row => now.has(todoKey(row)))
+  const known = new Set(kept.map(todoKey))
+  return { seen: now, added, announced: [...kept, ...added.filter(row => !known.has(todoKey(row)))] }
+}
+
+/** `genropy · 3 da rivedere — dgpaci #1616 #1610 · cgabriel #1598`: which desk, how many, from whom. */
+export function todoLine(project: string, rows: TodoRow[]): string {
+  const by = new Map<string, number[]>()
+  for (const row of rows) by.set(row.author ?? '?', [...(by.get(row.author ?? '?') ?? []), row.n])
+  const who = [...by.entries()].map(([author, ns]) => `${author} ${ns.map(n => `#${n}`).join(' ')}`).join(' · ')
+  return `${project} · ${rows.length} da rivedere — ${who}`
 }

@@ -1551,15 +1551,19 @@ class Http(unittest.TestCase):
         except HTTPError as exc:
             return exc.code, json.loads(exc.read())
 
-    def test_the_wizard_is_served_on_its_own_and_in_the_snapshot(self):
-        status, etag, body = self.get("/api/wizard")
-        payload = json.loads(body)
-        self.assertEqual(status, 200)
-        self.assertEqual(set(payload), {"review", "mine", "issue", "whose", "prepare"})
-        self.assertEqual(set(payload["prepare"]), {"pr", "issue"})
-        self.assertEqual(self.get("/api/wizard", etag)[0], 304)
+    def test_the_stances_ride_in_the_snapshot_and_the_preparation_in_the_state(self):
         _, _, desk = self.get("/api/desk")
-        self.assertIn("wizard", json.loads(desk))
+        stances = json.loads(desk)["stances"]
+        self.assertEqual(set(stances), {"review", "issue", "prepare"})
+        _, _, state = self.get("/api/state")
+        self.assertEqual(set(json.loads(state)["prepare"]), {"pr", "issue"})
+        self.assertEqual(self.get("/api/wizard")[0], 404)
+
+    def test_what_is_to_do_is_served_light_and_tagged(self):
+        status, etag, body = self.get("/api/todo")
+        self.assertEqual(status, 200)
+        self.assertIsInstance(json.loads(body)["rows"], list)
+        self.assertEqual(self.get("/api/todo", etag)[0], 304)
 
     def test_prepare_starts_in_background_and_names_its_kinds(self):
         desk = self.server.RequestHandlerClass.desk
