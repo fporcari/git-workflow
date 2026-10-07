@@ -46,10 +46,7 @@ Show the desk beside the chat; a link alone is not the deliverable.
   to open. Open it at once in the Browser pane — `preview_start` with `url`,
   the tool `runtime.md` → *Desks* names — also while the boot's triage runs:
   the page says so in small at the bottom. Only a desk still binding its port
-  is answered with "call again in a second". Later, with the page closed, a
-  notice above the prompt appears when a PR comes to review, naming the desk
-  and who opened each PR (`● DESK genropy · 2 da rivedere — dgpaci #1616
-  #1610`), with an *Apri il desk* key and a toast. Without the tool (a host
+  is answered with "call again in a second". Without the tool (a host
   that loads no mods) open the page there all the same.
 - **Codex**: the browser panel.
 

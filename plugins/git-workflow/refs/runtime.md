@@ -40,9 +40,7 @@ twin's URL), so no launch configuration may hard-code it.
 
 - Claude Code: call the plugin's `mcp__git-workflow__desk_open` tool and keep
   the session id its answer names for the listener, then open the page at
-  once, also while the boot's triage runs; with the page closed, the mod's
-  notice above the prompt appears when a PR comes to review, naming the desk
-  and who opened it. The page opens in the Browser pane beside the chat with
+  once, also while the boot's triage runs. The page opens in the Browser pane beside the chat with
   `mcp__Claude_Browser__preview_start`, `url` set to the printed URL
   (`mcp__Claude_Browser__navigate` does the same once the pane is open);
   without the tool (a host that loads no mods) open it there all the same.

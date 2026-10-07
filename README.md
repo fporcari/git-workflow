@@ -207,11 +207,6 @@ The plugin carries a Claude Code mod (function hooks, `hooks/register.tsx`)
 for the chat a desk is attached to. It draws no desk of its own: the desk is
 the page, in the Browser pane.
 
-- **a notice above the prompt** only when a PR comes to review —
-  naming the desk and who opened each PR (`● DESK genropy · 2 da rivedere —
-  dgpaci #1616 #1610`), with *Apri il desk* and ✕, and a toast. Nothing shows
-  while the preparation reads, and a preparation that lands nothing to do
-  says nothing;
 - **one row per desk request of this chat**, tagged `PR` (magenta) or
   `ISSUE` (green), always with its repository: in coda, in chat ora, in
   background, **aspetta te** first and in yellow, each with its ✕;
@@ -224,8 +219,8 @@ the page, in the Browser pane.
   id and whether to open the page now.
 
 It reads the desk state files under `~/.local/state/git-workflow/` every four
-seconds, re-reading only a file that changed, and `/api/todo` from the
-desk's own server, marked as a background poll; no model. `claude plugin
+seconds, re-reading only a file that changed, and asks the desk's own server
+whether it answers, marked as a background poll; no model. `claude plugin
 test plugins/git-workflow` runs its tests.
 
 ## The dashboard
@@ -290,9 +285,7 @@ and beside them the issue ranking and the shortlist's analyses, four jobs at
 a time with one kept for the issues. A PR over 1500 lines of code (tests,
 generated bundles, docs and lock files are not counted) is read folder by
 folder up to 5000 lines, with twice the time, and stays among the doubts with
-Claude's leaning whatever it concludes. Launched from Claude Code, the page
-waits for the preparation: the mod's notice says when a PR comes to review,
-and from whom, and *Apri il desk* opens it. While the desk is looked at, a
+Claude's leaning whatever it concludes. While the desk is looked at, a
 provider read older than 30 minutes is repeated and what moved is prepared
 again. A PR that did not move
 since the last preparation keeps its verdict and costs nothing; each row
@@ -395,6 +388,16 @@ preparation filled with a fake `claude` (`tests/fixtures/fake_claude.py`).
 `plugins/git-workflow/server/tests/README.md` says what each file is for.
 The mod's tests run with `claude plugin test plugins/git-workflow`, on the
 terminal and desktop surfaces.
+
+## No desk notice — 0.66.0
+
+The mod's notice above the prompt (`● DESK genropy · 2 da rivedere —
+dgpaci #1616`, *Apri il desk*, and its toast) is gone: now that the desk opens
+at once it only told you to open what was already open. The loops' rows, the
+status line and the toast when a loop starts waiting for you or closes stay.
+`/desk` answers with the link where the host has no Browser pane, and with no
+desk asks the chat to launch one, instead of submitting a prompt from inside
+the command, which the host refuses.
 
 ## Da vedere, and the desk fits the side pane — 0.65.0
 

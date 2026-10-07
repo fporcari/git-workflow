@@ -1,16 +1,15 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Desk, DeskItem, TodoRow } from '../types'
+import type { Desk, DeskItem } from '../types'
 import {
-  bareGoAhead, deskTarget, freshTodo, isOpen, itemsOf, mentions, pollHeaders, projectOf, shownAs,
-  statusLine, todoLine, transitions, unclosed, waiting, wordOf,
+  bareGoAhead, deskTarget, isOpen, itemsOf, mentions, pollHeaders, projectOf, shownAs,
+  statusLine, transitions, unclosed, waiting, wordOf,
 } from './desk'
 import type { StateFile } from './desk'
 
 const shown = atom({ plugin: 'git-workflow', key: 'items' } as const, [] as DeskItem[])
 const deskAtom = atom({ plugin: 'git-workflow', key: 'desk' } as const, null as Desk | null)
-const noticeAtom = atom({ plugin: 'git-workflow', key: 'notice' } as const, null as string | null)
 const closedAtom = atom({ plugin: 'git-workflow', key: 'closed' } as const, {} as Record<string, string>)
 
 const POLL_MS = 4000
@@ -23,10 +22,8 @@ const STATUS_COLOR: Record<string, string> = { 'needs-input': 'yellow', running:
 const LAUNCH = 'Apri il git desk con la skill git-desk e collega questa chat.'
 
 const files: Record<string, StateFile> = {}
-const memo: {
-  before: Record<string, string> | null; polling: boolean; etag: string | null
-  base: string | null; seen: Set<string> | null; announced: TodoRow[]
-} = { before: null, polling: false, etag: null, base: null, seen: null, announced: [] }
+const memo: { before: Record<string, string> | null; polling: boolean; etag: string | null; base: string | null } =
+  { before: null, polling: false, etag: null, base: null }
 
 async function stateDir($: EngineInterface) {
   const configured = await $.env.get('GIT_WORKFLOW_STATE_DIR')
@@ -57,7 +54,7 @@ async function getJSON($: EngineInterface, url: string, etag?: string | null) {
   return { data: JSON.parse(got.text), etag: got.headers?.etag ?? got.headers?.ETag ?? null }
 }
 
-/** The desk this chat drives, and what of it waits for the user that did not before. */
+/** The desk this chat drives, if it answers. */
 async function readDesk($: EngineInterface, session: string, nowSec: number) {
   const target = deskTarget(files, session, nowSec)
   const known = await read($, deskAtom)
@@ -66,30 +63,17 @@ async function readDesk($: EngineInterface, session: string, nowSec: number) {
     return
   }
   const base = `http://127.0.0.1:${target.port}`
-  if (memo.base !== base) Object.assign(memo, { base, etag: null, seen: null, announced: [] })
+  if (memo.base !== base) Object.assign(memo, { base, etag: null })
   const fresh = { base, repo: target.repo, attached: target.attached }
   if (!known || known.base !== fresh.base || known.attached !== fresh.attached)
     await update($, deskAtom, () => fresh)
   try {
-    const got = await getJSON($, `${base}/api/todo`, memo.etag)
-    memo.etag = got.etag
-    const rows = (got.data as { rows?: TodoRow[] } | null)?.rows
-    if (rows) await announce($, target.repo, rows)
+    memo.etag = (await getJSON($, `${base}/api/todo`, memo.etag)).etag
   } catch {
     // a desk that stopped answering: its registration outlives it until it says it stopped
     await update($, deskAtom, () => null)
     memo.etag = null
   }
-}
-
-/** The notice above the prompt holds the rows that came to do since the user last looked; a toast says the new ones. */
-async function announce($: EngineInterface, repo: string, rows: TodoRow[]) {
-  const next = freshTodo(memo.seen, memo.announced, rows)
-  memo.seen = next.seen
-  memo.announced = next.announced
-  const project = projectOf(repo)
-  await update($, noticeAtom, () => next.announced.length ? todoLine(project, next.announced) : null)
-  if (next.added.length) $.ui.toast(`Git desk · ${todoLine(project, next.added)}`, { timeoutMs: 10000 })
 }
 
 // a poll that fails is the next poll's to repeat: nothing waits on it
@@ -121,28 +105,16 @@ async function poll($: EngineInterface) {
   }
 }
 
-/** Whatever was announced is seen once the user hushes it or opens the desk. */
-async function hush($: EngineInterface) {
-  memo.announced = []
-  await update($, noticeAtom, () => null)
-}
-
-/** The page in the Browser pane where the host has one; otherwise the chat is asked to show it. */
-async function openDesk($: EngineInterface) {
-  await hush($)
-  const desk = await read($, deskAtom)
-  if (!desk) {
-    await $.prompt.submit({ text: LAUNCH, asUser: true })
-    return
-  }
+/** The page in the Browser pane where the host has one; otherwise its link. */
+async function openDesk($: EngineInterface, desk: Desk) {
   const url = `${desk.base}/`
   try {
     const got = await $.mcp.call('Claude_Browser', 'preview_start', { url })
-    if (!got.isError) return
+    if (!got.isError) return `Desk di ${desk.repo}: lo apro nel Browser pane.`
   } catch {
-    // no Browser pane on this host: the chat shows the link instead
+    // no Browser pane on this host: the link instead
   }
-  await $.prompt.submit({ text: `Apri il git desk di ${desk.repo} nel Browser pane: ${url}`, asUser: true })
+  return `Desk di ${desk.repo}: ${url}`
 }
 
 export const register: Register = on => {
@@ -161,8 +133,8 @@ export const register: Register = on => {
 
   on('command.run', { command: 'desk' }, async $ => {
     const desk = await read($, deskAtom)
-    await openDesk($)
-    return { text: desk ? `Desk di ${desk.repo}: lo apro nel Browser pane.` : 'Nessun desk aperto: lo avvio in questa chat.' }
+    if (!desk) return { text: 'Nessun desk aperto: lo avvio in questa chat.', context: [LAUNCH] }
+    return { text: await openDesk($, desk) }
   })
 
   on('tool.call', { tool: 'mcp__git-workflow__desk_open' }, async $ => {
@@ -199,8 +171,7 @@ export const register: Register = on => {
     const open = await read($, shown)
     const closed = (await read($, closedAtom)) ?? {}
     const items = unclosed(open, closed)
-    const notice = await read($, noticeAtom)
-    if (e.props.hasSurvey || (!items.length && !notice)) return next(e)
+    if (e.props.hasSurvey || !items.length) return next(e)
     const { Box, Text, Button } = $.ui.resolve(e)
     const repos = items.map(i => i.repo)
     const rows = [...items].sort((a, b) =>
@@ -211,14 +182,7 @@ export const register: Register = on => {
     }
     return (
       <Box flexDirection="column">
-        {notice ? (
-          <Box key="notice" flexDirection="row" gap={1}>
-            <Text color="green" bold>● DESK</Text>
-            <Box flexGrow={1} flexShrink={1}><Text wrap="truncate-end">{notice}</Text></Box>
-            <Button key="notice-open" variant="primary" onPress={() => { void openDesk($) }}>Apri il desk</Button>
-            <Button key="notice-hush" role="dismiss" plain dimColor onPress={() => { void hush($) }}>✕</Button>
-          </Box>) : null}
-        {rows.slice(0, Math.max(1, e.props.maxRows - (notice ? 2 : 1))).map(item => (
+        {rows.slice(0, Math.max(1, e.props.maxRows - 1)).map(item => (
           <Box key={item.key} flexDirection="row">
             <Box flexDirection="row" flexGrow={1} flexShrink={1}>
               <Text color={COLOR[item.tag]} bold>● {item.tag === 'PR' ? 'PR   ' : 'ISSUE'} </Text>

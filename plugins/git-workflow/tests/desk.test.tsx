@@ -1,9 +1,9 @@
 import type { On } from 'claude-code'
 import { describe, expect, test } from 'claude-code/testing'
 
-import type { Desk, DeskItem, Preparation, TodoRow } from '../types'
+import type { Desk, DeskItem, Preparation } from '../types'
 import {
-  bareGoAhead, deskTarget, freshTodo, itemsOf, pollHeaders, projectOf, shownAs, statusLine, todoLine, transitions, unclosed,
+  bareGoAhead, deskTarget, itemsOf, pollHeaders, projectOf, shownAs, statusLine, transitions, unclosed,
 } from '../hooks/desk'
 
 const NOW = 1_800_000_000
@@ -180,38 +180,11 @@ describe('the band', () => {
   })
 })
 
-const row = (n: number, author: string, step = 'approve'): TodoRow => ({ repo: 'genropy/genropy', n, author, step })
 const prep = (status: string): Record<string, Preparation> => ({
   pr: { status, phrase: '', due: [], landed: [], failed: {} },
 })
 
-describe('what comes to do', () => {
-  test('the first look announces what already waits; after it, only what is new', () => {
-    const first = freshTodo(null, [], [row(1616, 'dgpaci')])
-    expect(first.added.map(r => r.n)).toEqual([1616])
-    const same = freshTodo(first.seen, first.announced, [row(1616, 'dgpaci')])
-    expect(same.added).toEqual([])
-    const more = freshTodo(same.seen, same.announced, [row(1616, 'dgpaci'), row(1610, 'dgpaci', 'doubt')])
-    expect(more.added.map(r => r.n)).toEqual([1610])
-    expect(more.announced.map(r => r.n)).toEqual([1616, 1610])
-  })
-
-  test('a preparation that lands nothing announces nothing', () => {
-    const empty = freshTodo(null, [], [])
-    expect(empty.added).toEqual([])
-    expect(freshTodo(empty.seen, empty.announced, []).announced).toEqual([])
-  })
-
-  test('a review sent elsewhere leaves the notice by itself', () => {
-    const both = freshTodo(null, [], [row(1616, 'dgpaci'), row(1598, 'cgabriel')])
-    expect(freshTodo(both.seen, both.announced, [row(1598, 'cgabriel')]).announced.map(r => r.n)).toEqual([1598])
-  })
-
-  test('the notice names the desk, how many, and who opened them', () => {
-    expect(todoLine('genropy', [row(1616, 'dgpaci'), row(1610, 'dgpaci'), row(1598, 'cgabriel')]))
-      .toBe('genropy · 3 da rivedere — dgpaci #1616 #1610 · cgabriel #1598')
-  })
-
+describe('the desk this chat drives', () => {
   test('the desk this chat drives is the one it is attached to', () => {
     const files = {
       'genropy__genropy.json': { mtime: 1, state: { desks: { pr: { port: 8399 } },
@@ -230,29 +203,20 @@ const BAND_PROPS = {
   props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 120,
            scroll: { offset: 0, bodyRows: 10 }, view: {} },
 } as const
-type Notice = { value: string | null; version: number }
 
 // the desk as the poll left it, its server answering /api/state, the Browser
 // pane as one answering function, and every prompt the engine is handed
 function deskSeed(on: On, desk: Desk | null, prepare: Record<string, Preparation> | null,
-                  notice: Notice | null, opened: unknown[], prompts: string[], browser = true) {
+                  opened: unknown[], browser = true) {
   on('state.get', ($, e, next) => {
     if (e.plugin !== 'git-workflow') return next(e)
-    if (e.key === 'notice' && notice) return { value: { value: notice.value, version: notice.version } }
     const values: Record<string, unknown> = { desk, items: [] }
     return e.key in values ? { value: { value: values[e.key], version: 1 } } : next(e)
-  })
-  on('state.set', ($, e, next) => {
-    if (!notice || e.plugin !== 'git-workflow' || e.key !== 'notice') return next(e)
-    notice.value = e.value as string | null
-    notice.version += 1
-    return { value: { isSet: true as const, version: notice.version } }
   })
   on('mcp.call', ($, e) => {
     opened.push(e)
     return { value: { content: [], isError: !browser } }
   })
-  on('prompt.submit', ($, e) => { prompts.push(e.text); return { text: e.text, context: e.context, origin: e.origin } })
   on('http.fetch', ($, e) => e.url.endsWith('/api/state') && prepare
     ? { value: { status: 200, ok: true, headers: {}, text: JSON.stringify({ prepare }) } }
     : { value: { status: 304, ok: false, headers: {}, text: '' } })
@@ -265,7 +229,7 @@ function deskSeed(on: On, desk: Desk | null, prepare: Record<string, Preparation
 
 describe('opening the desk', () => {
   test('while the boot triages, the skill opens the page all the same', async ($, on) => {
-    deskSeed(on, DESK, prep('running'), null, [], [])
+    deskSeed(on, DESK, prep('running'), [])
     const got = await $.tool.call({ tool: 'mcp__git-workflow__desk_open' })
     const text = String((got as { result?: unknown }).result)
     expect(text).toContain('open http://127.0.0.1:8399/ in the Browser pane now')
@@ -277,7 +241,7 @@ describe('opening the desk', () => {
   })
 
   test('no desk answers yet: the skill is told to ask again', async ($, on) => {
-    deskSeed(on, null, null, null, [], [])
+    deskSeed(on, null, null, [])
     const got = await $.tool.call({ tool: 'mcp__git-workflow__desk_open' })
     const text = String((got as { result?: unknown }).result)
     expect(text).toContain('Call this tool again in a second')
@@ -285,34 +249,37 @@ describe('opening the desk', () => {
   })
 
   test('a ready desk: the skill opens its page, with the session id to attach', async ($, on) => {
-    deskSeed(on, DESK, prep('done'), null, [], [])
+    deskSeed(on, DESK, prep('done'), [])
     const got = await $.tool.call({ tool: 'mcp__git-workflow__desk_open' })
     const text = String((got as { result?: unknown }).result)
     expect(text).toContain('open http://127.0.0.1:8399/ in the Browser pane')
     expect(text).toContain('session id is the-chat')
   })
 
-  test('the notice names its desk and who asks, and its key opens the page in the Browser pane', async ($, on) => {
+  test('/desk opens the page in the Browser pane', async ($, on) => {
     const opened: unknown[] = []
-    const notice: Notice = { value: 'genropy · 2 da rivedere — dgpaci #1616 #1610', version: 1 }
-    deskSeed(on, DESK, null, notice, opened, [])
-    const ui = await $.ui.mount({ ...BAND_PROPS, surface: 'desktop' })
-    const texts = (await ui.findAll({ type: 'Text' })).map(t => t.text).join('|')
-    expect(texts).toContain('● DESK')
-    expect(texts).toContain('genropy · 2 da rivedere — dgpaci #1616 #1610')
-    await ui.press({ key: 'notice-open' })
+    deskSeed(on, DESK, null, opened)
+    await $.command.run({ command: 'desk', args: '' })
     expect(opened).toHaveLength(1)
-    expect(notice.value).toBeNull()
-    await ui.unmount()
   })
 
-  test('a host without a Browser pane asks the chat to show the link', async ($, on) => {
-    const prompts: string[] = []
-    const notice: Notice = { value: 'genropy · 1 da rivedere — dgpaci #1616', version: 1 }
-    deskSeed(on, DESK, null, notice, [], prompts, false)
-    const ui = await $.ui.mount({ ...BAND_PROPS, surface: 'terminal' })
-    await ui.press({ key: 'notice-open' })
-    expect(prompts.join(' ')).toContain('genropy/genropy nel Browser pane: http://127.0.0.1:8399/')
+  test('a host without a Browser pane gets the link', async ($, on) => {
+    deskSeed(on, DESK, null, [], false)
+    const got = await $.command.run({ command: 'desk', args: '' })
+    expect(got.text).toBe('Desk di genropy/genropy: http://127.0.0.1:8399/')
+  })
+
+  test('no desk: /desk asks the chat to launch it', async ($, on) => {
+    deskSeed(on, null, null, [])
+    const got = await $.command.run({ command: 'desk', args: '' })
+    expect(got.context?.join(' ')).toContain('skill git-desk')
+  })
+
+  test('no notice above the prompt: with no loop open the band yields', async ($, on) => {
+    deskSeed(on, DESK, null, [])
+    const ui = await $.ui.mount({ ...BAND_PROPS, surface: 'desktop' })
+    expect(await ui.find({ type: 'Text', text: 'engine' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /DESK/ })).toBeUndefined()
     await ui.unmount()
   })
 })

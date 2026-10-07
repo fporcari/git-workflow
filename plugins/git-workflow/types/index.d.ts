@@ -22,14 +22,11 @@ export type Preparation = {
 
 export type Desk = { base: string; repo: string; attached: boolean }
 
-export type TodoRow = { repo: string; n: number; title?: string | null; author?: string | null; step: string }
-
 declare module 'claude-code' {
   interface PluginState {
     'git-workflow': {
       items: DeskItem[]
       desk: Desk | null
-      notice: string | null
       closed: Record<string, string>
     }
   }

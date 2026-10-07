@@ -1,4 +1,4 @@
-import type { DeskItem, Tag, TodoRow } from '../types'
+import type { DeskItem, Tag } from '../types'
 
 type Raw = {
   session?: string
@@ -170,28 +170,4 @@ export function deskTarget(files: Record<string, StateFile>, session: string, no
   found.sort((a, b) => Number(b.mine) - Number(a.mine) || b.mtime - a.mtime)
   const best = found[0]
   return best ? { port: best.port, repo: best.repo, attached: best.attached } : null
-}
-
-const todoKey = (row: TodoRow) => `${row.repo}#${row.n}`
-
-/**
- * One look at what waits for the user: the rows to announce now. The first
- * look announces everything already waiting; after it, only a row that was
- * not to do at the previous look. `announced` drops whatever is no longer to
- * do, so a review sent elsewhere leaves the notice by itself.
- */
-export function freshTodo(seen: Set<string> | null, announced: TodoRow[], rows: TodoRow[]) {
-  const now = new Set(rows.map(todoKey))
-  const added = seen ? rows.filter(row => !seen.has(todoKey(row))) : rows
-  const kept = announced.filter(row => now.has(todoKey(row)))
-  const known = new Set(kept.map(todoKey))
-  return { seen: now, added, announced: [...kept, ...added.filter(row => !known.has(todoKey(row)))] }
-}
-
-/** `genropy · 3 da rivedere — dgpaci #1616 #1610 · cgabriel #1598`: which desk, how many, from whom. */
-export function todoLine(project: string, rows: TodoRow[]): string {
-  const by = new Map<string, number[]>()
-  for (const row of rows) by.set(row.author ?? '?', [...(by.get(row.author ?? '?') ?? []), row.n])
-  const who = [...by.entries()].map(([author, ns]) => `${author} ${ns.map(n => `#${n}`).join(' ')}`).join(' · ')
-  return `${project} · ${rows.length} da rivedere — ${who}`
 }
