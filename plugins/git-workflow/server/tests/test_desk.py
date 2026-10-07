@@ -3673,6 +3673,12 @@ class Ports(unittest.TestCase):
         urlopen("http://127.0.0.1:%s/api/meta" % port, timeout=2).read()
         self.assertGreaterEqual(prdesk.Handler.last_request, before)
 
+    def test_a_desk_looked_at_reads_again_once_its_read_is_old(self):
+        self.assertTrue(prdesk.refresh_due(0, 1790, 1800, 1800))
+        self.assertFalse(prdesk.refresh_due(0, 1790, 1799, 1800))
+        self.assertFalse(prdesk.refresh_due(0, 1000, 1800, 1800), "nobody looking")
+        self.assertFalse(prdesk.refresh_due(0, 1790, 1800, 0), "disabled")
+
     def test_idle_exit_needs_silence_and_no_job(self):
         self.assertTrue(prdesk.idle_expired(0, 3600, 3600, []))
         self.assertFalse(prdesk.idle_expired(0, 3599, 3600, []))

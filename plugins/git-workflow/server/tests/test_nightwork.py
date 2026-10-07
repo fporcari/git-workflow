@@ -127,6 +127,30 @@ class PrNight(unittest.TestCase):
         self.assertFalse([c for c in fake.calls if c[0] == "issue"])
         self.assertNotIn(("triage", "issue-triage"), fake.calls)
 
+    def test_the_smallest_prs_are_analyzed_first(self):
+        desk = fresh_desk()
+        due = sorted(int(n) for n, kinds in owed(desk).items() if "analysis" in kinds)
+        rows = {r["n"]: r for r in desk.provider._d(REPO)["rows"]}
+        for size, n in enumerate(reversed(due[:3])):
+            rows[n]["size"] = size + 1
+        try:
+            cache.clear(REPO)
+            fake = FakeJobs()
+            with fake.patch():
+                preparation.pr_night(desk, 1)
+            analyzed = [n for kind, n in fake.calls if kind == "pr"]
+            self.assertEqual(analyzed[:3], list(reversed(due[:3])))
+            self.assertEqual(set(analyzed[3:]), set(due[3:]))
+        finally:
+            for n in due[:3]:
+                rows[n].pop("size", None)
+            cache.clear(REPO)
+
+    def test_the_issues_keep_one_lane_beside_the_prs(self):
+        self.assertEqual(preparation.lanes(("pr", "issue"), 4), {"pr": 3, "issue": 1})
+        self.assertEqual(preparation.lanes(("pr", "issue"), 1), {"pr": 1, "issue": 1})
+        self.assertEqual(preparation.lanes(("issue",), 4), {"issue": 4})
+
     def test_the_analysis_job_reads_the_same_inputs_as_the_button(self):
         desk = fresh_desk()
         fake = FakeJobs()

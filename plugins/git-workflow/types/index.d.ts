@@ -115,6 +115,7 @@ declare module 'claude-code' {
       desk: Desk | null
       view: View
       zooms: Record<string, Zoom>
+      ready: string | null
     }
   }
 }

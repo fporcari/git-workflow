@@ -109,7 +109,8 @@ The server is detached from the launching conversation. It reads provider
 cache, rows and job JSON files by itself; it never starts a model because a
 page is open or polling, and at boot it starts only the read-only jobs of
 the preparation for the analyses that are new or changed (`--no-prepare`
-turns that off). The launching conversation stays
+turns that off); while somebody polls it, it reads the provider again every
+30 minutes and prepares what moved (`--refresh-after`). The launching conversation stays
 ATTACHED by default: on Claude Code through one persistent `Monitor` running
 `chatdesk.py listen`, on Codex through the `chatdesk.py wait --timeout 50` loop, yielding within
 60 seconds and resuming the same command session until it returns.

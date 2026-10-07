@@ -224,6 +224,8 @@ up to 0.58; if you installed it, remove it with
   holds, what works, what waits for you;
 - **a toast** when a preparation ends, and when a loop starts waiting for
   you or closes;
+- **a `DESK PRONTO` notice** when the desk the skill launched has finished
+  preparing, with *Apri il desk* and ✕;
 - **a guard on a bare `vai`**: with two candidates waiting for an answer it
   does not enter and asks which one; with one loop, the chat is told which it
   answers; with a doubt in view, the vai is that doubt's leaning, sent as its
@@ -281,14 +283,20 @@ on its own (`--idle-exit`).
 
 Options: `--repo` (repeatable), `--org`, `--folder`, `--clones`,
 `--provider github|forgejo|fixture`, `--me`, `--port`,
-`--idle-exit`, `--agent auto|claude|codex`, `--keep-state`, `--keep-cache`,
-`--no-prefetch`, `--no-prepare`.
+`--idle-exit`, `--refresh-after`, `--agent auto|claude|codex`, `--keep-state`,
+`--keep-cache`, `--no-prefetch`, `--no-prepare`.
 
 **It prepares at startup, and never blocks on it.** It fetches the provider
 itself and paints in seconds; then, in a thread of its own, it runs the
 preparation — the grid, one `pr-analyze` job per PR whose analysis is missing
-or stale, four at a time, the conflict readings owed on your `DIRTY` PRs,
-then the issue ranking and the shortlist's analyses. A PR that did not move
+or stale, smallest first, the conflict readings owed on your `DIRTY` PRs,
+and beside them the issue ranking and the shortlist's analyses, four jobs at
+a time with one kept for the issues. A PR over 1500 changed lines waits among
+the doubts to be read by hand instead. Launched from Claude Code, the pane
+opens when the preparation ends: a `DESK PRONTO` notice above the prompt says
+what waits and *Apri il desk* opens it. While the desk is looked at, a
+provider read older than 30 minutes is repeated and what moved is prepared
+again. A PR that did not move
 since the last preparation keeps its verdict and costs nothing; each row
 moves into its step as its job lands, and you work on the ready ones
 meanwhile. `model_tasks` names only the stale analysis or conflict

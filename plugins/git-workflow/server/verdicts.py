@@ -51,6 +51,13 @@ def _landing(gate):
 
 VERIFY_LABEL = "needs-verification"
 
+# lines added plus removed past which a PR is read by a person, not analyzed in background
+GIANT_LINES = 1500
+
+
+def too_big(row):
+    return (row.get("size") or 0) > GIANT_LINES
+
 
 def _parked_on(row, me):
     """Whom a draft of his waits on, when the last word is his.

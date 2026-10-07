@@ -4,7 +4,7 @@ import { describe, expect, test } from 'claude-code/testing'
 import type { Card, Desk, View, Wizard } from '../types'
 import { deskTarget, statusLine } from '../hooks/desk'
 import {
-  EMPTY_VIEW, bandLine, doubtAction, preparedToasts, primary, toggled, wizardStatus,
+  EMPTY_VIEW, bandLine, doubtAction, preparedToasts, primary, readyLine, readyStep, toggled, wizardStatus,
 } from '../hooks/wizard'
 
 const card = (n: number, over: Partial<Card> = {}): Card => ({
@@ -55,7 +55,9 @@ const BAND = {
            scroll: { offset: 0, bodyRows: 10 }, view: {} },
 } as const
 
-type Seed = { wizard?: Wizard | null; desk?: Desk | null; view?: View }
+// the ready notice is a store the mod both reads and clears
+type Notice = { value: string | null; version: number }
+type Seed = { wizard?: Wizard | null; desk?: Desk | null; view?: View; notice?: Notice }
 
 // the engine beneath the mod: the desk's state as the poll left it, the
 // desk's server as one answering function, and every prompt it is handed
@@ -65,7 +67,14 @@ function seed(on: On, given: Seed, posts: { url: string; body: unknown }[] = [],
     if (e.plugin !== 'git-workflow') return next(e)
     const values: Record<string, unknown> = { wizard: given.wizard, desk: given.desk, items: [] }
     if (given.view) values.view = given.view
+    if (given.notice && e.key === 'ready') return { value: { value: given.notice.value, version: given.notice.version } }
     return e.key in values ? { value: { value: values[e.key], version: 1 } } : next(e)
+  })
+  on('state.set', ($, e, next) => {
+    if (!given.notice || e.plugin !== 'git-workflow' || e.key !== 'ready') return next(e)
+    given.notice.value = e.value as string | null
+    given.notice.version += 1
+    return { value: { isSet: true as const, version: given.notice.version } }
   })
   on('http.fetch', ($, e) => {
     if (e.init?.method === 'POST') posts.push({ url: e.url, body: JSON.parse(e.init.body ?? '{}') })
@@ -117,6 +126,25 @@ describe('the wizard, as the pane reads it', () => {
     const doubt = bandLine({ ...EMPTY_VIEW, steps: { review: 'doubt' } }, WIZARD)!
     expect(doubt.tag).toBe('? DUBBIA 1/1')
     expect(doubt.doubt?.n).toBe(1152)
+  })
+
+  test('the wait for the boot ends when its preparation stops, or after two quiet polls', () => {
+    const RUNNING = { ...WIZARD, prepare: { ...WIZARD.prepare,
+      pr: { status: 'running', phrase: 'preparo', due: [1, 2], landed: [], failed: {} } } }
+    const fresh = { sawRunning: false, quiet: 0 }
+    expect(readyStep(fresh, null)).toEqual(fresh)
+    const seen = readyStep(fresh, RUNNING)!
+    expect(seen.sawRunning).toBe(true)
+    expect(readyStep(seen, WIZARD)).toBeNull()
+    const quiet = readyStep(fresh, WIZARD)!
+    expect(quiet).toEqual({ sawRunning: false, quiet: 1 })
+    expect(readyStep(quiet, WIZARD)).toBeNull()
+  })
+
+  test('the ready line says what waits for the user, section by section', () => {
+    expect(readyLine(WIZARD)).toBe('2 da approvare, 1 da respingere, 1 dubbie · tue: 1 aspettano una tua scelta · ' +
+      'issue: 2 le può fare Claude')
+    expect(readyLine(null)).toBe('niente che aspetti te')
   })
 
   test('the desk this chat drives is the one it is attached to', () => {
@@ -260,6 +288,32 @@ describe('the pane', () => {
     const got = await $.tool.call({ tool: 'mcp__git-workflow__desk_pane' })
     expect(String((got as { result?: unknown }).result)).toContain('session id is the-chat')
     expect(opened).toHaveLength(1)
+  })
+
+  test('while the boot prepares, the skill\'s call does not open the pane', async ($, on) => {
+    const opened: unknown[] = []
+    const RUNNING = { ...WIZARD, prepare: { ...WIZARD.prepare,
+      pr: { status: 'running', phrase: 'preparo', due: [1, 2, 3], landed: [], failed: {} } } }
+    seed(on, { wizard: RUNNING, desk: DESK }, [], [], opened)
+    on('session.id', () => ({ value: 'the-chat' }))
+    const got = await $.tool.call({ tool: 'mcp__git-workflow__desk_pane' })
+    const text = String((got as { result?: unknown }).result)
+    expect(text).toContain('Desk pronto')
+    expect(text).toContain('3 PRs due')
+    expect(text).toContain('session id is the-chat')
+    expect(opened).toHaveLength(0)
+  })
+
+  test('a ready desk is one key in the band, and the key opens it', async ($, on) => {
+    const opened: unknown[] = []
+    const notice: Notice = { value: '2 da approvare', version: 1 }
+    seed(on, { wizard: WIZARD, desk: DESK, notice }, [], [], opened)
+    const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+    expect(await ui.find({ type: 'Text', text: '● DESK PRONTO' })).toBeDefined()
+    await ui.press({ key: 'ready-open' })
+    expect(opened).toHaveLength(1)
+    expect(notice.value).toBeNull()
+    await ui.unmount()
   })
 
   test('A chi tocca: a chase is one key to copy', async ($, on) => {

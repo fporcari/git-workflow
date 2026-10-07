@@ -4,7 +4,7 @@ query($q:String!){
     pageInfo{hasNextPage}
     nodes{
       ...on PullRequest{
-        number state mergedAt title bodyText createdAt isDraft baseRefName baseRefOid headRefOid reviewDecision
+        number state mergedAt title bodyText createdAt isDraft additions deletions baseRefName baseRefOid headRefOid reviewDecision
         author{login}
         labels(first:100){pageInfo{hasNextPage} nodes{name}}
         assignees(first:5){pageInfo{hasNextPage} nodes{login}}

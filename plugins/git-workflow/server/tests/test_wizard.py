@@ -15,6 +15,7 @@ import cache            # noqa: E402
 import deskstate        # noqa: E402
 import jobs             # noqa: E402
 import prdesk           # noqa: E402
+import verdicts         # noqa: E402
 import wizard           # noqa: E402
 from providers import get_provider  # noqa: E402
 
@@ -100,6 +101,22 @@ class DaRivedere(unittest.TestCase):
         doubt = next(card for card in review["steps"][2]["rows"] if card["n"] == n)
         self.assertIn("claude exited 3", doubt["doubt"])
         self.assertNotIn(n, [card["n"] for card in review["pending"]])
+
+    def test_a_giant_pr_is_never_sent_to_the_model_and_waits_among_the_doubts(self):
+        n = self.ns[0]
+        row = next(r for r in self.desk.provider._d(REPO)["rows"] if r["n"] == n)
+        row["size"] = verdicts.GIANT_LINES + 1
+        try:
+            cache.clear(REPO)
+            rows, state = self.desk._queue_facts(complete_gates=True)[0], deskstate.load(REPO)
+            self.assertNotIn(str(n), prdesk.model_tasks(rows, state.get("prs"), ME))
+            review = self.desk.wizard()["review"]
+            doubt = next(card for card in review["steps"][2]["rows"] if card["n"] == n)
+            self.assertIn("PR molto grande (%d righe)" % row["size"], doubt["doubt"])
+            self.assertNotIn(n, [card["n"] for card in review["pending"]])
+        finally:
+            del row["size"]
+            cache.clear(REPO)
 
     def test_needs_verification_is_never_approvable_on_tests_not_green(self):
         n = self.ns[0]

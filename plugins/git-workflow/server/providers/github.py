@@ -56,6 +56,10 @@ SUMMARY_CHARS = 420
 MENTION = re.compile(r"(?<![\w@])@([A-Za-z0-9][A-Za-z0-9-]{0,38})")
 
 
+def _size(additions, deletions):
+    return None if additions is None and deletions is None else (additions or 0) + (deletions or 0)
+
+
 def _mentions(text):
     return sorted(set(MENTION.findall(text or "")))
 
@@ -221,6 +225,7 @@ class GitHubProvider(Provider):
             "labels": [label["name"] for label in (node.get("labels") or {}).get("nodes") or []],
             "assignees": [a["login"] for a in node["assignees"]["nodes"]],
             "draft": node["isDraft"],
+            "size": _size(node.get("additions"), node.get("deletions")),
             "base": node["baseRefName"],
             "base_head": node.get("baseRefOid"),
             "head": node.get("headRefOid"),

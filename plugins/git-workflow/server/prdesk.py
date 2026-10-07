@@ -190,7 +190,7 @@ def model_tasks(rows, notes, me):
         if row.get("author") == me and row.get("merge") == "DIRTY":
             if note.get("conflict_key") != keys["conflict"]:
                 tasks.append("conflict")
-        elif row.get("autorun") == "asks":
+        elif row.get("autorun") == "asks" and not verdicts.too_big(row):
             if note.get("analysis_key") != keys["analysis"]:
                 tasks.append("analysis")
         if tasks:
@@ -664,7 +664,7 @@ class Desk:
                    # the numbers only: every one of them is already a full row
                    # under "issues", and repeating them doubled the payload
                    "shortlist": [r["n"] for r in (issues["shortlist"] or {}).get("rows", [])]}
-        path = deskstate.runtime_path(self.repo, "rows.json")
+        path = deskstate.runtime_path(self.repo, "%s-rows.json" % flow)
         path.write_text(json.dumps(payload, indent=1))
         return path
 
@@ -970,6 +970,8 @@ class ScopeDesk:
 
 DEFAULT_PORTS = {"pr": 8399, "issue": 8398}
 IDLE_EXIT = 3600
+REFRESH_AFTER = 1800
+WATCHING = 120
 
 
 def stop_server(server):
@@ -1007,11 +1009,17 @@ def idle_expired(last_request, now, limit, active_jobs):
     return bool(limit) and now - last_request >= limit and not active_jobs
 
 
+def refresh_due(read_at, last_request, now, limit, watching=WATCHING):
+    """Somebody is looking at the desk and what it shows was read `limit` ago."""
+    return bool(limit) and now - last_request < watching and now - read_at >= limit
+
+
 class Handler(BaseHTTPRequestHandler):
     desk = None
     prepare_on_fetch = False
     protocol_version = "HTTP/1.1"      # keep-alive: the UI polls every few seconds
     last_request = time.monotonic()
+    read_at = time.monotonic()
 
     def log_message(self, fmt, *args):
         pass
@@ -1196,6 +1204,7 @@ class Handler(BaseHTTPRequestHandler):
                 # explicit re-read of the provider, on the caller's demand; a
                 # PR that moved owes its analysis again, and only that one
                 snapshot = self.desk.snapshot(refresh=True)
+                Handler.read_at = time.monotonic()
                 if self.prepare_on_fetch:
                     self.desk.prepare_async()
                 self._send(200, dict(snapshot, refetched=True))
@@ -1563,6 +1572,10 @@ def main():
     parser.add_argument("--idle-exit", type=int, default=IDLE_EXIT, metavar="SECONDS",
                         help="exit after this long without a request and with no "
                              "job running (default 3600; 0 disables)")
+    parser.add_argument("--refresh-after", type=int, default=REFRESH_AFTER, metavar="SECONDS",
+                        help="while the desk is looked at, read the provider again and "
+                             "prepare what moved once the last read is this old "
+                             "(default 1800; 0 disables)")
     parser.add_argument("--me", help="login to triage for (default: the authenticated user)")
     parser.add_argument("--chat", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--agent", default="auto", choices=("auto", "claude", "codex"),
@@ -1607,7 +1620,7 @@ def main():
 
     desk = desks[0] if len(desks) == 1 else ScopeDesk(name, desks, me, args.desk, args.agent)
     Handler.desk = desk
-    Handler.last_request = time.monotonic()
+    Handler.last_request = Handler.read_at = time.monotonic()
     stopping = threading.Event()
 
     def request_stop(*_):
@@ -1616,8 +1629,20 @@ def main():
             threading.Thread(target=stop_server,
                              args=(server,), daemon=True).start()
 
+    def reread():
+        try:
+            desk.snapshot(refresh=True)
+            if Handler.prepare_on_fetch:
+                desk.prepare_async()
+        except Exception as exc:
+            sys.stderr.write("desk re-read failed: %s\n" % str(exc)[:200])
+
     def idle_watch():
         while not stopping.wait(60):
+            if refresh_due(Handler.read_at, Handler.last_request, time.monotonic(),
+                           args.refresh_after):
+                Handler.read_at = time.monotonic()
+                threading.Thread(target=reread, daemon=True).start()
             if idle_expired(Handler.last_request, time.monotonic(),
                             args.idle_exit, [j for r in repos for j in jobs.active(r)]):
                 sys.stderr.write("%s desk idle for %d min with no job running, "

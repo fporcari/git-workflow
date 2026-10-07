@@ -22,6 +22,7 @@ landed: a later run that finds nothing to do leaves "prepared last night" true.
 import fcntl
 import json
 import os
+import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -86,13 +87,22 @@ def conflict_rows(desk, fresh=True):
     return path
 
 
+def smallest_first(numbers, rows):
+    """The PRs to analyze, the smallest first so the approvable ones land
+    early; a PR whose size the provider did not say goes last."""
+    size = {row["n"]: row.get("size") for row in rows}
+    return sorted(numbers, key=lambda n: (size.get(n) is None, size.get(n) or 0, n))
+
+
 def pr_work(desk, fresh=True):
-    tasks = json.loads(Path(desk.run_triage("pr-triage", fresh=fresh))
-                       .read_text())["model_tasks"]
-    work = [(int(n), lambda n=int(n): jobs.analyze_pr(
+    export = json.loads(Path(desk.run_triage("pr-triage", fresh=fresh)).read_text())
+    tasks = export["model_tasks"]
+    due = smallest_first([int(n) for n, kinds in tasks.items() if "analysis" in kinds],
+                         export.get("queue") or [])
+    work = [(n, lambda n=n: jobs.analyze_pr(
                 desk.repo, n, desk.me, desk.cwd, desk.agent,
                 lambda: desk.analysis_inputs(n)))
-            for n, kinds in tasks.items() if "analysis" in kinds]
+            for n in due]
     if any("conflict" in kinds for kinds in tasks.values()):
         work.append((CONFLICTS, lambda: jobs.triage(
             desk.repo, "pr-triage", lambda: conflict_rows(desk, fresh),
@@ -256,11 +266,28 @@ def prepare(desk, kind, parallel=4, trigger="night"):
         return status, report
 
 
+def lanes(kinds, parallel):
+    """How many of the `parallel` jobs each kind may hold: with both, the
+    issues keep one, so they never wait for the whole PR backlog."""
+    if len(kinds) < 2:
+        return {kind: parallel for kind in kinds}
+    return {kind: (1 if kind == "issue" else max(1, parallel - 1)) for kind in kinds}
+
+
 def prepare_all(desks, kinds=KINDS, parallel=4, trigger="desk"):
-    """The desk's boot: every member, the PRs first, then the issues."""
-    for kind in kinds:
+    """The desk's boot: the PRs and the issues side by side, each over every
+    member in turn."""
+    share = lanes(kinds, parallel)
+
+    def lane(kind):
         for desk in desks:
             try:
-                prepare(desk, kind, parallel, trigger)
+                prepare(desk, kind, share[kind], trigger)
             except Exception:
                 continue
+
+    threads = [threading.Thread(target=lane, args=(kind,), daemon=True) for kind in kinds]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()

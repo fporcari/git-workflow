@@ -211,6 +211,8 @@ class ForgejoProvider(Provider):
             "labels": [label["name"] for label in pr.get("labels") or []],
             "assignees": logins(pr.get("assignees")),
             "draft": bool(pr.get("draft")),
+            "size": (None if pr.get("additions") is None and pr.get("deletions") is None
+                     else (pr.get("additions") or 0) + (pr.get("deletions") or 0)),
             "base": (pr.get("base") or {}).get("ref"),
             "base_head": (pr.get("base") or {}).get("sha"),
             "head": (pr.get("head") or {}).get("sha"),

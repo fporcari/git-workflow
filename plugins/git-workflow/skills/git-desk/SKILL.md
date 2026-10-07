@@ -41,7 +41,12 @@ Show the desk beside the chat; a link alone is not the deliverable.
 - **Claude Code**: call the plugin's own `mcp__git-workflow__desk_pane` tool
   (load it with ToolSearch when it is listed as deferred). It opens the
   `/desk` pane, drawn in the host's theme, and its answer names this chat's
-  session id: use that as `<session-id>` below. Only when the tool does not
+  session id: use that as `<session-id>` below. While the boot's preparation
+  still runs it opens nothing and says so: when the preparation ends, a
+  `DESK PRONTO` notice with an *Apri il desk* key appears above the prompt,
+  with a toast, and the desk opens on the whole situation. Tell the user in
+  one line that you will let them know (`Preparo le analisi: ti avviso sopra
+  il prompt quando il desk è pronto`), then carry on with the attached chat. Only when the tool does not
   exist (a host that loads no mods) open the URL in the Browser pane instead
   — `preview_start` with `url`, the tool `runtime.md` → *Desks* names. A
   request that came from the pane itself already says the pane is open.
@@ -137,9 +142,15 @@ Either way the server itself is detached.
 Page loads and polling perform no model call. The boot, and an explicit
 re-read, start the **preparation** in a thread of the server's own
 (`server/preparation.py`, the nightwork's own work): the PR triage grid, one
-read-only `pr-analyze` job per PR whose analysis is missing or stale, at most
-four alive, the conflict readings owed on the user's `DIRTY` PRs, then the
-issue ranking and the shortlist's analyses. An analysis whose keys still
+read-only `pr-analyze` job per PR whose analysis is missing or stale, the
+smallest PRs first, the conflict readings owed on the user's `DIRTY` PRs, and
+beside them the issue ranking and the shortlist's analyses — four jobs alive
+at most, one of them kept for the issues. A PR over 1500 changed lines is
+never analyzed in background: it waits among the doubts as one to read by
+hand, and *Analizza* still asks for Claude's reading. While the pane or the
+page is polling, a provider read older than 30 minutes (`--refresh-after`
+seconds, 0 off) is repeated in background and prepares what moved, so a desk
+left open does not show the morning's state in the afternoon. An analysis whose keys still
 match the PR is never bought again, so after a `/pr-nightwork` the boot reads
 only what moved overnight; a nightwork still running holds the same lock and
 is shown, not doubled. Its progress is `runs.<kind>-nightwork`. Python serves

@@ -10,15 +10,16 @@ import { drawPane } from './pane'
 import type { Handlers } from './pane'
 import {
   EMPTY_VIEW, bandLine, currentStep, doubtAction, key, loopAction, moved, optionAction,
-  preparedToasts, primary, sectionOf, selected, toggled, wizardStatus,
+  preparedToasts, preparing, primary, readyLine, readyStep, sectionOf, selected, toggled, wizardStatus,
 } from './wizard'
-import type { Action } from './wizard'
+import type { Action, ReadyWait } from './wizard'
 
 const shown = atom({ plugin: 'git-workflow', key: 'items' } as const, [] as DeskItem[])
 const wizardAtom = atom({ plugin: 'git-workflow', key: 'wizard' } as const, null as Wizard | null)
 const deskAtom = atom({ plugin: 'git-workflow', key: 'desk' } as const, null as Desk | null)
 const viewAtom = atom({ plugin: 'git-workflow', key: 'view' } as const, EMPTY_VIEW)
 const zoomsAtom = atom({ plugin: 'git-workflow', key: 'zooms' } as const, {} as Record<string, Zoom>)
+const readyAtom = atom({ plugin: 'git-workflow', key: 'ready' } as const, null as string | null)
 
 const PANE = 'git-desk'
 const TITLE = 'Desk'
@@ -34,8 +35,10 @@ const LAUNCH = 'Apri il git desk con la skill git-desk e collega questa chat: il
   'del plugin è già aperto qui accanto, non aprire il Browser pane.'
 
 const files: Record<string, StateFile> = {}
-const memo: { before: Record<string, string> | null; prepared: Record<string, string>; polling: boolean; etag: string | null } =
-  { before: null, prepared: {}, polling: false, etag: null }
+const memo: {
+  before: Record<string, string> | null; prepared: Record<string, string>; polling: boolean; etag: string | null
+  wait: ReadyWait | null; paneAsked: boolean
+} = { before: null, prepared: {}, polling: false, etag: null, wait: null, paneAsked: false }
 
 async function stateDir($: EngineInterface) {
   const configured = await $.env.get('GIT_WORKFLOW_STATE_DIR')
@@ -89,7 +92,7 @@ async function readDesk($: EngineInterface, session: string, nowSec: number) {
     memo.etag = got.etag
     if (got.data) {
       const wizard = got.data as Wizard
-      for (const line of preparedToasts(memo.prepared, wizard)) $.ui.toast(line, { timeoutMs: 8000 })
+      if (!memo.wait) for (const line of preparedToasts(memo.prepared, wizard)) $.ui.toast(line, { timeoutMs: 8000 })
       memo.prepared = { pr: wizard.prepare?.pr?.status ?? '', issue: wizard.prepare?.issue?.status ?? '' }
       await update($, wizardAtom, () => wizard)
     }
@@ -123,6 +126,7 @@ async function poll($: EngineInterface) {
     const open = items.filter(isOpen)
     await update($, shown, () => open)
     await readDesk($, session, nowSec)
+    if (memo.wait) await awaitReady($)
     $.ui.status(statusLine(open, wizardStatus(await read($, wizardAtom))))
   } finally {
     memo.polling = false
@@ -217,7 +221,19 @@ function handlers($: EngineInterface, view: View, wizard: Wizard | null): Handle
   }
 }
 
+/** The boot's preparation, polled until it ends: then the band offers the desk. */
+async function awaitReady($: EngineInterface) {
+  const wizard = await read($, wizardAtom)
+  memo.wait = readyStep(memo.wait!, wizard)
+  if (memo.wait) return
+  const line = readyLine(wizard)
+  await update($, readyAtom, () => line)
+  $.ui.toast(`Desk pronto · ${line}`, { timeoutMs: 10000 })
+}
+
 async function showPane($: EngineInterface) {
+  memo.wait = null
+  await update($, readyAtom, () => null)
   const opened = await $.ui.open({ id: PANE, title: TITLE, focus: true })
   repoll($)
   return opened
@@ -239,6 +255,7 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'desk' }, async $ => {
+    memo.paneAsked = true
     await showPane($)
     if (await read($, deskAtom)) return { text: 'Desk aperto nel pannello · i suoi bottoni arrivano in questa chat.' }
     await $.prompt.submit({ text: LAUNCH, asUser: true })
@@ -246,11 +263,22 @@ export const register: Register = on => {
   })
 
   on('tool.call', { tool: 'mcp__git-workflow__desk_pane' }, async $ => {
-    const opened = await showPane($)
     const session = await $.session.id()
+    const attach = ` This chat's session id is ${session}: pass it as --session to chatdesk.py.`
+    await poll($).catch(() => undefined)
+    const wizard = await read($, wizardAtom)
+    if (!memo.paneAsked && (!wizard || preparing(wizard))) {
+      memo.wait = { sawRunning: preparing(wizard), quiet: 0 }
+      const p = wizard?.prepare?.pr
+      return { result: 'The desk is preparing its analyses' + (p?.due?.length ? ` (${p.due.length} PRs due)` : '') +
+        ': the pane is not opened now. When the preparation ends, a "Desk pronto" notice with an ' +
+        '"Apri il desk" button appears above the prompt and a toast fires; the user opens the desk from ' +
+        'there. Tell the user so in one line.' + attach }
+    }
+    memo.paneAsked = false
+    const opened = await showPane($)
     return { result: (opened.isPlaced ? 'The desk pane is open beside the chat.'
-      : 'The desk pane waits for a wider window; /desk opens it at any width.') +
-      ` This chat's session id is ${session}: pass it as --session to chatdesk.py.` }
+      : 'The desk pane waits for a wider window; /desk opens it at any width.') + attach }
   })
 
   on('prompt.submit', async ($, e, next) => {
@@ -285,8 +313,9 @@ export const register: Register = on => {
     const view = (await read($, viewAtom)) ?? EMPTY_VIEW
     const items = unclosed(open, view.closed)
     const wizard = await read($, wizardAtom)
-    const band = bandLine(view, wizard)
-    if (e.props.hasSurvey || (!items.length && !band)) return next(e)
+    const ready = await read($, readyAtom)
+    const band = ready ? null : bandLine(view, wizard)
+    if (e.props.hasSurvey || (!items.length && !band && !ready)) return next(e)
     const { Box, Text, Button } = $.ui.resolve(e)
     const repos = new Set(items.map(i => i.repo))
     const rows = [...items].sort((a, b) =>
@@ -295,6 +324,14 @@ export const register: Register = on => {
     const isIssue = view.section === 'issue'
     return (
       <Box flexDirection="column">
+        {ready ? (
+          <Box key="ready" flexDirection="row" gap={1}>
+            <Text color="green" bold>● DESK PRONTO</Text>
+            <Box flexGrow={1} flexShrink={1}><Text wrap="truncate-end">{ready}</Text></Box>
+            <Button key="ready-open" variant="primary" onPress={() => { void showPane($) }}>Apri il desk</Button>
+            <Button key="ready-hush" role="dismiss" plain dimColor
+              onPress={() => { void update($, readyAtom, () => null) }}>✕</Button>
+          </Box>) : null}
         {band ? (
           <Box key="wizard" flexDirection="row" gap={1}>
             <Text color={band.doubt ? 'yellow' : isIssue ? COLOR.ISSUE : COLOR.PR} bold>{band.tag}</Text>
@@ -306,7 +343,7 @@ export const register: Register = on => {
             ] : null}
             <Button key="band-hush" role="dismiss" plain dimColor onPress={() => act.hush(band.text)}>✕</Button>
           </Box>) : null}
-        {rows.slice(0, Math.max(1, e.props.maxRows - (band ? 2 : 1))).map(item => (
+        {rows.slice(0, Math.max(1, e.props.maxRows - (band || ready ? 2 : 1))).map(item => (
           <Box key={item.key} flexDirection="row">
             <Box flexDirection="row" flexGrow={1} flexShrink={1}>
               <Text color={COLOR[item.tag]} bold>● {item.tag === 'PR' ? 'PR   ' : 'ISSUE'} </Text>

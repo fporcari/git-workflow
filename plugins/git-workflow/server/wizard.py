@@ -161,7 +161,12 @@ def review_section(queue, state, me, active_jobs=()):
             continue
         if not advice:
             reason = failed.get(str(row["n"]))
-            if reason:
+            if verdicts.too_big(row):
+                steps["doubt"].append(card(row, stance=None, doubt=(
+                    "PR molto grande (%d righe): Claude non la legge da solo, "
+                    "Analizza se vuoi il suo parere" % row["size"]), why="da leggere a mano",
+                    **marks))
+            elif reason:
                 steps["doubt"].append(card(row, stance=None, doubt=(
                     "analisi non riuscita: %s" % reason), why="da leggere a mano",
                     **marks))

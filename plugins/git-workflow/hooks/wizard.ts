@@ -191,6 +191,38 @@ export function preparedToasts(before: Record<string, string>, wizard: Wizard | 
   return out
 }
 
+export const preparing = (wizard: Wizard | null) =>
+  (['pr', 'issue'] as const).some(kind => wizard?.prepare?.[kind]?.status === 'running')
+
+export type ReadyWait = { sawRunning: boolean; quiet: number }
+
+/**
+ * One poll of the wait for the boot's preparation: the next wait, or null once
+ * the desk is ready. A run seen going ends when it stops; one never seen (it
+ * ended before the first read, or there was nothing to do) after two quiet polls.
+ */
+export function readyStep(wait: ReadyWait, wizard: Wizard | null): ReadyWait | null {
+  if (!wizard) return wait
+  if (preparing(wizard)) return { sawRunning: true, quiet: 0 }
+  if (wait.sawRunning || wait.quiet >= 1) return null
+  return { ...wait, quiet: wait.quiet + 1 }
+}
+
+const READY: [string, string, [string, string][]][] = [
+  ['review', '', [['approve', 'da approvare'], ['changes', 'da respingere'], ['doubt', 'dubbie']]],
+  ['mine', 'tue', [['merge', 'da mergiare'], ['fix', 'le può sistemare Claude'], ['decide', 'aspettano una tua scelta']]],
+  ['issue', 'issue', [['close', 'da chiudere'], ['claude', 'le può fare Claude'], ['decide', 'da decidere']]],
+]
+
+/** What the ready desk holds for the user, in one line. */
+export function readyLine(wizard: Wizard | null): string {
+  const parts = READY.flatMap(([s, title, steps]) => {
+    const said = steps.filter(([step]) => count(wizard, s, step)).map(([step, words]) => `${count(wizard, s, step)} ${words}`)
+    return said.length ? [`${title ? `${title}: ` : ''}${said.join(', ')}`] : []
+  })
+  return parts.join(' · ') || 'niente che aspetti te'
+}
+
 const SAYS: Record<string, (n: number) => string> = {
   'review:approve': n => `${n} PR che Claude approverebbe aspettano il tuo ok`,
   'review:changes': n => `${n} PR da respingere: rileggi la motivazione e invia`,
