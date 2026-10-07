@@ -278,8 +278,9 @@ Open the URL of the `desk on http://127.0.0.1:<port>` line it prints: 8399
 for PRs and 8398 for issues when free, a free port the OS picks when another
 repo or the sibling desk holds it, and the running server's URL when the same
 desk of the same repo is already up (then the new process just exits). An
-explicit `--port` is strict. A desk idle for an hour with no job running exits
-on its own (`--idle-exit`).
+explicit `--port` is strict. A desk nobody has used for two hours, with no
+job running, exits on its own (`--idle-exit`); the pane polling while
+closed, or the page polling while hidden, does not count as a use.
 
 Options: `--repo` (repeatable), `--org`, `--folder`, `--clones`,
 `--provider github|forgejo|fixture`, `--me`, `--port`,

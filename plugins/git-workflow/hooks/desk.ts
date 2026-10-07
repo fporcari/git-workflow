@@ -73,6 +73,13 @@ export function itemsOf(repo: string, state: unknown, nowSec: number): DeskItem[
 
 export const isOpen = (item: DeskItem) => OPEN.includes(item.status)
 
+/** A poll with the pane closed is not somebody using the desk: it neither keeps it alive nor refreshes it. */
+export function pollHeaders(etag: string | null | undefined, paneOpen: boolean): Record<string, string> {
+  const headers: Record<string, string> = etag ? { 'If-None-Match': etag } : {}
+  if (!paneOpen) headers['X-Git-Workflow-Background'] = '1'
+  return headers
+}
+
 /** What a closed row was showing: a new status or report brings it back. */
 export const shownAs = (item: DeskItem) => `${item.status}|${item.report}`
 

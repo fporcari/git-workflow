@@ -32,9 +32,11 @@ default port is 8399, but a desk that finds it taken by another repo moves to
 a free port the OS picks, and one that finds ITS OWN twin there (same repo,
 same desk) prints the twin's URL and exits instead of starting a second
 server. Do not pass `--port`: it is strict and fails on a busy port. The
-server exits by itself after an hour without a request and with no job
+server exits by itself after two hours nobody used it and with no job
 running (`--idle-exit 0` disables), so a desk left behind never squats the
-port of the next one.
+port of the next one. A poll from a closed pane or a hidden page is not a
+use: only an open pane, a page in view, or a click keeps it alive, and only
+they let the 30-minute re-read run.
 
 Show the desk beside the chat; a link alone is not the deliverable.
 

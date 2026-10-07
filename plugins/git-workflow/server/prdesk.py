@@ -49,7 +49,8 @@ server's URL and exits instead of starting a twin; when it serves anything
 else the OS picks a free port. The last line on stderr is always
 `<kind> desk on http://127.0.0.1:<port>` with the port actually bound, so the
 launcher opens what it reads there, never a number it assumed. A desk nobody
-has asked anything for an hour, with no job running, exits by itself.
+has used for two hours, with no job running, exits by itself: a poll marked
+X-Git-Workflow-Background (the pane closed, the page hidden) is not a use.
 """
 
 import argparse
@@ -977,7 +978,9 @@ class ScopeDesk:
 
 
 DEFAULT_PORTS = {"pr": 8399, "issue": 8398}
-IDLE_EXIT = 3600
+IDLE_EXIT = 7200
+# a poll nobody is looking at: the pane closed, the page hidden
+BACKGROUND = "X-Git-Workflow-Background"
 REFRESH_AFTER = 1800
 WATCHING = 120
 
@@ -1033,8 +1036,10 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def parse_request(self):
-        Handler.last_request = time.monotonic()
-        return super().parse_request()
+        parsed = super().parse_request()
+        if parsed and self.headers.get(BACKGROUND) != "1":
+            Handler.last_request = time.monotonic()
+        return parsed
 
     def _send(self, code, body, ctype="application/json; charset=utf-8", etag=None):
         payload = body if isinstance(body, bytes) else json.dumps(body).encode()
@@ -1578,8 +1583,9 @@ def main():
                         help="strict port; default: 8399 (pr) or 8398 (issue) when "
                              "free, else a free one the OS picks")
     parser.add_argument("--idle-exit", type=int, default=IDLE_EXIT, metavar="SECONDS",
-                        help="exit after this long without a request and with no "
-                             "job running (default 3600; 0 disables)")
+                        help="exit after this long without a request somebody made "
+                             "(a background poll does not count) and with no job "
+                             "running (default 7200; 0 disables)")
     parser.add_argument("--refresh-after", type=int, default=REFRESH_AFTER, metavar="SECONDS",
                         help="while the desk is looked at, read the provider again and "
                              "prepare what moved once the last read is this old "

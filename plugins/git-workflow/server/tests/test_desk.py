@@ -3708,6 +3708,15 @@ class Ports(unittest.TestCase):
         self.assertFalse(prdesk.refresh_due(0, 1000, 1800, 1800), "nobody looking")
         self.assertFalse(prdesk.refresh_due(0, 1790, 1800, 0), "disabled")
 
+    def test_a_background_poll_does_not_keep_the_desk_alive(self):
+        port = self._serving("pr", REPO)
+        prdesk.Handler.last_request = before = time.monotonic() - 1000
+        urlopen(Request("http://127.0.0.1:%s/api/meta" % port,
+                        headers={prdesk.BACKGROUND: "1"}), timeout=2).read()
+        self.assertEqual(prdesk.Handler.last_request, before)
+        urlopen("http://127.0.0.1:%s/api/meta" % port, timeout=2).read()
+        self.assertGreater(prdesk.Handler.last_request, before)
+
     def test_idle_exit_needs_silence_and_no_job(self):
         self.assertTrue(prdesk.idle_expired(0, 3600, 3600, []))
         self.assertFalse(prdesk.idle_expired(0, 3599, 3600, []))

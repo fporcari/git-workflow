@@ -2,7 +2,7 @@ import type { On } from 'claude-code'
 import { describe, expect, test } from 'claude-code/testing'
 
 import type { DeskItem } from '../types'
-import { bareGoAhead, itemsOf, shownAs, statusLine, transitions, unclosed } from '../hooks/desk'
+import { bareGoAhead, itemsOf, pollHeaders, shownAs, statusLine, transitions, unclosed } from '../hooks/desk'
 
 const NOW = 1_800_000_000
 const TYPED = { wait: false, origin: { kind: 'composer' } } as const
@@ -134,6 +134,11 @@ describe('the band', () => {
       expect(texts).toContain('in background dalle 22:00')
       await ui.unmount()
     }
+  })
+
+  test('a poll with the pane closed says it is in the background', () => {
+    expect(pollHeaders('e1', false)).toEqual({ 'If-None-Match': 'e1', 'X-Git-Workflow-Background': '1' })
+    expect(pollHeaders(null, true)).toEqual({})
   })
 
   test('a closed row stays closed until what it shows changes', () => {

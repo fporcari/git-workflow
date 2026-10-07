@@ -272,7 +272,9 @@ function setStep(id){stepOf[section]=id;doubtAt=0;render();}
 
 /* ---- data ---- */
 async function getJSON(url,etag){
-  const resp=await fetch(url,{headers:etag?{"If-None-Match":etag}:{}});
+  const headers=etag?{"If-None-Match":etag}:{};
+  if(document.hidden)headers["X-Git-Workflow-Background"]="1";
+  const resp=await fetch(url,{headers});
   if(resp.status===304)return [null,etag];
   if(!resp.ok)throw new Error((await resp.json()).error||resp.status);
   return [await resp.json(),resp.headers&&resp.headers.get?resp.headers.get("ETag"):null];

@@ -3,7 +3,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { Card, Desk, DeskItem, View, Wizard, Zoom } from '../types'
 import {
-  bareGoAhead, deskTarget, isOpen, itemsOf, mentions, shownAs, statusLine, transitions, unclosed, waiting, wordOf,
+  bareGoAhead, deskTarget, isOpen, itemsOf, mentions, pollHeaders, shownAs, statusLine, transitions, unclosed, waiting, wordOf,
 } from './desk'
 import type { StateFile } from './desk'
 import { drawPane } from './pane'
@@ -37,8 +37,8 @@ const LAUNCH = 'Apri il git desk con la skill git-desk e collega questa chat: il
 const files: Record<string, StateFile> = {}
 const memo: {
   before: Record<string, string> | null; prepared: Record<string, string>; polling: boolean; etag: string | null
-  wait: ReadyWait | null; paneAsked: boolean
-} = { before: null, prepared: {}, polling: false, etag: null, wait: null, paneAsked: false }
+  wait: ReadyWait | null; paneAsked: boolean; paneOpen: boolean
+} = { before: null, prepared: {}, polling: false, etag: null, wait: null, paneAsked: false, paneOpen: false }
 
 async function stateDir($: EngineInterface) {
   const configured = await $.env.get('GIT_WORKFLOW_STATE_DIR')
@@ -63,7 +63,7 @@ async function readFiles($: EngineInterface, now: number) {
 }
 
 async function getJSON($: EngineInterface, url: string, etag?: string | null) {
-  const got = await $.http.fetch(url, { headers: etag ? { 'If-None-Match': etag } : {} })
+  const got = await $.http.fetch(url, { headers: pollHeaders(etag, memo.paneOpen) })
   if (got.status === 304) return { data: null, etag: etag ?? null }
   if (!got.ok) throw new Error(`${url}: HTTP ${got.status}`)
   return { data: JSON.parse(got.text), etag: got.headers?.etag ?? got.headers?.ETag ?? null }
@@ -360,7 +360,13 @@ export const register: Register = on => {
     )
   })
 
+  on('ui.close', { id: PANE }, async ($, e, next) => {
+    memo.paneOpen = false
+    return next(e)
+  })
+
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+    memo.paneOpen = true
     const view = (await read($, viewAtom)) ?? EMPTY_VIEW
     const wizard = await read($, wizardAtom)
     const model = {
