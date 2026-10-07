@@ -195,7 +195,7 @@ the desk, not doubled. Nothing is posted, pushed or assigned.
 
 | skill | what it does |
 |---|---|
-| **`git-desk`** | The detached desk server (default port 8399, a free one when that is taken) and its page. *Pull request*: Da rivedere (▶ pr-loop on the row), Approvabili, Da respingere, Dubbie (once a loop or the nightwork has read them), then Da fare, In attesa, Tutte, Chase — your own PRs are merged, fixed or answered, never approved. *Issue*: Da chiudere (already fixed by a merged PR), Per Claude (easy, single-phase, nobody's), Da prendere, Shortlist and the rest. *A chi tocca*: per person, the PRs and issues whose next move is theirs, with the chase to paste. It only triages at boot, and says so in small at the bottom; the launching chat stays attached by default and executes every click — reviews and closings only there, with the command echoed. The skill also defines the JSON/job contract. |
+| **`git-desk`** | The detached desk server (default port 8399, a free one when that is taken) and its page. *Pull request*: Da vedere (every PR whose next move is yours: pick and ▶ pr-loop), In attesa, Tutte, Chase — your own PRs are merged, fixed or answered, never approved. *Issue*: Da chiudere (already fixed by a merged PR), Per Claude (easy, single-phase, nobody's), Da prendere, Shortlist and the rest. *A chi tocca*: per person, the PRs and issues whose next move is theirs, with the chase to paste. It only triages at boot, and says so in small at the bottom; the launching chat stays attached by default and executes every click — reviews and closings only there, with the command echoed. The skill also defines the JSON/job contract. |
 
 `plugins/git-workflow/server/` is the code under it: a zero-dependency
 Python stdlib server that reads the provider, prepares the analyses the desk
@@ -207,8 +207,7 @@ The plugin carries a Claude Code mod (function hooks, `hooks/register.tsx`)
 for the chat a desk is attached to. It draws no desk of its own: the desk is
 the page, in the Browser pane.
 
-- **a notice above the prompt** only when a PR comes to review — one the
-  preparation just landed among Approvabili, Da respingere or Dubbie —
+- **a notice above the prompt** only when a PR comes to review —
   naming the desk and who opened each PR (`● DESK genropy · 2 da rivedere —
   dgpaci #1616 #1610`), with *Apri il desk* and ✕, and a toast. Nothing shows
   while the preparation reads, and a preparation that lands nothing to do
@@ -396,6 +395,24 @@ preparation filled with a fake `claude` (`tests/fixtures/fake_claude.py`).
 `plugins/git-workflow/server/tests/README.md` says what each file is for.
 The mod's tests run with `claude plugin test plugins/git-workflow`, on the
 terminal and desktop surfaces.
+
+## Da vedere, and the desk fits the side pane — 0.65.0
+
+The triage now says only whether a PR is yours to look at: the PR filters
+are *Da vedere*, *In attesa*, *Tutte* and *Chase*. *Da vedere* holds every
+PR whose next move is yours — a review asked of you, analyzed or not, your
+PRs to merge, fix or decide, a reply you owe, a PR not judged yet; you pick
+them and ▶ pr-loop decides what to do. Approvabili, Da respingere, Dubbie,
+Da rivedere and Da fare are gone, and so is the next-move column: a row
+keeps only its link out, and opened it shows what the desk already knows,
+with Approva, Chiedi modifiche and Salta a domani when an analysis is there.
+
+In the Browser pane beside the chat the page no longer scrolls sideways:
+under 720px *Chiudi il desk* keeps only ⏻ (its words come back to confirm),
+the re-read key only its dot, *chat collegata* only its green dot; under
+600px the section tabs drop their plain counts and the theme key goes, the
+theme staying in ⌘K; the scope name gives way before the section tabs do.
+The filters wrap instead of scrolling, and a PR title takes two lines.
 
 ## The desk opens at once and only triages — 0.64.0
 

@@ -41,9 +41,9 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{
 /* the header: one row, the darkest band — where you are and what the desk is */
 .topbar{height:42px;flex:none;display:flex;align-items:center;gap:8px;padding:0 10px;background:var(--head);border-bottom:1px solid var(--line)}
 .brandMark{font:600 10px/24px var(--mono);width:24px;height:24px;border-radius:6px;text-align:center;background:var(--ink);color:var(--head);flex:none}
-.scopeBtn{display:flex;align-items:center;gap:6px;height:28px;padding:0 8px;border:0;border-radius:6px;background:none;cursor:pointer;min-width:0;max-width:30vw}
+.scopeBtn{display:flex;align-items:center;gap:6px;height:28px;padding:0 8px;border:0;border-radius:6px;background:none;cursor:pointer;min-width:0;max-width:30vw;flex:0 3 auto}
 .scopeBtn:hover{background:var(--hover)}
-.scopeBtn b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.scopeBtn b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .scopeBtn span{color:var(--muted);white-space:nowrap;font-size:12px}
 .scopeBtn::after{content:"▾";color:var(--faint);font-size:10px}
 .scopeBtn[aria-expanded=true]{background:var(--hover)}
@@ -148,7 +148,7 @@ tbody tr.row.open td{border-bottom-color:transparent}
 tr.attention .mark span,tr.s-changes .mark span{background:var(--att-bg);color:var(--red)}
 tr.decision .mark span{background:var(--dec-bg);color:var(--blue)}
 tr.ready .mark span,tr.s-approve .mark span,tr.s-close .mark span,tr.s-claude .mark span{background:var(--ok-bg);color:var(--green)}
-tr.untriaged .mark span,tr.s-doubt .mark span,tr.s-pending .mark span{background:var(--warn-bg);color:var(--amber)}
+tr.untriaged .mark span,tr.s-doubt .mark span,tr.s-review .mark span{background:var(--warn-bg);color:var(--amber)}
 .prTitle{min-width:0;overflow:hidden}
 .l1{display:flex;align-items:center;gap:7px;min-width:0;font:12px var(--mono);color:var(--muted);white-space:nowrap}
 .l1 .repoChip{color:var(--muted)}
@@ -159,14 +159,16 @@ tr.selected .l2>span{font-weight:600}
 .prTitle b.num{font:600 12px var(--mono);color:var(--ink)}
 .triageChip{border:1px solid var(--warn-line);border-radius:9px;padding:0 6px;color:var(--amber);font:10.5px var(--mono);white-space:nowrap}
 .moveCol{text-align:right;width:290px}
+.linkCol{width:44px;text-align:right;padding-right:10px}
 .moveCell{display:flex;align-items:center;justify-content:flex-end;gap:6px}
 .movePill{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:11px;border:1px solid var(--line);font-size:12px;font-weight:500;white-space:nowrap;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis}
 tr.attention .movePill,tr.s-changes .movePill{background:var(--att-bg);border-color:transparent;color:var(--red)}
 tr.decision .movePill{background:var(--dec-bg);border-color:transparent;color:var(--blue)}
 tr.ready .movePill,tr.s-approve .movePill,tr.s-close .movePill,tr.s-claude .movePill{background:var(--ok-bg);border-color:transparent;color:var(--green)}
-tr.untriaged .movePill,tr.s-doubt .movePill,tr.s-pending .movePill{background:var(--warn-bg);border-color:var(--warn-line);color:var(--amber)}
+tr.untriaged .movePill,tr.s-doubt .movePill,tr.s-review .movePill{background:var(--warn-bg);border-color:var(--warn-line);color:var(--amber)}
 .ghBtn{width:26px;height:24px;padding:0;justify-content:center;font-size:12px}
-@media(max-width:760px){.moveCol{width:150px}.moveCell .movePill{display:none}}
+@media(max-width:760px){.moveCol{width:150px}.moveCell .movePill{display:none}
+  .l2>span{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}}
 .check{font-size:8px}
 .check.CLEAN{color:var(--green)}.check.DIRTY,.check.BLOCKED{color:var(--red)}
 .check.UNSTABLE{color:var(--amber)}.check.pending{color:var(--line2)}
@@ -289,8 +291,13 @@ tr.expand td{background:var(--raised);padding:4px 14px 14px 72px;border-bottom:1
 .palOpt small{display:block;color:var(--muted);font-size:12px}
 .palOpt em{font:normal 11px var(--mono);color:var(--muted)}
 .palFoot{display:flex;gap:14px;height:32px;align-items:center;padding:0 14px;border-top:1px solid var(--line);font-size:12px;color:var(--muted);background:var(--bg)}
-@media(max-width:1000px){.tabs{flex:1 1 100%;min-height:36px}.tools{margin-left:auto}}
-@media(max-width:720px){.modeTabs button{padding:0 7px}.scopeBtn span{display:none}#btnTest{display:none}}
+@media(max-width:1000px){.tabs{flex:1 1 100%;min-height:36px;flex-wrap:wrap;overflow-x:visible}
+  .tabs button{min-height:32px}.tabs .sep{display:none}.tools{margin-left:auto}}
+@media(max-width:720px){.modeTabs button{padding:0 7px}.scopeBtn span{display:none}#btnTest{display:none}
+  .chatState{font-size:0;gap:0}#syncLabel{display:none}.btn.sync{width:28px;padding:0;justify-content:center}
+  .btn.stop:not(.armed) .lbl{display:none}.btn.stop{padding:0 9px}
+  .topbar:has(.btn.stop.armed) #btnPalette,.topbar:has(.btn.stop.armed) #btnTheme{display:none}}
+@media(max-width:600px){.modeTabs b:not(.hot){display:none}#btnTheme{display:none}}
 </style>
 </head>
 <body>
@@ -305,7 +312,7 @@ tr.expand td{background:var(--raised);padding:4px 14px 14px 72px;border-bottom:1
     <button class="btn icon" id="btnPalette" title="Comandi (⌘K)" aria-label="Comandi">⌘K</button>
     <button class="btn icon" id="btnTheme" title="Tema chiaro o scuro" aria-label="Tema">◐</button>
     <button class="btn icon" id="btnTest" title="Verifica desk, file JSON e agente on-demand" aria-label="Modalità test">✓?</button>
-    <button class="btn stop" id="btnStop" title="Ferma il server di questo desk: la pagina si spegne, i dati restano">⏻ Chiudi il desk</button>
+    <button class="btn stop" id="btnStop" title="Ferma il server di questo desk: la pagina si spegne, i dati restano" aria-label="Chiudi il desk">⏻<span class="lbl"> Chiudi il desk</span></button>
   </header>
   <div class="scopePop" id="scopePop" hidden></div>
 
@@ -351,13 +358,11 @@ tr.expand td{background:var(--raised);padding:4px 14px 14px 72px;border-bottom:1
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 /* states that are not in "Da fare": somebody else's move, or only a comment due */
-const AWAY=["waiting","reply"];
 const MARK={ready:"✓",attention:"!",waiting:"○",decision:"◆",reply:"✎",untriaged:"?"};
 const STATE_LABEL={ready:"mergeable",attention:"mossa tua",waiting:"in attesa",decision:"decisione tua",reply:"da rispondere",untriaged:"senza verdetto"};
 const STANCE={approve:{mark:"✓",pill:"approvabile"},changes:{mark:"✕",pill:"da respingere"},
   doubt:{mark:"?",pill:"dubbia"},review:{mark:"○",pill:"da rivedere"},
   close:{mark:"✓",pill:"da chiudere"},claude:{mark:"✓",pill:"per Claude"}};
-const AUTORUN_TIP="Cosa può fare pr-loop da solo: A1 merge (tua PR approvata e CLEAN) · A2 edit banale chiesto dal reviewer · A3 riallineo del branch · asks richiede una decisione · yours decisione solo tua · - tocca ad altri";
 const BACKGROUND="X-Git-Workflow-Background";
 
 let meta={},writeToken="",DESK="pr",deskKind=null,prs=[],issues=[],issueOthers=[],chase={},replies={},shortlist=null,session=null;
@@ -367,7 +372,7 @@ let loaded=false,view=null,query="",agentReady=true;
 let issuesTruncated=null,issuesWithPr=0,issuesTaken=0,triageComplete=false,ranked=false;
 let selected=null,openRow=null,sort={key:"created",dir:-1},acting={},truncated=null,pendingMerge=false;
 /* where every row stands, from the server's stances: key → the card it sent */
-let stances={},waitingAuthor=0,prepare={};
+let stances={},waitingAuthor=0,prepare={},skippedPrs=new Set();
 let drafts={};
 const POLL=30000,STALE_PAINT=70;   // a paint older than two polls is behind
 let deskEtag=null,fetching=false,lastGenerated=null,lastPaintAt=null,timings={};
@@ -549,7 +554,7 @@ async function loadDesk(refetch){
   }
 }
 function applyStances(st){
-  stances={};waitingAuthor=0;
+  stances={};waitingAuthor=0;skippedPrs=new Set();
   if(!st)return;
   const review=st.review||{},issue=st.issue||{};
   for(const step of review.steps||[])
@@ -557,6 +562,7 @@ function applyStances(st){
   for(const step of issue.steps||[])
     for(const c of step.rows||[])if(step.id==="close"||step.id==="claude")stances["i"+rk(c)]=Object.assign({step:step.id},c);
   waitingAuthor=review.waiting_author||0;
+  for(const c of review.skipped||[])skippedPrs.add(rk(c));
   if(st.prepare)prepare=st.prepare;
 }
 function applyDesk(d){
@@ -727,14 +733,12 @@ function matches(r,fields){
   return !q||fields.filter(Boolean).join(" ").toLowerCase().includes(q);
 }
 const shown=r=>!hiddenRepos.has(r.repo);
-const STANCE_VIEWS=["approve","changes","doubt","review","close","claude"];
-/* "Da fare" holds the moves the stance filters do not: a review asked of you
-   is under Approvabili, Da respingere, Dubbie or Da rivedere, never twice. */
+/* the triage says only whether a PR is yours to look at; what to do with it
+   is pr-loop's. A review asked of you, analyzed or not, is always to see;
+   one skipped to tomorrow is not, until tomorrow. */
 const inStance=r=>!!stances["p"+rk(r)];
 function prsIn(id){
-  if(STANCE_VIEWS.includes(id))return prs.filter(r=>(stances["p"+rk(r)]||{}).step===id);
-  if(id==="untriaged")return prs.filter(r=>r.triage_status!=="current"&&!inStance(r));
-  if(id==="todo")return prs.filter(r=>r.triage_status==="current"&&!AWAY.includes(r.state)&&!inStance(r));
+  if(id==="see")return prs.filter(r=>inStance(r)||(!skippedPrs.has(rk(r))&&(r.triage_status!=="current"||r.state!=="waiting")));
   if(id==="waiting")return prs.filter(r=>r.triage_status==="current"&&r.state==="waiting"&&!inStance(r));
   return prs;
 }
@@ -781,14 +785,9 @@ const VIEWS=()=>DESK==="threads"?[]:DESK==="issue"?[
   {id:"withpr",label:"Con PR",tip:"Issue che una PR aperta chiude o cita: il lavoro è già partito"},
   {id:"taken",label:"Di altri",tip:"Issue assegnate a qualcun altro: nel workflow Softwell non si lavora su una issue di altri"},
 ]:[
-  {id:"approve",label:"Approvabili",cls:"t-ok",hide:true,tip:"Claude le approverebbe: piccole, mirate, con il test verde"},
-  {id:"changes",label:"Da respingere",cls:"t-no",hide:true,tip:"Claude chiederebbe modifiche: la motivazione è pronta, si corregge aprendo la riga"},
-  {id:"doubt",label:"Dubbie",cls:"t-q",hide:true,tip:"Le uniche su cui serve la tua testa: apri la riga per leggere il dubbio"},
-  {id:"review",label:"Da rivedere",cls:"t-q",tip:"Review che ti sono chieste e che nessun loop ha ancora letto: ▶ pr-loop le legge e ti propone cosa fare"},
+  {id:"see",label:"Da vedere",cls:"t-q",tip:"Dove la prossima mossa è tua: le review che ti chiedono, le tue PR da mergiare, sistemare o decidere, le risposte che devi. Spuntale e ▶ pr-loop"},
   {sep:true},
-  {id:"todo",label:"Da fare",tip:"Le altre PR dove la prossima mossa è tua: le tue da mergiare, sistemare o decidere"},
   {id:"waiting",label:"In attesa",tip:"Ferme in attesa di altri"},
-  {id:"untriaged",label:"Senza verdetto",hide:true,tip:"PR mai passate da pr-triage né da un'analisi"},
   {id:"all",label:"Tutte",tip:"Tutte le PR aperte in cui sei coinvolto"},
   {id:"chase",label:"Chase",tip:"Un messaggio pronto per ogni persona da sollecitare, e le risposte che devi"},
 ];
@@ -799,11 +798,11 @@ function viewCount(id){
 }
 /* the first filter with work in it: the desk opens where there is something to do */
 function firstView(){
-  const order=DESK==="issue"?["close","claude","all"]:["approve","changes","doubt","review","todo","all"];
+  const order=DESK==="issue"?["close","claude","all"]:["see","all"];
   return order.find(id=>viewCount(id))||order[order.length-1];
 }
 function renderModeTabs(){
-  const mine=["approve","changes","doubt","review"].reduce((n,id)=>n+prsIn(id).length,0)+prsIn("todo").length;
+  const mine=prsIn("see").length;
   const items=[["pr","Pull request",loaded?prs.length:"—",mine],
                ["issue","Issue",loaded?issues.length:"—",0],
                ["threads","A chi tocca",loaded?threads.total||0:"—",0]];
@@ -894,10 +893,6 @@ function bulkAction(){
   const steps=new Set(list.map(r=>(stanceOf(r)||{}).step));
   if(steps.size!==1)return null;
   const step=[...steps][0],n=list.length;
-  if(DESK==="pr"&&step==="approve")
-    return {label:n===1?"Approva":`Approva le ${n}`,tip:"Parte dalla chat collegata come review «Approve», con il comando visibile",run:b=>sendReview("approve",list,b)};
-  if(DESK==="pr"&&step==="changes")
-    return {label:n===1?"Chiedi modifiche":`Chiedi modifiche alle ${n}`,tip:"Parte dalla chat collegata come review «Request changes», ciascuna con la sua motivazione",run:b=>sendReview("changes",list,b)};
   if(DESK==="issue"&&step==="close")
     return {label:n===1?"Chiudi":`Chiudi le ${n}`,tip:"Parte dalla chat collegata: ogni issue si chiude con il commento che nomina la PR",run:b=>sendClose(list,b)};
   return null;
@@ -980,8 +975,6 @@ const ghLink=r=>r.url?`<a class="btn ghBtn" href="${esc(r.url)}" target="_blank"
 function quickKey(r){
   const s=stanceOf(r);
   if(!s||s.sent||s.sending)return "";
-  if(DESK==="pr"&&s.step==="approve")return `<button class="btn ok sm" data-quick="approve" data-k="${esc(rk(r))}">Approva</button>`;
-  if(DESK==="pr"&&s.step==="review")return `<button class="btn primary sm" data-quick="loop" data-k="${esc(rk(r))}" ${agentReady&&cloneOf(r)?"":"disabled"} title="pr-loop su questa PR: la legge, ti propone cosa fare e al tuo via lo fa">▶ pr-loop</button>`;
   if(DESK==="issue"&&s.step==="close")return `<button class="btn ok sm" data-quick="close" data-k="${esc(rk(r))}">Chiudi</button>`;
   return "";
 }
@@ -1013,7 +1006,7 @@ function renderTable(){
   }
   const list=rows();
   const isIssue=DESK==="issue";
-  head.innerHTML=`<tr>${pickHead(list)}<th class="markCol"></th>${th("title",isIssue?"issue":"pull request")}${th(isIssue?"assignees":"todo",isIssue?"assignee":"prossima mossa",'class="moveCol"')}</tr>`;
+  head.innerHTML=`<tr>${pickHead(list)}<th class="markCol"></th>${th("title",isIssue?"issue":"pull request")}${isIssue?th("assignees","assignee",'class="moveCol"'):'<th class="linkCol"></th>'}</tr>`;
   tb.innerHTML=list.map((r,i)=>{
     const k=rk(r),s=stanceOf(r),open=openRow===k;
     const cls=s?"s-"+s.step:isIssue?(r.excluded==="with_pr"||r.assignees.length?"waiting":"attention"):r.state;
@@ -1028,16 +1021,14 @@ function renderTable(){
       <td class="mark"><span title="${esc(s?STANCE[s.step].pill:isIssue?(r.assignees.length?"presa":"libera"):STATE_LABEL[r.state])}">${mark}</span></td>
       <td class="prTitle"><div class="l1">${l1}</div>
         <div class="l2"><span>${esc(r.title)}</span>${isIssue?issueMark(r):""}</div></td>
-      <td class="moveCol"><div class="moveCell"><span class="movePill" title="${isIssue?"":esc(AUTORUN_TIP)+" — autorun "+esc(r.autorun)}">${esc(pill)}</span>${quickKey(r)}${ghLink(r)}</div></td></tr>`
+      ${isIssue?`<td class="moveCol"><div class="moveCell"><span class="movePill">${esc(pill)}</span>${quickKey(r)}${ghLink(r)}</div></td>`:`<td class="linkCol">${ghLink(r)}</td>`}</tr>`
       +(open?`<tr class="expand" data-xk="${esc(k)}"><td colspan="4">${isIssue?issueOpen(r):prOpen(r)}</td></tr>`:"");
   }).join("");
   head.querySelectorAll("[data-sort]").forEach(el=>el.onclick=()=>setSort(el.dataset.sort));
   tb.querySelectorAll("tr.row[data-k]").forEach(tr=>tr.onclick=ev=>rowClick(tr.dataset.k,ev));
   tb.querySelectorAll("[data-quick]").forEach(b=>b.onclick=ev=>{
     ev.stopPropagation();const r=rowByKey(b.dataset.k);if(!r)return;
-    const q=b.dataset.quick;
-    if(q==="loop"){picked=new Set([rk(r)]);runPicked("pr-loop",1);}
-    else q==="approve"?sendReview("approve",[r],b):sendClose([r],b);});
+    sendClose([r],b);});
   wireOpen();
   wirePicks(list);
   $("empty").style.display=list.length?"none":"flex";
@@ -1518,17 +1509,14 @@ $("palette").onclick=e=>{if(e.target===$("palette"))closePalette();};
 
 /* ---------- the line under the filters: what this filter is for ---------- */
 const LEADS={
-  approve:"<b>Claude le approverebbe:</b> piccole, mirate, con il test verde. Spunta e approva, o apri una riga per leggerla.",
-  changes:"<b>Claude chiederebbe modifiche.</b> Apri una riga per leggere e correggere la motivazione prima di mandarla.",
-  doubt:"<b>Le uniche su cui serve la tua testa.</b> Apri una riga: il dubbio, dove propende Claude, e i tre tasti.",
-  review:"<b>Review che ti sono chieste.</b> ▶ pr-loop le legge e ti propone cosa fare, una alla volta o spuntate insieme.",
+  see:"<b>Tocca a te guardarle.</b> Spunta quelle che vuoi e ▶ pr-loop: le legge e ti propone cosa fare. Apri una riga per vedere cosa sa già il desk.",
   close:"<b>Già risolte da una PR mergiata.</b> Si chiudono con il commento che la nomina.",
   claude:"<b>Facili, in una fase sola, di nessuno.</b> issue-loop le porta a una PR ciascuna.",
 };
 function renderLead(){
   const el=$("lead");
   let html=DESK==="threads"?"":LEADS[view]||"";
-  if(DESK==="pr"&&view==="approve"&&waitingAuthor)html+=` <span>${waitingAuthor} PR aspettano l'autore dopo una tua richiesta: non tocca a te.</span>`;
+  if(DESK==="pr"&&view==="see"&&waitingAuthor)html+=` <span>${waitingAuthor} PR aspettano l'autore dopo una tua richiesta: non tocca a te.</span>`;
   el.innerHTML=html;el.hidden=!html||!loaded;
 }
 function renderNotes(){
@@ -1635,8 +1623,8 @@ let stopArmed=null;
 $("btnStop").onclick=async()=>{
   const b=$("btnStop");
   if(!stopArmed){
-    b.textContent="⏻ Confermi? clic di nuovo";b.classList.add("armed");
-    stopArmed=setTimeout(()=>{stopArmed=null;b.textContent="⏻ Chiudi il desk";b.classList.remove("armed");},4000);
+    b.innerHTML='⏻<span class="lbl"> Confermi? clic di nuovo</span>';b.classList.add("armed");
+    stopArmed=setTimeout(()=>{stopArmed=null;b.innerHTML='⏻<span class="lbl"> Chiudi il desk</span>';b.classList.remove("armed");},4000);
     return;
   }
   clearTimeout(stopArmed);stopArmed=null;b.textContent="fermo…";b.disabled=true;

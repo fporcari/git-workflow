@@ -206,7 +206,7 @@ globalThis.fetch = async () => { throw new Error("network is off in this test");
 
 /* ---- run the page's script ---- */
 const script = html.match(/<script>\n([\s\S]*)\n<\/script>/)[1];
-const page = new Function(`${script}\nreturn {applyDesk,applyState,render,renderSync,loadDesk,select,toggleOpen,moveSelection,setSort,visiblePrs,visibleIssues,rk,setMode,setView,openPalette,closePalette,commands,toggleScope,renderThreads,
+const page = new Function(`${script}\nreturn {VIEWS,prsIn,applyDesk,applyState,render,renderSync,loadDesk,select,toggleOpen,moveSelection,setSort,visiblePrs,visibleIssues,rk,setMode,setView,openPalette,closePalette,commands,toggleScope,renderThreads,
   rowClick,togglePick,clearPicks,doRun,pending,startPending,endPending,sendReview,sendClose,bulkAction,firstView,stanceOf,viewCount,toggleDrawer,pollHeaders,
   get state(){return {prs,issues,selected,openRow,view,loaded,DESK,truncated,pendingMerge,sort,prepare,
                       picked:[...picked]};},
@@ -259,8 +259,12 @@ ok("the page follows the system theme, and has a dark one",
    !!document.getElementById("btnTheme"));
 ok("the close-desk button is in view, with its words", (() => {
   const b = document.getElementById("btnStop");
-  return b && /Chiudi il desk/.test(b.textContent) && b.classList.contains("stop");
+  return b && b.classList.contains("stop") &&
+    /id="btnStop"[^>]*aria-label="Chiudi il desk">⏻<span class="lbl"> Chiudi il desk<\/span>/.test(html);
 })());
+ok("a narrow pane keeps the header and the filters inside the page",
+   /@media\(max-width:720px\)\{[^@]*\.btn\.stop:not\(\.armed\) \.lbl\{display:none\}/.test(html) &&
+   /@media\(max-width:1000px\)\{\.tabs\{[^}]*flex-wrap:wrap/.test(html));
 
 /* ---- 5. a row opens in place: no panel below, no Analizza ---- */
 ok("no detail panel and no splitter in the page",
@@ -286,30 +290,33 @@ ok("a second click folds it", !openTr());
 ok("every row has its own link out, without opening it",
    (tbody.innerHTML.match(/class="btn ghBtn"/g) || []).length === rowTrs().length);
 
-/* ---- 6. the stances: approvable, to reject, doubtful ---- */
+/* ---- 6. Da vedere: the triage says what to look at, pr-loop what to do ---- */
 const stances = snapshot.stances;
 const stepNs = id => ((stances.review.steps.find(s => s.id === id) || {}).rows || []).map(c => c.n);
 ok("the snapshot carries the stances", !!stances && !!stances.review && !!stances.prepare);
-ok("each stance has its filter, with its count",
-   ["approve", "changes", "doubt"].every(id => page.viewCount(id) === stepNs(id).length));
-ok("the desk opens on the first filter with work in it",
-   page.firstView() === (["approve", "changes", "doubt"].find(id => stepNs(id).length) || "todo"));
-ok("a review asked of you is never twice: not in Da fare when it has a stance", (() => {
-  page.setView("todo");
-  const todo = new Set(page.visiblePrs().map(r => r.n));
-  return ["approve", "changes", "doubt"].every(id => stepNs(id).every(n => !todo.has(n)));
+ok("the PR filters are Da vedere, In attesa, Tutte and Chase",
+   page.VIEWS().filter(v => !v.sep).map(v => v.id).join(",") === "see,waiting,all,chase");
+ok("every review asked of you, analyzed or not, is in Da vedere", (() => {
+  const see = new Set(page.prsIn("see").map(r => r.n));
+  return ["approve", "changes", "doubt", "review"].every(id => stepNs(id).every(n => see.has(n)));
 })());
+ok("Da vedere leaves out only what waits on others", (() => {
+  const see = new Set(page.prsIn("see").map(r => r.n));
+  return page.state.prs.filter(r => !see.has(r.n))
+    .every(r => r.triage_status === "current" && r.state === "waiting");
+})());
+ok("the desk opens on Da vedere", page.firstView() === (page.viewCount("see") ? "see" : "all"));
+page.setView("see");
+ok("a PR row has no next move: no pill, no Approva, only its link out",
+   !/data-quick=/.test(tbody.innerHTML) && !/class="movePill"/.test(tbody.innerHTML) &&
+   (tbody.innerHTML.match(/class="linkCol"/g) || []).length === rowTrs().length);
 const approveN = stepNs("approve")[0], changesN = stepNs("changes")[0], doubtN = stepNs("doubt")[0];
 ok("the fixture lands a row in each stance", approveN && changesN && doubtN);
-page.setView("approve");
-ok("an approvable row offers Approva without opening",
-   tbody.innerHTML.includes(`data-quick="approve" data-k="${K(approveN)}"`));
-page.setView("doubt");
+page.setView("see");
 page.toggleOpen(page.state.prs.find(r => r.n === doubtN));
 ok("an open doubt says the doubt, and offers the three keys",
    /Il dubbio/.test(openHtml()) && /data-act="approve"/.test(openHtml()) &&
    /data-act="changes"/.test(openHtml()) && /data-act="skip"/.test(openHtml()));
-page.setView("changes");
 const changesRow = page.state.prs.find(r => r.n === changesN);
 page.toggleOpen(changesRow);
 const area = () => openTr().querySelectorAll("textarea")[0];
@@ -331,19 +338,11 @@ ok("a row to reject shows its motivation, editable", !!area() && area().dataset.
        review && review.body.event === "changes" && review.body.items[0].n === changesN &&
        review.body.items[0].body === "Per favore aggiungi un test." &&
        review.body.items[0].head === (stances.review.steps.find(s => s.id === "changes").rows[0].head ?? changesRow.head));
-    sent.length = 0;
-    page.setView("approve");
     page.clearPicks();
-    const ap = page.visiblePrs().slice(0, 2);
-    ap.forEach(r => page.togglePick(r));
-    const bulk = page.bulkAction();
-    ok("picked approvable rows are approved together",
-       bulk && /Approva/.test(bulk.label) && document.getElementById("pickBar").innerHTML.includes("pBulk"));
-    document.getElementById("pBulk").click();
-    await new Promise(r => setTimeout(r, 0));
-    const both = sent.find(p => p.path === "/api/review");
-    ok("one click, one review per picked row",
-       both && both.body.event === "approve" && both.body.items.length === ap.length);
+    page.state.prs.filter(r => [approveN, changesN].includes(r.n)).forEach(r => page.togglePick(r));
+    ok("picked rows go to pr-loop, never to a bulk review",
+       page.bulkAction() === null && document.getElementById("pickBar").innerHTML.includes("pRun") &&
+       !document.getElementById("pickBar").innerHTML.includes("pBulk"));
     page.clearPicks();
   } finally {
     globalThis.fetch = offline;
@@ -355,33 +354,15 @@ ok("a row to reject shows its motivation, editable", !!area() && area().dataset.
   const review = unread.stances.review.steps.find(s => s.id === "review");
   review.rows.push(...moved.map((c, i) => i ? c : {...c, chip: "legge…"}));
   page.applyDesk(unread);
-  page.setView("review");
-  ok("an empty analysis stance drops its filter, Da rivedere stays",
-     !document.getElementById("tabs").innerHTML.includes("Approvabili") &&
-     document.getElementById("tabs").innerHTML.includes("Da rivedere") &&
-     !document.getElementById("tabs").innerHTML.includes("In analisi"));
-  ok("a review nobody has read yet offers ▶ pr-loop on its row",
-     (tbody.innerHTML.match(/data-quick="loop"/g) || []).length === page.visiblePrs().length &&
-     page.visiblePrs().length === review.rows.length);
-  ok("a row an analysis job is reading says what it is doing",
-     tbody.innerHTML.includes("legge…"));
-  const sent = [];
-  const offline = globalThis.fetch;
-  globalThis.fetch = async (path, opts) => {
-    sent.push({path, body: JSON.parse(opts.body || "{}")});
-    return {status: 202, headers: {get: () => null}, json: async () => ({runs: [{via: "chat"}]})};
-  };
-  try {
-    tbody.querySelector('[data-quick="loop"]').click();
-    await new Promise(r => setTimeout(r, 0));
-    const run = sent.find(p => p.path === "/api/run");
-    ok("▶ pr-loop on a row runs the loop on that PR alone",
-       run && run.body.flow === "pr-loop" && run.body.batch === 1 &&
-       run.body.ns.length === 1 && run.body.ns[0] === page.visiblePrs()[0].n);
-  } finally {
-    globalThis.fetch = offline;
-    page.clearPicks();
-  }
+  page.setView("see");
+  ok("a review nobody has read yet is still in Da vedere",
+     moved.every(c => page.visiblePrs().some(r => r.n === c.n)) &&
+     !document.getElementById("tabs").innerHTML.includes("Da rivedere") &&
+     !document.getElementById("tabs").innerHTML.includes("Approvabili"));
+  page.toggleOpen(page.state.prs.find(r => r.n === moved[0].n));
+  ok("its open row offers ▶ pr-loop on it",
+     /data-act="loop"/.test(openHtml()) && /Nessun loop l'ha ancora letta/.test(openHtml()));
+  page.toggleOpen(page.state.prs.find(r => r.n === moved[0].n));
   page.applyDesk(snapshot);
 }
 
@@ -630,7 +611,7 @@ ok("shift-click on a box takes the stretch", (() => {
   return JSON.stringify(got) === JSON.stringify(want);
 })());
 ok("select-all takes every row of THIS view, then clears them", (() => {
-  page.clearPicks(); page.setView("todo");
+  page.clearPicks(); page.setView("waiting");
   document.getElementById("pickAll").click();
   const all = page.state.picked.length === page.visiblePrs().length && page.state.picked.length < page.state.prs.length;
   document.getElementById("pickAll").click();
@@ -712,11 +693,11 @@ ok("a reply owed sits under the person waiting for it, not in a message",
      document.getElementById("chaseWrap").innerHTML.includes(`@${who} <span class="chaseCount">aspetta una tua risposta`) &&
      items.every(r => document.getElementById("chaseWrap").innerHTML.includes(`data-n="${r.n}"`))));
 ok("the table steps aside for the cards", document.getElementById("tableWrap").style.display === "none");
-page.setView("todo");
-ok("Da fare leaves out a PR where only a comment is due",
+page.setView("see");
+ok("a PR where a reply of yours is due is to see",
    triaged.queue.rows.some(r => r.state === "reply") &&
    triaged.queue.rows.filter(r => r.state === "reply")
-     .every(r => !tbody.innerHTML.includes(`data-n="${r.n}"`)));
+     .every(r => tbody.innerHTML.includes(`data-n="${r.n}"`)));
 
 /* ---- 19. the issues ---- */
 page.applyDesk({ ...snapshot, meta: { ...snapshot.meta, desk: "issue" } });

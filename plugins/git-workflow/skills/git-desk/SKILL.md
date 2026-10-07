@@ -1,6 +1,6 @@
 ---
 name: git-desk
-description: Launch the git desk — a local web page over the repository's pull requests and issues in three sections (Pull request, Issue, A chi tocca), with the PRs whose review is asked already sorted into Approvabili, Da respingere and Dubbie, shown in the Browser pane beside the chat on Claude Code or in the browser. The Python server serves provider/cache JSON, opens at once and only triages in background — an analysis is a loop's first step, started from a row; the launching chat stays attached by default, so every click is executed in that conversation, command and output visible there; a detached launch (opt-in) hands each non-public click to an ephemeral one-shot agent instead. Use when the user asks for the desk, the PR desk, the issue desk, the review desk, or a PR or issue dashboard.
+description: Launch the git desk — a local web page over the repository's pull requests and issues in three sections (Pull request, Issue, A chi tocca), with the PRs whose next move is yours under Da vedere, ready for pr-loop, shown in the Browser pane beside the chat on Claude Code or in the browser. The Python server serves provider/cache JSON, opens at once and only triages in background — an analysis is a loop's first step, started from a row; the launching chat stays attached by default, so every click is executed in that conversation, command and output visible there; a detached launch (opt-in) hands each non-public click to an ephemeral one-shot agent instead. Use when the user asks for the desk, the PR desk, the issue desk, the review desk, or a PR or issue dashboard.
 ---
 
 # Git desk
@@ -159,9 +159,8 @@ Claude's leaning, never among the approvable or the rejected. While the page
 is polling in view, a provider read older than 30 minutes (`--refresh-after`
 seconds, 0 off) is repeated in background and triages what moved, so a desk
 left open does not show the morning's state in the afternoon. An analysis whose keys still
-match the PR is never bought again and keeps its row among *Approvabili*,
-*Da respingere* or *Dubbie*; a nightwork still running holds the same lock
-and is shown, not doubled. Its progress is `runs.<kind>-nightwork`. Python serves
+match the PR is never bought again and shows in the PR's open row; a
+nightwork still running holds the same lock and is shown, not doubled. Its progress is `runs.<kind>-nightwork`. Python serves
 these local artifacts:
 
 - provider cache and a cheap open-item membership snapshot;
@@ -461,21 +460,17 @@ bottom, its last line always in view; while a triage runs, the status bar
 says so in small (`triage PR · in corso`). `server/stances.py` decides where a row
 stands, on every read.
 
-- **Pull request** — *Da rivedere*: somebody else's PR whose review is asked
-  and that no loop has read yet, with ▶ *pr-loop* on the row; picked
-  together they go as one batch. *Approvabili*: a review asked, the
-  analysis' stance `approve` (a `needs-verification` PR without green
-  checks on the analyzed head is held among the doubts); one key on the row,
-  or pick several and approve them together. *Da respingere*: stance
-  `changes`, the drafted motivation editable in the open row, sent as
-  "Request changes". *Dubbie*: the doubt and Claude's leaning in the open
-  row, with *Approva*, *Chiedi modifiche*, *Salta a domani*. These three
-  show only while they hold rows; a failed analysis waits among the doubts
-  with the reason. Then *Da
-  fare* (the user's other moves: merge, fix, decide), *In attesa*, *Senza
-  verdetto* (only while some are), *Tutte* and *Chase*. Reviews and closings
-  are public: they leave only through the attached chat, with the command in
-  view. The merge always stays with the author.
+- **Pull request** — *Da vedere*: every PR whose next move is the user's,
+  as the triage says — a review asked of him, analyzed or not; his own PRs
+  to merge, fix or decide; a reply he owes; a PR the triage has not judged
+  yet. The triage only says whether to look; what to do is `pr-loop`'s:
+  pick the rows and ▶ pr-loop, one or as a batch. A row has no next-move
+  column, only its link out; opened, it shows what the desk already knows —
+  an analysis from a loop or the nightwork, with *Approva*, *Chiedi
+  modifiche* (the drafted motivation editable), *Salta a domani*, which
+  hides it until tomorrow. Then *In attesa*, *Tutte* and *Chase*. Reviews
+  and closings are public: they leave only through the attached chat, with
+  the command in view. The merge always stays with the author.
 - **Issue** — *Da chiudere* (the analysis names, in `fixed_by`, the merged PR
   that already fixed it: closed with a comment naming it), *Per Claude*
   (EASY, SINGLE-PHASE, nobody's, nothing to decide: issue-loop on the row),

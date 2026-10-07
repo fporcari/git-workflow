@@ -113,6 +113,21 @@ class DaRivedere(unittest.TestCase):
         self.assertTrue(all(row["author"] == authors[row["n"]] for row in rows))
         self.assertTrue(all(row["repo"] == REPO for row in rows))
 
+    def test_a_forgejo_orphan_pr_is_to_review_by_its_maintainer(self):
+        source = next(row for row in self.desk.provider.data["rows"]
+                      if row["n"] not in self.ns and row.get("author") != ME)
+        source.update(author="Roberto", req=[], reviews=[], last=None, draft=False,
+                      maintainer_review=True)
+        try:
+            cache.clear(REPO)
+            review = self.desk.stances()["review"]
+            self.assertIn(source["n"], steps(review)["review"])
+            self.assertIn((source["n"], "review"),
+                          [(row["n"], row["step"]) for row in self.desk.todo()["rows"]])
+        finally:
+            source.pop("maintainer_review")
+            cache.clear(REPO)
+
     def test_a_review_already_sent_is_no_longer_to_do(self):
         n = self.ns[0]
         analyze(self.desk, n)

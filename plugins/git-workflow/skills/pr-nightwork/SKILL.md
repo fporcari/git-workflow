@@ -16,10 +16,10 @@ Read `<PLUGIN_ROOT>/refs/runtime.md` first.
 It does tonight what the desk would do when it opens, and nothing else: it is
 the same preparation (`server/preparation.py`), with the same read-only
 profile (`ANALYZE` in runtime.md → *Model policy*), saved where the desk reads
-it and keyed to the PR as it was read. Each analysis carries the verdict the
-desk's filters group by — approvable, to reject with its motivation, doubtful
-with its hunk — so the desk, which only triages, opens on filled filters, and a PR that moves before
-morning is the only one it reads again. Nothing is posted, approved, pushed or
+it and keyed to the PR as it was read. Each analysis carries a verdict —
+approvable, to reject with its motivation, doubtful with its hunk — that the
+desk, which only triages, shows in the PR's open row the next morning, with
+its keys; a PR that moves before morning is the only one it reads again. Nothing is posted, approved, pushed or
 commented.
 
 ## Run
@@ -51,8 +51,8 @@ it in Italian and stop. The same report is saved under `runs.pr-nightwork` in
 the desk state and as a line of the desk's feed.
 
 A failure costs only its own PR: the others are analyzed anyway, and the
-desk shows the missing one among the doubts with the reason, and prepares it
-again when it next opens. A run started while another PR preparation is alive
+desk shows the reason in the missing one's open row, and the next nightwork
+tries it again. A run started while another PR preparation is alive
 on the same repository — this command or a desk opening — refuses to start
 and says so; a desk opened while this one runs shows it instead of doubling
 it. The desk says when the last preparation landed: "preparata stanotte alle

@@ -9,7 +9,7 @@
     {
       "name": "git-workflow",
       "source": "./plugins/git-workflow",
-      "description": "PR and issue workflow toolkit: triage skills plus the git desk, a local page in the Browser pane that sorts the reviews asked of you into approvable, to reject and doubtful, with pluggable git hosting providers (GitHub, Forgejo)."
+      "description": "PR and issue workflow toolkit: triage skills plus the git desk, a local page in the Browser pane that lists the PRs whose next move is yours, ready for pr-loop, with pluggable git hosting providers (GitHub, Forgejo)."
     },
     {
       "name": "dw",

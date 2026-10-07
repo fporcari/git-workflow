@@ -26,7 +26,7 @@ Never split one batch into several questions merely to fit a tool schema.
 ## Desks
 
 Start the desk with `--desk pr` and the current host as its one-shot agent
-backend; Da rivedere, Mie, Issue and A chi tocca are sections of that one
+backend; Pull request, Issue and A chi tocca are sections of that one
 desk:
 
 ```sh
