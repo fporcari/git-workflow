@@ -70,13 +70,15 @@ class DaRivedere(unittest.TestCase):
     def setUp(self):
         self.desk = fresh_desk()
         self.review = self.desk.stances()["review"]
-        self.ns = sorted(card["n"] for card in self.review["pending"])
+        self.ns = sorted(steps(self.review)["review"])
 
-    def test_only_others_prs_whose_review_is_asked_and_all_pending_at_first(self):
+    def test_only_others_prs_whose_review_is_asked_and_all_to_review_at_first(self):
         self.assertEqual(self.review["count"], 30)
-        self.assertEqual(self.review["first"], "prepare")
-        self.assertTrue(all(step["rows"] == [] for step in self.review["steps"]))
-        authors = {card["author"] for card in self.review["pending"]}
+        self.assertEqual(self.review["first"], "review")
+        self.assertEqual(len(self.ns), 30)
+        self.assertTrue(all(step["rows"] == [] for step in self.review["steps"]
+                            if step["id"] != "review"))
+        authors = {card["author"] for card in self.review["steps"][3]["rows"]}
         self.assertNotIn(ME, authors)
 
     def test_each_stance_lands_in_its_step_with_what_it_needs(self):
@@ -90,21 +92,23 @@ class DaRivedere(unittest.TestCase):
         self.assertEqual(steps(review)["changes"], [c])
         self.assertEqual(steps(review)["doubt"], [d])
         self.assertEqual(review["first"], "approve")
-        self.assertEqual(len(review["pending"]), 27)
+        self.assertEqual(len(steps(review)["review"]), 27)
         rows = {card["n"]: card for step in review["steps"] for card in step["rows"]}
         self.assertEqual(rows[a]["why"], "w%d" % a)
         self.assertEqual(rows[c]["draft"], "Please split it.")
         self.assertEqual(rows[d]["hunk"]["path"], "a.js")
         self.assertTrue(rows[a]["url"].endswith("/%d" % a))
 
-    def test_what_is_to_do_names_who_asks_and_never_a_pending_row(self):
-        self.assertEqual(self.desk.todo()["rows"], [])
+    def test_what_is_to_do_names_who_asks_from_the_first_read(self):
+        self.assertEqual(sorted((row["n"], row["step"]) for row in self.desk.todo()["rows"]),
+                         [(n, "review") for n in self.ns])
         a, c = self.ns[:2]
         analyze(self.desk, a)
         analyze(self.desk, c, stance="changes", draft="Please split it.")
         rows = self.desk.todo()["rows"]
-        self.assertEqual(sorted((row["n"], row["step"]) for row in rows),
+        self.assertEqual(sorted((row["n"], row["step"]) for row in rows if row["step"] != "review"),
                          sorted([(a, "approve"), (c, "changes")]))
+        self.assertEqual(len(rows), 30)
         authors = {row["n"]: row["author"] for row in self.desk.queue()["rows"]}
         self.assertTrue(all(row["author"] == authors[row["n"]] for row in rows))
         self.assertTrue(all(row["repo"] == REPO for row in rows))
@@ -114,7 +118,8 @@ class DaRivedere(unittest.TestCase):
         analyze(self.desk, n)
         deskstate.update(REPO, lambda state: state.setdefault(
             "session_reviews", {}).setdefault("approve", []).append(n))
-        self.assertEqual(self.desk.todo()["rows"], [])
+        self.assertNotIn(n, [row["n"] for row in self.desk.todo()["rows"]])
+        self.assertEqual(len(self.desk.todo()["rows"]), 29)
 
     def test_a_failed_analysis_waits_among_the_doubts_with_the_reason(self):
         n = self.ns[0]
@@ -123,7 +128,7 @@ class DaRivedere(unittest.TestCase):
         review = self.desk.stances()["review"]
         doubt = next(card for card in review["steps"][2]["rows"] if card["n"] == n)
         self.assertIn("claude exited 3", doubt["doubt"])
-        self.assertNotIn(n, [card["n"] for card in review["pending"]])
+        self.assertNotIn(n, steps(review)["review"])
 
     def test_a_giant_pr_is_read_by_folder_and_never_leaves_the_doubts(self):
         n, m = self.ns[0], self.ns[1]
@@ -167,7 +172,7 @@ class DaRivedere(unittest.TestCase):
             rows = self.desk._queue_facts(complete_gates=True)[0]
             self.assertEqual(next(r for r in rows if r["n"] == n)["code_size"], 320)
             self.assertIn(str(n), owed(self.desk))
-            self.assertIn(n, [card["n"] for card in self.desk.stances()["review"]["pending"]])
+            self.assertIn(n, steps(self.desk.stances()["review"])["review"])
         finally:
             del row["size"], row["files"]
             cache.clear(REPO)
@@ -195,14 +200,15 @@ class DaRivedere(unittest.TestCase):
         self.assertEqual(steps(review)["doubt"], [])
         self.assertEqual([card["n"] for card in review["skipped"]], [n])
 
-    def test_a_pending_row_shows_what_its_job_is_doing(self):
+    def test_a_row_to_review_shows_what_its_job_is_doing(self):
         n = self.ns[0]
         job = {"kind": "analyze", "request": {"n": n},
                "progress": {"stage": "testing"}}
         queue = self.desk.queue()
         section = stances.review_section(queue, deskstate.load(REPO), ME, [job])
-        chip = next(card["chip"] for card in section["pending"] if card["n"] == n)
-        self.assertEqual(chip, "verifica i test…")
+        cards = {card["n"]: card for card in section["steps"][3]["rows"]}
+        self.assertEqual(cards[n]["chip"], "verifica i test…")
+        self.assertNotIn("chip", cards[self.ns[1]])
 
 
 def analyze_issue(n, **fields):
@@ -219,10 +225,10 @@ class Issues(unittest.TestCase):
         self.desk = fresh_desk("fporcari")
         self.shortlist = [card["n"] for card in self.desk.stances()["issue"]["pending"]]
 
-    def test_only_the_shortlist_waits_for_the_preparation(self):
+    def test_only_the_shortlist_waits_for_a_reading(self):
         issue = self.desk.stances()["issue"]
         self.assertEqual(len(self.shortlist), 10)
-        self.assertEqual(issue["first"], "prepare")
+        self.assertEqual(issue["first"], "done")
         self.assertEqual(issue["count"], len(self.desk.issues()["rows"]))
 
     def test_each_reading_lands_in_its_step(self):

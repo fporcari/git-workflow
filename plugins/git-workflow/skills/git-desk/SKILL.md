@@ -1,6 +1,6 @@
 ---
 name: git-desk
-description: Launch the git desk — a local web page over the repository's pull requests and issues in three sections (Pull request, Issue, A chi tocca), with the PRs whose review is asked already sorted into Approvabili, Da respingere and Dubbie, shown in the Browser pane beside the chat on Claude Code or in the browser. The Python server serves provider/cache JSON and prepares in background only the analyses that are new or changed; the launching chat stays attached by default, so every click is executed in that conversation, command and output visible there; a detached launch (opt-in) hands each non-public click to an ephemeral one-shot agent instead. Use when the user asks for the desk, the PR desk, the issue desk, the review desk, or a PR or issue dashboard.
+description: Launch the git desk — a local web page over the repository's pull requests and issues in three sections (Pull request, Issue, A chi tocca), with the PRs whose review is asked already sorted into Approvabili, Da respingere and Dubbie, shown in the Browser pane beside the chat on Claude Code or in the browser. The Python server serves provider/cache JSON, opens at once and only triages in background — an analysis is a loop's first step, started from a row; the launching chat stays attached by default, so every click is executed in that conversation, command and output visible there; a detached launch (opt-in) hands each non-public click to an ephemeral one-shot agent instead. Use when the user asks for the desk, the PR desk, the issue desk, the review desk, or a PR or issue dashboard.
 ---
 
 # Git desk
@@ -42,15 +42,15 @@ Show the desk beside the chat; a link alone is not the deliverable.
 
 - **Claude Code**: call the plugin's own `mcp__git-workflow__desk_open` tool
   (load it with ToolSearch when it is listed as deferred). Its answer names
-  this chat's session id — use that as `<session-id>` below — and says what
-  to do with the page. A desk whose preparation is still reading is not
-  opened: a notice above the prompt appears only when a PR comes to review,
-  naming the desk and who opened each PR (`● DESK genropy · 2 da rivedere —
-  dgpaci #1616 #1610`), with an *Apri il desk* key and a toast; while nothing
-  waits, nothing shows. Tell the user so in one line, naming the repository,
-  then carry on with the attached chat. A ready desk is opened in the Browser
-  pane — `preview_start` with `url`, the tool `runtime.md` → *Desks* names.
-  Without the tool (a host that loads no mods) open it there all the same.
+  this chat's session id — use that as `<session-id>` below — and the page
+  to open. Open it at once in the Browser pane — `preview_start` with `url`,
+  the tool `runtime.md` → *Desks* names — also while the boot's triage runs:
+  the page says so in small at the bottom. Only a desk still binding its port
+  is answered with "call again in a second". Later, with the page closed, a
+  notice above the prompt appears when a PR comes to review, naming the desk
+  and who opened each PR (`● DESK genropy · 2 da rivedere — dgpaci #1616
+  #1610`), with an *Apri il desk* key and a toast. Without the tool (a host
+  that loads no mods) open the page there all the same.
 - **Codex**: the browser panel.
 
 The page is local, served by the process you just started: no login, nothing
@@ -142,22 +142,26 @@ Either way the server itself is detached.
 
 Page loads and polling perform no model call. The boot, and an explicit
 re-read, start the **preparation** in a thread of the server's own
-(`server/preparation.py`, the nightwork's own work): the PR triage grid, one
-read-only `pr-analyze` job per PR whose analysis is missing or stale, the
-smallest PRs first, the conflict readings owed on the user's `DIRTY` PRs, and
-beside them the issue ranking and the shortlist's analyses — four jobs alive
-at most, one of them kept for the issues. A PR over 1500 lines of code —
+(`server/preparation.py`): a triage and nothing more — the PR triage grid,
+the conflict readings owed on the user's `DIRTY` PRs, and beside them the
+issue ranking. The desk never analyzes by itself: an analysis is the first
+step of a `pr-loop` or an `issue-loop`, started from a row or from picked
+rows, so every row the user sees is triaged and its next key is the loop.
+Only `/pr-nightwork`, launched by hand, still buys the analyses in
+background: one read-only `pr-analyze` job per PR whose analysis is missing
+or stale, the smallest PRs first, and the shortlist's issue analyses — four
+jobs alive at most, one of them kept for the issues. A PR over 1500 lines of code —
 tests, generated bundles, docs and lock files not counted, read from the file
 list of the PRs whose whole change is over it — is a giant: its analysis gets
 twice the time and reads the code folder by folder up to 5000 lines, naming
 what it left, and whatever its stance the desk keeps it among the doubts with
 Claude's leaning, never among the approvable or the rejected. While the page
 is polling in view, a provider read older than 30 minutes (`--refresh-after`
-seconds, 0 off) is repeated in background and prepares what moved, so a desk
+seconds, 0 off) is repeated in background and triages what moved, so a desk
 left open does not show the morning's state in the afternoon. An analysis whose keys still
-match the PR is never bought again, so after a `/pr-nightwork` the boot reads
-only what moved overnight; a nightwork still running holds the same lock and
-is shown, not doubled. Its progress is `runs.<kind>-nightwork`. Python serves
+match the PR is never bought again and keeps its row among *Approvabili*,
+*Da respingere* or *Dubbie*; a nightwork still running holds the same lock
+and is shown, not doubled. Its progress is `runs.<kind>-nightwork`. Python serves
 these local artifacts:
 
 - provider cache and a cheap open-item membership snapshot;
@@ -176,8 +180,8 @@ resurrected by a stale search result.
 
 Only these may start an agent process:
 
-- the preparation, at boot and after a re-read: read-only analyze and triage
-  jobs;
+- the preparation, at boot and after a re-read: read-only triage jobs (and
+  the analyses too, only under `/pr-nightwork`);
 - PR analyze or explain, issue analyze;
 - PR or issue triage;
 - PR loop, issue loop, or an individual order.
@@ -448,23 +452,26 @@ of the same kind: two servers on one ledger would steal each other's clicks.
 ## Sections
 
 One header row holds the scope, the three sections as a segmented control,
-the preparation while it reads, the chat state and *Chiudi il desk*; under it
+the chat state and *Chiudi il desk*; under it
 a toolbar of its own colour holds the section's filters, the triage and loop
 keys and the search. A row opens in place on a click — what it is for, what
 Claude read, the facts and gate of its base, its keys — and every row has its
 link out to the provider. Jobs, reports and the feed live in a drawer at the
-bottom, its last line always in view. `server/stances.py` decides where a row
+bottom, its last line always in view; while a triage runs, the status bar
+says so in small (`triage PR · in corso`). `server/stances.py` decides where a row
 stands, on every read.
 
-- **Pull request** — *Approvabili*: somebody else's PR whose review is asked,
-  the analysis' stance `approve` (a `needs-verification` PR without green
+- **Pull request** — *Da rivedere*: somebody else's PR whose review is asked
+  and that no loop has read yet, with ▶ *pr-loop* on the row; picked
+  together they go as one batch. *Approvabili*: a review asked, the
+  analysis' stance `approve` (a `needs-verification` PR without green
   checks on the analyzed head is held among the doubts); one key on the row,
   or pick several and approve them together. *Da respingere*: stance
   `changes`, the drafted motivation editable in the open row, sent as
   "Request changes". *Dubbie*: the doubt and Claude's leaning in the open
-  row, with *Approva*, *Chiedi modifiche*, *Salta a domani*. *In analisi*
-  shows only while the preparation still owes rows, with what each job is
-  doing; a failed analysis waits among the doubts with the reason. Then *Da
+  row, with *Approva*, *Chiedi modifiche*, *Salta a domani*. These three
+  show only while they hold rows; a failed analysis waits among the doubts
+  with the reason. Then *Da
   fare* (the user's other moves: merge, fix, decide), *In attesa*, *Senza
   verdetto* (only while some are), *Tutte* and *Chase*. Reviews and closings
   are public: they leave only through the attached chat, with the command in
@@ -481,9 +488,9 @@ A failed preparation is a banner with its reason and *Riprova*
 
 ## Triage
 
-The triage is the first half of the preparation: the boot publishes the PR
-grid on the snapshot it just read and asks a model only for what
-`model_tasks` names. `POST /api/triage` still runs one by hand —
+The triage is the whole of the desk's preparation: the boot publishes the
+PR grid on the snapshot it just read and asks a model only for the conflict
+readings `model_tasks` names, and ranks the issue shortlist. `POST /api/triage` still runs one by hand —
 `pr-triage` or `issue-triage` — with the same contract: the process reads the
 exported rows file, must not write desk state, and the server validates its
 structured result and persists only the requested records. A PR the provider

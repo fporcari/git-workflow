@@ -122,11 +122,10 @@ launch recipe is the repo's own (a `run`/`ui-test` project skill or
 
 One local page over three sections — **Pull request**, **Issue**, **A chi
 tocca** (per person, whose move it is) — in the Browser pane beside the chat
-on Claude Code, or in the browser on Codex. It opens on facts in seconds and
-prepares in background only what is new or changed since the last
-preparation — the nightwork's own work, so a desk opened the morning after
-`/pr-nightwork` has nothing left to read. The reviews asked of you are
-already sorted: approve the PRs the analysis would sign (one key on the row,
+on Claude Code, or in the browser on Codex. It opens at once on facts and
+only triages in background: the reviews asked of you wait under *Da
+rivedere* with ▶ pr-loop on the row, and the loop reads them. Once read —
+by a loop, or overnight by `/pr-nightwork` — they are sorted: approve the PRs the analysis would sign (one key on the row,
 or several picked at once), send the changes it would ask for (the motivation
 editable in the open row), and decide the doubtful ones, with the doubt and
 the leaning in front of you. The merge stays with the author. The launching chat
@@ -196,7 +195,7 @@ the desk, not doubled. Nothing is posted, pushed or assigned.
 
 | skill | what it does |
 |---|---|
-| **`git-desk`** | The detached desk server (default port 8399, a free one when that is taken) and its page. *Pull request*: Approvabili, Da respingere, Dubbie (and In analisi while the preparation reads), then Da fare, In attesa, Tutte, Chase — your own PRs are merged, fixed or answered, never approved. *Issue*: Da chiudere (already fixed by a merged PR), Per Claude (easy, single-phase, nobody's), Da prendere, Shortlist and the rest. *A chi tocca*: per person, the PRs and issues whose next move is theirs, with the chase to paste. It prepares at boot what is new or changed; the launching chat stays attached by default and executes every click — reviews and closings only there, with the command echoed. The skill also defines the JSON/job contract. |
+| **`git-desk`** | The detached desk server (default port 8399, a free one when that is taken) and its page. *Pull request*: Da rivedere (▶ pr-loop on the row), Approvabili, Da respingere, Dubbie (once a loop or the nightwork has read them), then Da fare, In attesa, Tutte, Chase — your own PRs are merged, fixed or answered, never approved. *Issue*: Da chiudere (already fixed by a merged PR), Per Claude (easy, single-phase, nobody's), Da prendere, Shortlist and the rest. *A chi tocca*: per person, the PRs and issues whose next move is theirs, with the chase to paste. It only triages at boot, and says so in small at the bottom; the launching chat stays attached by default and executes every click — reviews and closings only there, with the command echoed. The skill also defines the JSON/job contract. |
 
 `plugins/git-workflow/server/` is the code under it: a zero-dependency
 Python stdlib server that reads the provider, prepares the analyses the desk
@@ -397,6 +396,19 @@ preparation filled with a fake `claude` (`tests/fixtures/fake_claude.py`).
 `plugins/git-workflow/server/tests/README.md` says what each file is for.
 The mod's tests run with `claude plugin test plugins/git-workflow`, on the
 terminal and desktop surfaces.
+
+## The desk opens at once and only triages — 0.64.0
+
+The desk no longer waits for its analyses: `desk_open` says to open the page
+at once, also while the boot runs. The boot triages and analyzes nothing —
+the PR grid with its conflict readings, the issue ranking — and says so in
+small in the status bar (`triage PR · in corso`) instead of the header. *In
+analisi* is gone: a review asked of you that no loop has read sits under *Da
+rivedere*, with ▶ pr-loop on the row, and an analysis is the loop's first
+step. Approvabili, Da respingere and Dubbie show only while they hold rows,
+filled by a loop or by `/pr-nightwork`, which still analyzes overnight. The
+mod's notice now also announces a review nobody has read yet. Restart running
+desks after the update.
 
 ## The page is back — 0.63.0
 

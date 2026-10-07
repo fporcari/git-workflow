@@ -285,7 +285,7 @@ class TheRunRecord(unittest.TestCase):
                 seen.append((run["status"], len(run["landed"]), len(run["failed"])))
             return spy
         with fake.patch(), mock.patch.object(preparation, "_progress", spying):
-            preparation.prepare(desk, "pr", 4, trigger="desk")
+            preparation.prepare(desk, "pr", 4, trigger="night")
         self.assertTrue(all(status == "running" for status, _, _ in seen))
         self.assertEqual([landed + failed for _, landed, failed in seen
                           ][:len(due)], list(range(1, len(due) + 1)))
@@ -294,7 +294,21 @@ class TheRunRecord(unittest.TestCase):
         self.assertEqual(sorted(run["due"]), due)
         self.assertEqual(sorted(run["landed"]), due[1:])
         self.assertIn("boom", run["failed"][str(due[0])])
-        self.assertEqual((run["trigger"], run["prepared_by"]), ("desk", "desk"))
+        self.assertEqual((run["trigger"], run["prepared_by"]), ("night", "night"))
+
+    def test_the_desk_triages_and_analyzes_nothing(self):
+        desk = fresh_desk()
+        self.assertTrue(any("analysis" in kinds for kinds in owed(desk).values()))
+        fake = FakeJobs()
+        with fake.patch():
+            preparation.prepare(desk, "pr", 4, trigger="desk")
+            preparation.prepare(desk, "issue", 4, trigger="desk")
+        self.assertEqual(sorted(set(fake.calls)),
+                         [("triage", "issue-triage"), ("triage", "pr-triage")])
+        runs = deskstate.load(REPO)["runs"]
+        self.assertEqual((runs["pr-nightwork"]["due"], runs["issue-nightwork"]["due"]), ([], []))
+        self.assertEqual(runs["pr-nightwork"]["status"], "done")
+        self.assertNotIn("da analizzare", runs["pr-nightwork"]["report"])
 
     def test_a_run_with_nothing_to_do_keeps_when_work_last_landed(self):
         desk = fresh_desk()
@@ -304,7 +318,7 @@ class TheRunRecord(unittest.TestCase):
         with mock.patch.object(preparation, "pr_work", return_value=[]):
             preparation.prepare(desk, "pr", 4, trigger="desk")
         run = deskstate.load(REPO)["runs"]["pr-nightwork"]
-        self.assertEqual(run["report"], "nessuna PR da analizzare")
+        self.assertEqual(run["report"], "triage fatto")
         self.assertEqual(run["trigger"], "desk")
         self.assertEqual((run["prepared_at"], run["prepared_by"]),
                          (first["prepared_at"], "night"))
@@ -386,36 +400,33 @@ class WithTheFakeAgent(unittest.TestCase):
         again = [line for line in self.calls() if line.startswith("pr ")]
         self.assertEqual(again, analyzed, "a current verdict is never bought twice")
 
-    def test_the_desk_opens_and_the_rows_move_into_their_steps(self):
+    def test_the_desk_triages_and_the_night_moves_the_rows_into_their_steps(self):
         provider = get_provider("fixture")
         cache.clear(REPO)
         deskstate.save(REPO, {})
         desk = prdesk.Desk(provider, REPO, "genro", str(ROOT), agent="claude")
         before = desk.stances()["review"]
-        self.assertEqual(before["first"], "prepare")
-        self.assertEqual(len(before["pending"]), before["count"])
+        self.assertEqual(before["first"], "review")
+        self.assertEqual(len(before["steps"][3]["rows"]), before["count"])
         self.assertTrue(before["count"])
         desk.prepare_async(("pr",))
-        deadline = time.time() + 60
-        while time.time() < deadline:
-            info = desk.stances()
-            if (info["prepare"]["pr"]["status"] == "done"
-                    and not info["review"]["pending"]):
-                break
-            time.sleep(0.2)
+        time.sleep(1)
+        while preparation.running(REPO, "pr"):
+            time.sleep(0.1)
+        self.assertEqual([line for line in self.calls() if line.startswith("pr ")], [],
+                         "the desk's boot analyzes nothing")
+        self.assertEqual(desk.stances()["review"]["first"], "review")
+        preparation.prepare(desk, "pr", 4, trigger="night")
         after = desk.stances()["review"]
-        self.assertEqual(after["pending"], [])
         steps = {step["id"]: [c["n"] for c in step["rows"]] for step in after["steps"]}
+        self.assertEqual(steps["review"], [])
         for stance in ("approve", "changes", "doubt"):
             self.assertTrue(steps[stance], stance)
             self.assertTrue(all(("approve", "changes", "doubt")[n % 3] == stance
                                 for n in steps[stance]), stance)
         self.assertEqual(after["first"], "approve")
         bought = len(self.calls())
-        desk.prepare_async(("pr",))
-        time.sleep(1)
-        while preparation.running(REPO, "pr"):
-            time.sleep(0.1)
+        preparation.prepare(desk, "pr", 4, trigger="night")
         self.assertEqual(len(self.calls()), bought, "current analyses start nothing")
 
     def test_a_failed_analysis_costs_only_its_pr(self):

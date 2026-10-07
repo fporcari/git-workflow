@@ -264,16 +264,24 @@ function deskSeed(on: On, desk: Desk | null, prepare: Record<string, Preparation
 }
 
 describe('opening the desk', () => {
-  test('while the boot prepares, the skill is told the notice comes only when there is something to do', async ($, on) => {
+  test('while the boot triages, the skill opens the page all the same', async ($, on) => {
     deskSeed(on, DESK, prep('running'), null, [], [])
     const got = await $.tool.call({ tool: 'mcp__git-workflow__desk_open' })
     const text = String((got as { result?: unknown }).result)
-    expect(text).toContain('desk of genropy/genropy is preparing')
-    expect(text).toContain('nothing shows while nothing waits')
+    expect(text).toContain('open http://127.0.0.1:8399/ in the Browser pane now')
+    expect(text).toContain('also while its triage runs')
     expect(text).toContain('session id is the-chat')
     const ui = await $.ui.mount({ ...BAND_PROPS, surface: 'terminal' })
     expect(await ui.find({ type: 'Text', text: 'engine' })).toBeDefined()
     await ui.unmount()
+  })
+
+  test('no desk answers yet: the skill is told to ask again', async ($, on) => {
+    deskSeed(on, null, null, null, [], [])
+    const got = await $.tool.call({ tool: 'mcp__git-workflow__desk_open' })
+    const text = String((got as { result?: unknown }).result)
+    expect(text).toContain('Call this tool again in a second')
+    expect(text).toContain('session id is the-chat')
   })
 
   test('a ready desk: the skill opens its page, with the session id to attach', async ($, on) => {

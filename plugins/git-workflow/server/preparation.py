@@ -6,12 +6,15 @@ buttons start, with their read-only profiles, so the results land keyed where
 the desk reads them, and both take the same lock per kind and repository: an
 evening run still going when the desk opens is not doubled, it is shown.
 
-pr     the triage grid, then one pr-analyze job per PR the desk counts as
-       owing an analysis (model_tasks), at most `parallel` alive at once, and
-       one triage pass for the conflict readings still owed on the user's own
-       PRs.
-issue  the shortlist ranked by one issue-triage pass, then one issue-analyze
-       job per shortlisted issue without a reusable analysis.
+pr     the triage grid and one triage pass for the conflict readings still
+       owed on the user's own PRs; at night only, one pr-analyze job per PR
+       the desk counts as owing an analysis (model_tasks), at most `parallel`
+       alive at once.
+issue  the shortlist ranked by one issue-triage pass; at night only, one
+       issue-analyze job per shortlisted issue without a reusable analysis.
+
+The desk's boot triages and never analyzes: an analysis is a pr-loop's or an
+issue-loop's first step, started from a row.
 
 The run is recorded under runs.<kind>-nightwork as it goes — what is due,
 what landed, what failed and why — so the desk shows rows moving into their
@@ -95,11 +98,12 @@ def smallest_first(numbers, rows):
     return sorted(numbers, key=lambda n: (size.get(n) is None, size.get(n) or 0, n))
 
 
-def pr_work(desk, fresh=True):
+def pr_work(desk, fresh=True, analyze=True):
     export = json.loads(Path(desk.run_triage("pr-triage", fresh=fresh)).read_text())
     tasks = export["model_tasks"]
     rows = export.get("queue") or []
-    due = smallest_first([int(n) for n, kinds in tasks.items() if "analysis" in kinds], rows)
+    due = smallest_first([int(n) for n, kinds in tasks.items()
+                          if analyze and "analysis" in kinds], rows)
     giants = {row["n"] for row in rows if verdicts.too_big(row)}
     work = [(n, lambda n=n: jobs.analyze_pr(
                 desk.repo, n, desk.me, desk.cwd, desk.agent,
@@ -149,19 +153,19 @@ def _due(repo, kind, items):
     deskstate.update(repo, mutate)
 
 
-def pr_night(desk, parallel, fresh=True):
-    work = pr_work(desk, fresh)
+def pr_night(desk, parallel, fresh=True, analyze=True):
+    work = pr_work(desk, fresh, analyze)
     _due(desk.repo, "pr", [label for label, _ in work if isinstance(label, int)])
     return bounded(desk.repo, work, parallel, _progress(desk.repo, "pr"))
 
 
-def issue_night(desk, parallel, fresh=True):
+def issue_night(desk, parallel, fresh=True, analyze=True):
     landed = _progress(desk.repo, "issue")
     ranked = bounded(desk.repo, [(RANKING, lambda: jobs.triage(
         desk.repo, "issue-triage",
         lambda: desk.run_triage("issue-triage", fresh=fresh),
         desk.me, desk.cwd, desk.agent))], 1, landed)
-    due = issue_due(desk)
+    due = issue_due(desk) if analyze else []
     _due(desk.repo, "issue", due)
     work = [(n, lambda n=n: jobs.analyze_issue(
                 desk.repo, n, desk.me, desk.cwd, desk.agent))
@@ -173,7 +177,7 @@ def _why(record):
     return str(record.get("error") or record.get("status") or "?")[:120]
 
 
-def summary(kind, done):
+def summary(kind, done, analyzed=True):
     """(status, report): failed only when there was work and none of it
     landed; a run that analyzed ten and lost one did its job and says so."""
     items = {k: v for k, v in done.items() if isinstance(k, int)}
@@ -181,7 +185,7 @@ def summary(kind, done):
     ok = [k for k, v in items.items() if v.get("status") == "done"]
     noun = "PR" if kind == "pr" else "issue"
     parts = (["%d %s analizzate" % (len(ok), noun)] if items
-             else ["nessuna %s da analizzare" % noun])
+             else ["nessuna %s da analizzare" % noun] if analyzed else [])
     for label, text in ((RANKING, "shortlist classificata"),
                         (CONFLICTS, "conflitti letti")):
         if (passes.get(label) or {}).get("status") == "done":
@@ -193,7 +197,7 @@ def summary(kind, done):
     if failed:
         parts.append("non riuscite: " + ", ".join(failed))
     landed = ok or any(v.get("status") == "done" for v in passes.values())
-    return ("failed" if done and not landed else "done"), ", ".join(parts)
+    return ("failed" if done and not landed else "done"), ", ".join(parts) or "triage fatto"
 
 
 def _now():
@@ -248,8 +252,9 @@ def running(repo, kind):
 
 def prepare(desk, kind, parallel=4, trigger="night"):
     """One repository's run of one kind: (status, report). `trigger` is
-    `night` (the command line, which pays a fresh provider read) or `desk`
-    (the boot, which reads the snapshot the boot just paid for)."""
+    `night` (the command line, which pays a fresh provider read and the
+    analyses) or `desk` (the boot, which triages the snapshot it just paid
+    for)."""
     label = label_of(kind)
     with exclusive(desk.repo, label) as free:
         if not free:
@@ -258,9 +263,10 @@ def prepare(desk, kind, parallel=4, trigger="night"):
         notify.notify(desk.repo, "%s partito" % label)
         done = {}
         try:
+            night = trigger == "night"
             done = (pr_night if kind == "pr" else issue_night)(
-                desk, parallel, fresh=trigger == "night")
-            status, report = summary(kind, done)
+                desk, parallel, fresh=night, analyze=night)
+            status, report = summary(kind, done, analyzed=night)
         except Exception as exc:
             status, report = "failed", "interrotto: %s" % str(exc)[:200]
         worked = any(item.get("status") == "done" for item in done.values())

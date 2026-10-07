@@ -39,10 +39,10 @@ at bind time (default when free, otherwise one the OS picks, or the running
 twin's URL), so no launch configuration may hard-code it.
 
 - Claude Code: call the plugin's `mcp__git-workflow__desk_open` tool and keep
-  the session id its answer names for the listener. It says whether to open
-  the page now or leave it to the mod's notice above the prompt, which
-  appears only when a PR comes to review, naming the desk and who opened it.
-  The page opens in the Browser pane beside the chat with
+  the session id its answer names for the listener, then open the page at
+  once, also while the boot's triage runs; with the page closed, the mod's
+  notice above the prompt appears when a PR comes to review, naming the desk
+  and who opened it. The page opens in the Browser pane beside the chat with
   `mcp__Claude_Browser__preview_start`, `url` set to the printed URL
   (`mcp__Claude_Browser__navigate` does the same once the pane is open);
   without the tool (a host that loads no mods) open it there all the same.
@@ -109,10 +109,10 @@ author's description remains outside automatic actions.
 
 The server is detached from the launching conversation. It reads provider
 cache, rows and job JSON files by itself; it never starts a model because a
-page is open or polling, and at boot it starts only the read-only jobs of
-the preparation for the analyses that are new or changed (`--no-prepare`
-turns that off); while somebody polls it, it reads the provider again every
-30 minutes and prepares what moved (`--refresh-after`). The launching conversation stays
+page is open or polling, and at boot it starts only the read-only triage
+jobs of the preparation — never an analysis, which is a loop's first step
+(`--no-prepare` turns that off); while somebody polls it, it reads the
+provider again every 30 minutes and triages what moved (`--refresh-after`). The launching conversation stays
 ATTACHED by default: on Claude Code through one persistent `Monitor` running
 `chatdesk.py listen`, on Codex through the `chatdesk.py wait --timeout 50` loop, yielding within
 60 seconds and resuming the same command session until it returns.

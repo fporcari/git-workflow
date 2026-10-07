@@ -679,7 +679,7 @@ class Desk:
         section = stanceslib.review_section(self.queue(), deskstate.load(self.repo),
                                            self.me)
         cards = ([card for step in section["steps"] for card in step["rows"]]
-                 + section["pending"] + section["skipped"])
+                 + section["skipped"])
         return {card["n"]: card for card in cards}
 
     def close_targets(self):

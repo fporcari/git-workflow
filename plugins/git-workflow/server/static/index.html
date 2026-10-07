@@ -57,7 +57,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{
 .modeTabs b{font:500 11px var(--mono);color:var(--faint)}
 .modeTabs b.hot{min-width:18px;padding:0 5px;border-radius:9px;background:var(--accent);color:var(--onAccent);text-align:center}
 
-.prepChip{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--accent);white-space:nowrap}
+.prepChip{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--accent);white-space:nowrap;flex:none}
 .prepChip i{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:pulse 1s infinite;flex:none}
 .chatState{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--green);white-space:nowrap}
 .chatState::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--green)}
@@ -300,7 +300,6 @@ tr.expand td{background:var(--raised);padding:4px 14px 14px 72px;border-bottom:1
     <button class="scopeBtn" id="scopeBtn" aria-expanded="false" title="Cosa guarda il desk: i repo dello scope, e quali hanno un clone locale"><b id="scopeName">…</b><span id="scopeCount"></span></button>
     <nav class="modeTabs" id="modeTabs" role="tablist" aria-label="Sezioni"></nav>
     <span class="grow"></span>
-    <span class="prepChip" id="prepChip" hidden></span>
     <span id="chatState" class="chatState" hidden title="Una chat è collegata al desk: i bottoni vengono eseguiti nella conversazione, e lì presentano l'esito.">chat collegata</span>
     <button class="btn sync" id="btnFetch" title="Rilegge il provider ignorando la cache"><i></i><span id="syncLabel">avvio…</span></button>
     <button class="btn icon" id="btnPalette" title="Comandi (⌘K)" aria-label="Comandi">⌘K</button>
@@ -335,6 +334,7 @@ tr.expand td{background:var(--raised);padding:4px 14px 14px 72px;border-bottom:1
     <div class="feed" id="feedBox"></div>
   </div>
   <footer class="statusBar" id="statusBar">
+    <span class="prepChip" id="prepChip" hidden></span>
     <span class="msg" id="statusMsg"></span>
     <button id="btnLog" aria-expanded="false" title="Log, lavori in corso e note del desk">log ▴</button>
   </footer>
@@ -355,7 +355,7 @@ const AWAY=["waiting","reply"];
 const MARK={ready:"✓",attention:"!",waiting:"○",decision:"◆",reply:"✎",untriaged:"?"};
 const STATE_LABEL={ready:"mergeable",attention:"mossa tua",waiting:"in attesa",decision:"decisione tua",reply:"da rispondere",untriaged:"senza verdetto"};
 const STANCE={approve:{mark:"✓",pill:"approvabile"},changes:{mark:"✕",pill:"da respingere"},
-  doubt:{mark:"?",pill:"dubbia"},pending:{mark:"…",pill:"in analisi"},
+  doubt:{mark:"?",pill:"dubbia"},review:{mark:"○",pill:"da rivedere"},
   close:{mark:"✓",pill:"da chiudere"},claude:{mark:"✓",pill:"per Claude"}};
 const AUTORUN_TIP="Cosa può fare pr-loop da solo: A1 merge (tua PR approvata e CLEAN) · A2 edit banale chiesto dal reviewer · A3 riallineo del branch · asks richiede una decisione · yours decisione solo tua · - tocca ad altri";
 const BACKGROUND="X-Git-Workflow-Background";
@@ -554,7 +554,6 @@ function applyStances(st){
   const review=st.review||{},issue=st.issue||{};
   for(const step of review.steps||[])
     for(const c of step.rows||[])if(step.id!=="done")stances["p"+rk(c)]=Object.assign({step:step.id},c);
-  for(const c of review.pending||[])stances["p"+rk(c)]=Object.assign({step:"pending"},c);
   for(const step of issue.steps||[])
     for(const c of step.rows||[])if(step.id==="close"||step.id==="claude")stances["i"+rk(c)]=Object.assign({step:step.id},c);
   waitingAuthor=review.waiting_author||0;
@@ -728,9 +727,9 @@ function matches(r,fields){
   return !q||fields.filter(Boolean).join(" ").toLowerCase().includes(q);
 }
 const shown=r=>!hiddenRepos.has(r.repo);
-const STANCE_VIEWS=["approve","changes","doubt","pending","close","claude"];
+const STANCE_VIEWS=["approve","changes","doubt","review","close","claude"];
 /* "Da fare" holds the moves the stance filters do not: a review asked of you
-   is under Approvabili, Da respingere, Dubbie or In analisi, never twice. */
+   is under Approvabili, Da respingere, Dubbie or Da rivedere, never twice. */
 const inStance=r=>!!stances["p"+rk(r)];
 function prsIn(id){
   if(STANCE_VIEWS.includes(id))return prs.filter(r=>(stances["p"+rk(r)]||{}).step===id);
@@ -782,10 +781,10 @@ const VIEWS=()=>DESK==="threads"?[]:DESK==="issue"?[
   {id:"withpr",label:"Con PR",tip:"Issue che una PR aperta chiude o cita: il lavoro è già partito"},
   {id:"taken",label:"Di altri",tip:"Issue assegnate a qualcun altro: nel workflow Softwell non si lavora su una issue di altri"},
 ]:[
-  {id:"approve",label:"Approvabili",cls:"t-ok",tip:"Claude le approverebbe: piccole, mirate, con il test verde"},
-  {id:"changes",label:"Da respingere",cls:"t-no",tip:"Claude chiederebbe modifiche: la motivazione è pronta, si corregge aprendo la riga"},
-  {id:"doubt",label:"Dubbie",cls:"t-q",tip:"Le uniche su cui serve la tua testa: apri la riga per leggere il dubbio"},
-  {id:"pending",label:"In analisi",hide:true,tip:"Review che ti sono chieste e che la preparazione non ha ancora letto"},
+  {id:"approve",label:"Approvabili",cls:"t-ok",hide:true,tip:"Claude le approverebbe: piccole, mirate, con il test verde"},
+  {id:"changes",label:"Da respingere",cls:"t-no",hide:true,tip:"Claude chiederebbe modifiche: la motivazione è pronta, si corregge aprendo la riga"},
+  {id:"doubt",label:"Dubbie",cls:"t-q",hide:true,tip:"Le uniche su cui serve la tua testa: apri la riga per leggere il dubbio"},
+  {id:"review",label:"Da rivedere",cls:"t-q",tip:"Review che ti sono chieste e che nessun loop ha ancora letto: ▶ pr-loop le legge e ti propone cosa fare"},
   {sep:true},
   {id:"todo",label:"Da fare",tip:"Le altre PR dove la prossima mossa è tua: le tue da mergiare, sistemare o decidere"},
   {id:"waiting",label:"In attesa",tip:"Ferme in attesa di altri"},
@@ -800,11 +799,11 @@ function viewCount(id){
 }
 /* the first filter with work in it: the desk opens where there is something to do */
 function firstView(){
-  const order=DESK==="issue"?["close","claude","all"]:["approve","changes","doubt","todo","pending","all"];
+  const order=DESK==="issue"?["close","claude","all"]:["approve","changes","doubt","review","todo","all"];
   return order.find(id=>viewCount(id))||order[order.length-1];
 }
 function renderModeTabs(){
-  const mine=["approve","changes","doubt"].reduce((n,id)=>n+prsIn(id).length,0)+prsIn("todo").length;
+  const mine=["approve","changes","doubt","review"].reduce((n,id)=>n+prsIn(id).length,0)+prsIn("todo").length;
   const items=[["pr","Pull request",loaded?prs.length:"—",mine],
                ["issue","Issue",loaded?issues.length:"—",0],
                ["threads","A chi tocca",loaded?threads.total||0:"—",0]];
@@ -940,15 +939,19 @@ function renderSync(){
 function renderPrepare(){
   const kind=DESK==="issue"?"issue":"pr",p=(prepare||{})[kind]||{};
   const chip=$("prepChip");
-  const run=p.status==="running";
-  chip.hidden=!run;
-  if(run){
-    const due=(p.due||[]).length,read=(p.landed||[]).length+Object.keys(p.failed||{}).length;
-    chip.innerHTML=`<i></i>${due?`preparo ${read} di ${due}`:"preparo"}`;
-    chip.title=p.phrase||"";
+  const live=[["pr","PR"],["issue","issue"]].map(([k,word])=>{
+    const q=(prepare||{})[k]||{};
+    if(q.status!=="running")return null;
+    const due=(q.due||[]).length,read=(q.landed||[]).length+Object.keys(q.failed||{}).length;
+    return {text:due?`analisi ${word} · ${read} di ${due}`:`triage ${word} · in corso`,tip:q.phrase||""};
+  }).filter(Boolean);
+  chip.hidden=!live.length;
+  if(live.length){
+    chip.innerHTML=`<i></i>${live.map(x=>esc(x.text)).join(" · ")}`;
+    chip.title=live.map(x=>x.tip).filter(Boolean).join(" — ");
   }
   const bad=p.status==="failed"||p.status==="interrupted";
-  banner("prepBox",bad?`<span><b>${p.status==="failed"?"Preparazione non riuscita":"Preparazione interrotta"}</b>${p.at?" alle "+esc(String(p.at).slice(11,16)):""}: ${esc(p.report||p.phrase||"")}. Le righe non lette restano In analisi.</span><button class="btn sm" id="btnPrepare">Riprova</button>`:"",bad);
+  banner("prepBox",bad?`<span><b>${p.status==="failed"?"Preparazione non riuscita":"Preparazione interrotta"}</b>${p.at?" alle "+esc(String(p.at).slice(11,16)):""}: ${esc(p.report||p.phrase||"")}. Le righe restano dove le ha lasciate l'ultimo triage.</span><button class="btn sm" id="btnPrepare">Riprova</button>`:"",bad);
   const again=$("btnPrepare");
   if(again)again.onclick=()=>retryPrepare(kind,again);
 }
@@ -978,6 +981,7 @@ function quickKey(r){
   const s=stanceOf(r);
   if(!s||s.sent||s.sending)return "";
   if(DESK==="pr"&&s.step==="approve")return `<button class="btn ok sm" data-quick="approve" data-k="${esc(rk(r))}">Approva</button>`;
+  if(DESK==="pr"&&s.step==="review")return `<button class="btn primary sm" data-quick="loop" data-k="${esc(rk(r))}" ${agentReady&&cloneOf(r)?"":"disabled"} title="pr-loop su questa PR: la legge, ti propone cosa fare e al tuo via lo fa">▶ pr-loop</button>`;
   if(DESK==="issue"&&s.step==="close")return `<button class="btn ok sm" data-quick="close" data-k="${esc(rk(r))}">Chiudi</button>`;
   return "";
 }
@@ -986,7 +990,7 @@ function stancePill(r){
   if(!s)return null;
   if(s.sent)return "inviata";
   if(s.sending)return "in invio…";
-  if(s.step==="pending")return s.chip||"in coda";
+  if(s.chip)return s.chip;
   return STANCE[s.step].pill;
 }
 function renderTable(){
@@ -1031,17 +1035,15 @@ function renderTable(){
   tb.querySelectorAll("tr.row[data-k]").forEach(tr=>tr.onclick=ev=>rowClick(tr.dataset.k,ev));
   tb.querySelectorAll("[data-quick]").forEach(b=>b.onclick=ev=>{
     ev.stopPropagation();const r=rowByKey(b.dataset.k);if(!r)return;
-    b.dataset.quick==="approve"?sendReview("approve",[r],b):sendClose([r],b);});
+    const q=b.dataset.quick;
+    if(q==="loop"){picked=new Set([rk(r)]);runPicked("pr-loop",1);}
+    else q==="approve"?sendReview("approve",[r],b):sendClose([r],b);});
   wireOpen();
   wirePicks(list);
   $("empty").style.display=list.length?"none":"flex";
   $("empty").innerHTML=emptyText();
 }
 function emptyText(){
-  const p=(prepare||{})[DESK==="issue"?"issue":"pr"]||{};
-  const pending=DESK==="pr"?viewCount("pending"):0;
-  if(STANCE_VIEWS.includes(view)&&pending&&view!=="pending")
-    return `<b>Niente qui, per ora</b><span>${pending} PR ancora da analizzare: le trovi in <b>In analisi</b>${p.status==="running"?", e arrivano qui man mano":""}.</span>`;
   return `<b>Niente in questo filtro</b><span>Prova un altro filtro, azzera la ricerca o rileggi il provider con ⟳.</span>`;
 }
 
@@ -1097,8 +1099,8 @@ function prOpen(r){
   const problem=!r.analysis_stale&&sk.problem;
   const left=[];
   if(s&&s.step==="doubt")left.push(`<div class="say q"><h2>Il dubbio</h2><p>${esc(s.doubt||s.why||"")}</p>${s.lean?`<p class="mono">Claude propende per: ${s.lean==="approve"?"approvare":"chiedere modifiche"}</p>`:""}</div>`);
-  else if(s&&s.why&&s.step!=="pending")left.push(`<div class="say ${s.step==="approve"?"ok":"no"}"><h2>Perché</h2><p>${esc(s.why)}</p></div>`);
-  if(s&&s.step==="pending")left.push(`<div class="say"><p>La preparazione non l'ha ancora letta: ${esc(s.chip||"in coda")}. Arriva tra le approvabili, le da respingere o le dubbie.</p></div>`);
+  else if(s&&s.why&&s.step!=="review")left.push(`<div class="say ${s.step==="approve"?"ok":"no"}"><h2>Perché</h2><p>${esc(s.why)}</p></div>`);
+  if(s&&s.step==="review")left.push(`<div class="say"><p>Nessun loop l'ha ancora letta: ▶ pr-loop su questa la legge e ti propone cosa fare.</p></div>`);
   left.push(`<h2>Cosa risolve</h2><p>${what?esc(what):'<span style="color:var(--muted)">Nessuna descrizione sulla PR.</span>'}</p>`);
   if(problem&&problem!==what)left.push(`<h2>Cosa ha letto Claude</h2><p>${esc(problem)}</p>`);
   if(sk.next)left.push(`<h2>Proposta</h2><p>${esc(sk.next)}</p>`);
@@ -1122,6 +1124,8 @@ function prKeys(r,s){
     out.push(`<button class="btn no" data-act="changes" data-k="${k}">Chiedi modifiche</button>`);
     out.push(`<button class="btn" data-act="skip" data-k="${k}" title="Sparisce dai filtri fino a domani">Salta a domani</button>`);
   }
+  if(s&&s.step==="review"&&!s.sent&&!s.sending)
+    out.push(`<button class="btn primary" data-act="loop" data-k="${k}" ${agentReady&&cloneOf(r)?"":"disabled"} title="pr-loop solo su questa PR: la legge, ti propone cosa fare e al tuo via lo fa">▶ pr-loop su questa</button>`);
   if(!s){
     const exec=r.autorun==="A1"?{label:"▶ Merge",tip:"pr-loop riverifica i gate freschi e solo allora fa squash e delete branch."}
              :r.autorun==="A3"?{label:"▶ Riallinea",tip:"pr-loop riallinea il branch con la base, secondo le regole A3."}:null;
@@ -1149,7 +1153,7 @@ function issueOpen(r){
   const s=stanceOf(r),sk=r.skill||{},k=esc(rk(r));
   const left=[];
   if(sk.finding&&!r.analysis_stale)left.push(`<h2>Cosa ha trovato Claude</h2><p>${esc(sk.finding)}</p>`);
-  else left.push(`<p style="color:var(--muted)">${r.analysis_stale?"L'analisi è di prima che l'issue si muovesse.":"Nessuna analisi ancora: la fa la preparazione, se l'issue è in shortlist."}</p>`);
+  else left.push(`<p style="color:var(--muted)">${r.analysis_stale?"L'analisi è di prima che l'issue si muovesse.":"Nessuna analisi ancora: la fa issue-loop, al primo passo."}</p>`);
   if(sk.decision)left.push(`<div class="say q"><h2>Da decidere</h2><p>${esc(sk.decision)}</p></div>`);
   if(sk.propose)left.push(`<h2>Proposta</h2><p>${esc(sk.propose)}</p>`);
   if(s&&s.step==="close"&&!s.sent&&!s.sending)
@@ -1517,7 +1521,7 @@ const LEADS={
   approve:"<b>Claude le approverebbe:</b> piccole, mirate, con il test verde. Spunta e approva, o apri una riga per leggerla.",
   changes:"<b>Claude chiederebbe modifiche.</b> Apri una riga per leggere e correggere la motivazione prima di mandarla.",
   doubt:"<b>Le uniche su cui serve la tua testa.</b> Apri una riga: il dubbio, dove propende Claude, e i tre tasti.",
-  pending:"<b>Non ancora lette dalla preparazione.</b> Arrivano tra le approvabili, le da respingere o le dubbie man mano.",
+  review:"<b>Review che ti sono chieste.</b> ▶ pr-loop le legge e ti propone cosa fare, una alla volta o spuntate insieme.",
   close:"<b>Già risolte da una PR mergiata.</b> Si chiudono con il commento che la nomina.",
   claude:"<b>Facili, in una fase sola, di nessuno.</b> issue-loop le porta a una PR ciascuna.",
 };

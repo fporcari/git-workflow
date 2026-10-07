@@ -350,27 +350,56 @@ ok("a row to reject shows its motivation, editable", !!area() && area().dataset.
   }
 }
 {
-  const pendingDesk = JSON.parse(JSON.stringify(snapshot));
-  const moved = pendingDesk.stances.review.steps.find(s => s.id === "approve").rows.splice(0);
-  pendingDesk.stances.review.pending = moved.map(c => ({...c, chip: "legge…"}));
-  page.applyDesk(pendingDesk);
-  page.setView("approve");
-  ok("an empty stance says how many are still to read, and where",
-     document.getElementById("empty").innerHTML.includes("ancora da analizzare") &&
-     document.getElementById("empty").innerHTML.includes("In analisi"));
-  page.setView("pending");
-  ok("a row the preparation has not read says what its job is doing",
+  const unread = JSON.parse(JSON.stringify(snapshot));
+  const moved = unread.stances.review.steps.find(s => s.id === "approve").rows.splice(0);
+  const review = unread.stances.review.steps.find(s => s.id === "review");
+  review.rows.push(...moved.map((c, i) => i ? c : {...c, chip: "legge…"}));
+  page.applyDesk(unread);
+  page.setView("review");
+  ok("an empty analysis stance drops its filter, Da rivedere stays",
+     !document.getElementById("tabs").innerHTML.includes("Approvabili") &&
+     document.getElementById("tabs").innerHTML.includes("Da rivedere") &&
+     !document.getElementById("tabs").innerHTML.includes("In analisi"));
+  ok("a review nobody has read yet offers ▶ pr-loop on its row",
+     (tbody.innerHTML.match(/data-quick="loop"/g) || []).length === page.visiblePrs().length &&
+     page.visiblePrs().length === review.rows.length);
+  ok("a row an analysis job is reading says what it is doing",
      tbody.innerHTML.includes("legge…"));
+  const sent = [];
+  const offline = globalThis.fetch;
+  globalThis.fetch = async (path, opts) => {
+    sent.push({path, body: JSON.parse(opts.body || "{}")});
+    return {status: 202, headers: {get: () => null}, json: async () => ({runs: [{via: "chat"}]})};
+  };
+  try {
+    tbody.querySelector('[data-quick="loop"]').click();
+    await new Promise(r => setTimeout(r, 0));
+    const run = sent.find(p => p.path === "/api/run");
+    ok("▶ pr-loop on a row runs the loop on that PR alone",
+       run && run.body.flow === "pr-loop" && run.body.batch === 1 &&
+       run.body.ns.length === 1 && run.body.ns[0] === page.visiblePrs()[0].n);
+  } finally {
+    globalThis.fetch = offline;
+    page.clearPicks();
+  }
   page.applyDesk(snapshot);
 }
 
-/* ---- 7. the preparation: in the header while it reads, a banner when it fails ---- */
-page.applyState({ prepare: { pr: { status: "running", phrase: "preparo", due: [1, 2, 3], landed: [1], failed: {} },
+/* ---- 7. the preparation: small in the status bar while it runs, a banner when it fails ---- */
+page.applyState({ prepare: { pr: { status: "running", phrase: "triage PR · in corso", due: [], landed: [], failed: {} },
+                             issue: { status: "running", phrase: "triage issue · in corso", due: [], landed: [], failed: {} } } });
+page.render();
+ok("a running triage shows in the status bar, every kind",
+   document.getElementById("prepChip").hidden === false &&
+   /<footer class="statusBar"[^]*id="prepChip"[^]*<\/footer>/.test(html) &&
+   /triage PR · in corso/.test(document.getElementById("prepChip").innerHTML) &&
+   /triage issue · in corso/.test(document.getElementById("prepChip").innerHTML));
+page.applyState({ prepare: { pr: { status: "running", phrase: "x", due: [1, 2, 3], landed: [1], failed: {} },
                              issue: { status: "done", phrase: "", due: [], landed: [], failed: {} } } });
 page.render();
-ok("a running preparation shows how far it is",
-   document.getElementById("prepChip").hidden === false &&
-   /preparo 1 di 3/.test(document.getElementById("prepChip").innerHTML));
+ok("a night run that analyzes says how far it is",
+   /analisi PR · 1 di 3/.test(document.getElementById("prepChip").innerHTML) &&
+   !/issue/.test(document.getElementById("prepChip").innerHTML));
 page.applyState({ prepare: { pr: { status: "failed", phrase: "x", report: "interrotto: gh api failed",
                                    at: "2026-10-07T15:16:15", due: [], landed: [], failed: {} },
                              issue: { status: "done", phrase: "", due: [], landed: [], failed: {} } } });

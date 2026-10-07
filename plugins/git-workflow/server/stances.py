@@ -8,8 +8,8 @@ PRs — somebody else's PR whose review is asked of the user:
   approve   Approvabili: the analysis would sign it
   changes   Da respingere, with the drafted motivation
   doubt     Dubbie: the analysis' doubt, or why there is none
-A row without a current analysis is `pending` until the preparation lands it;
-an analysis that failed puts it among the doubts with the reason.
+  review    Da rivedere: no current analysis yet; a pr-loop on it reads it
+An analysis that failed puts the row among the doubts with the reason.
 
 Issues — the open issues nobody holds and no PR carries:
   close     Da chiudere: the analysis found the fix already merged
@@ -64,7 +64,7 @@ def skipped_today(note):
 
 
 def progress_of(active_jobs):
-    """{n: the chip a pending row shows} from the jobs this process runs."""
+    """{n: the chip a row shows while an analysis job of this process reads it}."""
     out = {}
     for job in active_jobs or []:
         n = (job.get("request") or {}).get("n")
@@ -94,8 +94,8 @@ def review_section(queue, state, me, active_jobs=()):
     run = (state.get("runs") or {}).get("pr-nightwork") or {}
     failed = run.get("failed") or {}
     chips = progress_of(active_jobs)
-    steps = {"approve": [], "changes": [], "doubt": []}
-    pending, skipped, waiting_author = [], [], 0
+    steps = {"approve": [], "changes": [], "doubt": [], "review": []}
+    skipped, waiting_author = [], 0
     for row in rows:
         if row.get("author") == me:
             continue
@@ -119,7 +119,9 @@ def review_section(queue, state, me, active_jobs=()):
                     "analisi non riuscita: %s" % reason), why="da leggere a mano",
                     **marks))
             else:
-                pending.append(card(row, chip=chips.get(row["n"], "in coda"), **marks))
+                if row["n"] in chips:
+                    marks["chip"] = chips[row["n"]]
+                steps["review"].append(card(row, **marks))
             continue
         stance = advice.get("stance")
         extra = {key: advice.get(key) for key in (
@@ -134,7 +136,7 @@ def review_section(queue, state, me, active_jobs=()):
             extra.update(stance="doubt", lean="approve", doubt=(
                 "needs-verification: i test non sono verdi sull'head letto"))
             steps["doubt"].append(card(row, **extra))
-        elif stance in steps:
+        elif stance in ("approve", "changes", "doubt"):
             steps[stance].append(card(row, **extra))
         else:
             steps["doubt"].append(card(row, **dict(
@@ -143,17 +145,16 @@ def review_section(queue, state, me, active_jobs=()):
         items.sort(key=lambda c: (not c.get("skipped_before"), -c["n"]))
     done = {event: list(ns) for event, ns in (state.get("session_reviews") or {}).items()}
     done["skip"] = [c["n"] for c in skipped]
-    order = ("approve", "changes", "doubt")
-    first = next((step for step in order if steps[step]),
-                 "prepare" if pending else "done")
-    return {"count": sum(len(v) for v in steps.values()) + len(pending),
+    order = ("approve", "changes", "doubt", "review")
+    first = next((step for step in order if steps[step]), "done")
+    return {"count": sum(len(v) for v in steps.values()),
             "steps": [{"id": step, "rows": steps[step]} for step in order]
             + [{"id": "done", "rows": [], "summary": done}],
-            "first": first, "pending": pending, "skipped": skipped,
+            "first": first, "skipped": skipped,
             "waiting_author": waiting_author}
 
 
-ACTIONABLE = ("approve", "changes", "doubt")
+ACTIONABLE = ("approve", "changes", "doubt", "review")
 
 
 def todo(review):
@@ -191,7 +192,7 @@ def prepare_info(state, kind, running=None, now=None):
         phrase = ("preparo %s · %d di %d lette" % (
             "la review" if kind == "pr" else "le issue",
             len(landed) + len(failed), len(due)) if due else
-            "preparo %s · leggo GitHub" % ("la review" if kind == "pr" else "le issue"))
+            "triage %s · in corso" % ("PR" if kind == "pr" else "issue"))
     elif status == "never":
         phrase = "%s mai preparata" % noun
     else:
@@ -283,8 +284,7 @@ def issue_section(issues, state):
             "steps": [{"id": step, "rows": steps[step]} for step in order]
             + [{"id": "done", "rows": [],
                 "summary": {"close": sorted(closed)}}],
-            "first": next((step for step in order if steps[step]),
-                          "prepare" if pending else "done"),
+            "first": next((step for step in order if steps[step]), "done"),
             "pending": pending, "taken_easy": taken_easy,
             "unassigned": sum(1 for row in issues["rows"] if not row.get("assignees"))}
 
@@ -323,9 +323,8 @@ def _merge_section(sections, last):
             elif isinstance(value, dict):
                 out.setdefault(key, {}).update(value)
     out["steps"] = list(by_step.values())
-    pending = out.get("pending")
     out["first"] = next((s["id"] for s in out["steps"] if s["rows"] and s["id"] != last),
-                        "prepare" if pending else last)
+                        last)
     return out
 
 

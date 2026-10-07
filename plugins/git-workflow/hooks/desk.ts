@@ -1,4 +1,4 @@
-import type { DeskItem, Preparation, Tag, TodoRow } from '../types'
+import type { DeskItem, Tag, TodoRow } from '../types'
 
 type Raw = {
   session?: string
@@ -171,8 +171,6 @@ export function deskTarget(files: Record<string, StateFile>, session: string, no
   const best = found[0]
   return best ? { port: best.port, repo: best.repo, attached: best.attached } : null
 }
-
-export const preparing = (prepare: Record<string, Preparation> | null | undefined) => prepare?.pr?.status === 'running'
 
 const todoKey = (row: TodoRow) => `${row.repo}#${row.n}`
 

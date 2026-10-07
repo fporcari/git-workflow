@@ -1,9 +1,9 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Desk, DeskItem, Preparation, TodoRow } from '../types'
+import type { Desk, DeskItem, TodoRow } from '../types'
 import {
-  bareGoAhead, deskTarget, freshTodo, isOpen, itemsOf, mentions, pollHeaders, preparing, projectOf, shownAs,
+  bareGoAhead, deskTarget, freshTodo, isOpen, itemsOf, mentions, pollHeaders, projectOf, shownAs,
   statusLine, todoLine, transitions, unclosed, waiting, wordOf,
 } from './desk'
 import type { StateFile } from './desk'
@@ -152,7 +152,7 @@ export const register: Register = on => {
     await $.tool.register({
       name: 'desk_open',
       description: 'Call it right after launching the git desk server: it answers this chat\'s session id ' +
-        'to attach with, and says whether to open the desk page now or leave it to the notice above the prompt.',
+        'to attach with, and the desk page to open now in the Browser pane.',
     })
     await poll($).catch(() => undefined)
     $.clock.every(POLL_MS, () => repoll($))
@@ -170,23 +170,13 @@ export const register: Register = on => {
     const attach = ` This chat's session id is ${session}: pass it as --session to chatdesk.py.`
     await poll($).catch(() => undefined)
     const desk = await read($, deskAtom)
-    let prepare: Record<string, Preparation> | undefined
-    if (desk) {
-      try {
-        prepare = ((await getJSON($, `${desk.base}/api/state`)).data as { prepare?: Record<string, Preparation> } | null)?.prepare
-      } catch {
-        // the desk is still binding: treat it as preparing
-      }
+    if (!desk) {
+      return { result: 'No desk answers yet: its server is still binding the port. Call this tool again in a ' +
+        'second.' + attach }
     }
-    const repo = desk?.repo ?? 'this repository'
-    if (!desk || !prepare || preparing(prepare)) {
-      return { result: `The desk of ${repo} is preparing its analyses: do not open the page now. When a PR ` +
-        'comes to review, a notice above the prompt names this desk and who opened each PR, with an "Apri ' +
-        'il desk" key and a toast; nothing shows while nothing waits. Tell the user so in one line, naming ' +
-        'the repository.' + attach }
-    }
-    return { result: `The desk of ${repo} is ready: open ${desk.base}/ in the Browser pane ` +
-      '(preview_start with that url); a host without one gets the link.' + attach }
+    return { result: `The desk of ${desk.repo} is up: open ${desk.base}/ in the Browser pane now ` +
+      '(preview_start with that url), also while its triage runs, which the page shows at the bottom; a host ' +
+      'without one gets the link.' + attach }
   })
 
   on('prompt.submit', async ($, e, next) => {

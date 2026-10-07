@@ -49,6 +49,9 @@ def tearDownModule():
     deskstate.RUNTIME_DIR = _SAVED["runtime"]
 
 
+def to_review(section):
+    return next(step["rows"] for step in section["steps"] if step["id"] == "review")
+
 class ReviewClicks(unittest.TestCase):
 
     @classmethod
@@ -102,7 +105,7 @@ class ReviewClicks(unittest.TestCase):
             {"n": b, "head": "h%d" % b, "body": ""}]})
         self.assertEqual(chatdesk.command_for(record), "approva #%d #%d" % (a, b))
         sending = {card["n"]: card.get("sending") for card in
-                   self.desk.stances()["review"]["pending"]}
+                   to_review(self.desk.stances()["review"])}
         self.assertEqual((sending[a], sending[b]), ("approve", "approve"))
         status, again = self.post({"event": "approve", "items": self.items(a)})
         self.assertEqual((status, again["created"]), (202, False))
@@ -160,7 +163,7 @@ class ReviewClicks(unittest.TestCase):
                          date.today().isoformat())
         review = self.desk.stances()["review"]
         self.assertEqual([card["n"] for card in review["skipped"]], [n])
-        self.assertNotIn(n, [card["n"] for card in review["pending"]])
+        self.assertNotIn(n, [card["n"] for card in to_review(review)])
 
     def test_the_chat_reports_each_row_and_only_the_done_ones_count_as_sent(self):
         self.attach()
@@ -178,7 +181,7 @@ class ReviewClicks(unittest.TestCase):
         self.assertEqual(state["requests"]["review:approve"]["status"], "done")
         self.assertTrue(state["provider_refresh"]["token"])
         review = self.desk.stances()["review"]
-        sent = {card["n"]: card.get("sent") for card in review["pending"]}
+        sent = {card["n"]: card.get("sent") for card in to_review(review)}
         self.assertEqual((sent[a], sent[b]), ("approve", None))
         self.assertEqual(review["steps"][-1]["summary"]["approve"], [a])
 
