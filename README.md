@@ -209,7 +209,9 @@ the page, in the Browser pane.
 
 - **one row per desk request of this chat**, tagged `PR` (magenta) or
   `ISSUE` (green), always with its repository: in coda, in chat ora, in
-  background, **aspetta te** first and in yellow, each with its ✕;
+  background, **aspetta te** first and in yellow. ↗ opens the loop's chat
+  in the desktop app (elsewhere a toast gives `claude --resume`), ✕ closes
+  the row for good, across restarts; a closed desk takes its rows with it;
 - **a status line** `PR ⏳1 ⏸1`: the loops at work and the ones waiting;
 - **a toast** when a loop starts waiting for you or closes;
 - **a guard on a bare `vai`**: with two loops waiting for an answer it does
@@ -388,6 +390,17 @@ preparation filled with a fake `claude` (`tests/fixtures/fake_claude.py`).
 `plugins/git-workflow/server/tests/README.md` says what each file is for.
 The mod's tests run with `claude plugin test plugins/git-workflow`, on the
 terminal and desktop surfaces.
+
+## A loop's row takes you to its chat, and ✕ closes it — 0.67.0
+
+A loop's row now has ↗, which opens the chat the loop runs in, found among
+the desktop app's sessions by the CLI session id the desk's ledger keeps;
+outside the app a toast gives `claude --resume <id>`. ✕ closes a row for
+good: it used to come back as soon as the loop changed status or report, and
+on every restart, since it lived only in the session; now it is kept in the
+plugin's store, by request id, so the loop's next run still shows. The rows
+of a desk that was closed, or of a desk before the running one, are gone
+with it, instead of waiting out the day a request asking for you can last.
 
 ## No desk notice — 0.66.0
 

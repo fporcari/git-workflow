@@ -3,14 +3,13 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { Desk, DeskItem } from '../types'
 import {
-  bareGoAhead, deskTarget, isOpen, itemsOf, mentions, pollHeaders, projectOf, shownAs,
+  bareGoAhead, deskTarget, isOpen, itemsOf, mentions, pollHeaders, projectOf, recentClosed,
   statusLine, transitions, unclosed, waiting, wordOf,
 } from './desk'
 import type { StateFile } from './desk'
 
 const shown = atom({ plugin: 'git-workflow', key: 'items' } as const, [] as DeskItem[])
 const deskAtom = atom({ plugin: 'git-workflow', key: 'desk' } as const, null as Desk | null)
-const closedAtom = atom({ plugin: 'git-workflow', key: 'closed' } as const, {} as Record<string, string>)
 
 const POLL_MS = 4000
 // a file untouched for this long holds no live request
@@ -20,10 +19,22 @@ const COLOR = { PR: 'magenta', ISSUE: 'green' } as const
 const TYPED = ['composer', 'bridge']
 const STATUS_COLOR: Record<string, string> = { 'needs-input': 'yellow', running: 'cyan' }
 const LAUNCH = 'Apri il git desk con la skill git-desk e collega questa chat.'
+const APP_SESSIONS = 'Library/Application Support/Claude/claude-code-sessions'
 
 const files: Record<string, StateFile> = {}
-const memo: { before: Record<string, string> | null; polling: boolean; etag: string | null; base: string | null } =
-  { before: null, polling: false, etag: null, base: null }
+const memo: {
+  before: Record<string, string> | null; polling: boolean; etag: string | null; base: string | null
+  closed: Record<string, number> | null
+} = { before: null, polling: false, etag: null, base: null, closed: null }
+
+/** The requests closed with ✕, kept in the plugin's store so a restart does not bring them back. */
+async function closedIds($: EngineInterface, nowMs: number) {
+  if (!memo.closed) {
+    const stored = await $.store.get('closed')
+    memo.closed = recentClosed((stored ?? {}) as Record<string, number>, nowMs, STALE_FILE_MS)
+  }
+  return memo.closed
+}
 
 async function stateDir($: EngineInterface) {
   const configured = await $.env.get('GIT_WORKFLOW_STATE_DIR')
@@ -88,12 +99,14 @@ async function poll($: EngineInterface) {
     const session = await $.session.id()
     const nowSec = now / 1000
     const attached = Object.values(files).some(f => mentions(f.state, session))
-    const items: DeskItem[] = []
+    const closed = await closedIds($, now)
+    const all: DeskItem[] = []
     for (const [name, file] of Object.entries(files)) {
       const repo = name.replace(/\.json$/, '').replace('__', '/')
       for (const item of itemsOf(repo, file.state, nowSec))
-        if (!attached || item.session === session) items.push(item)
+        if (!attached || item.session === session) all.push(item)
     }
+    const items = unclosed(all, closed)
     if (memo.before) for (const line of transitions(memo.before, items)) $.ui.toast(line, { timeoutMs: 8000 })
     memo.before = Object.fromEntries(items.map(i => [i.key, i.status]))
     const open = items.filter(isOpen)
@@ -115,6 +128,45 @@ async function openDesk($: EngineInterface, desk: Desk) {
     // no Browser pane on this host: the link instead
   }
   return `Desk di ${desk.repo}: ${url}`
+}
+
+async function closeRow($: EngineInterface, item: DeskItem) {
+  const now = await $.clock.now()
+  const closed = { ...recentClosed(await closedIds($, now), now, STALE_FILE_MS), [item.id]: now }
+  memo.closed = closed
+  await $.store.set('closed', closed)
+  const open = (await read($, shown)).filter(i => i.id !== item.id)
+  await update($, shown, () => open)
+  $.ui.status(statusLine(open))
+}
+
+/** The desktop app's session that runs the loop, by the CLI session id the ledger keeps. */
+async function appSession($: EngineInterface, cliSession: string) {
+  const home = await $.env.get('HOME')
+  if (!home) return null
+  const found = await $.process.run(['grep', '-rlF', '--include=local_*.json', cliSession, `${home}/${APP_SESSIONS}`])
+  for (const path of found.stdout.split('\n').filter(Boolean)) {
+    try {
+      const record = JSON.parse(await $.fs.read(path)) as { sessionId?: string; cliSessionId?: string }
+      if (record.cliSessionId === cliSession && record.sessionId) return record.sessionId
+    } catch {
+      // a record mid-write: the next candidate
+    }
+  }
+  return null
+}
+
+async function gotoChat($: EngineInterface, item: DeskItem) {
+  try {
+    const local = await appSession($, item.session)
+    if (local) {
+      const got = await $.process.run(['open', `claude://claude.ai/epitaxy/${local}`])
+      if (got.exitCode === 0) return
+    }
+  } catch {
+    // no desktop app on this host: the resume command instead
+  }
+  $.ui.toast(`La chat di ${item.label}: claude --resume ${item.session}`, { timeoutMs: 15000 })
 }
 
 export const register: Register = on => {
@@ -168,18 +220,13 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    const open = await read($, shown)
-    const closed = (await read($, closedAtom)) ?? {}
-    const items = unclosed(open, closed)
+    const items = await read($, shown)
     if (e.props.hasSurvey || !items.length) return next(e)
+    const session = await $.session.id()
     const { Box, Text, Button } = $.ui.resolve(e)
     const repos = items.map(i => i.repo)
     const rows = [...items].sort((a, b) =>
       Number(b.status === 'needs-input') - Number(a.status === 'needs-input') || a.at.localeCompare(b.at))
-    const close = (item: DeskItem) => {
-      void update($, closedAtom, c => Object.fromEntries([
-        ...Object.entries(c ?? {}).filter(([k]) => open.some(i => i.key === k)), [item.key, shownAs(item)]]))
-    }
     return (
       <Box flexDirection="column">
         {rows.slice(0, Math.max(1, e.props.maxRows - 1)).map(item => (
@@ -194,8 +241,11 @@ export const register: Register = on => {
               {item.report ? <Box flexShrink={1} flexGrow={1} minWidth={0}>
                 <Text dimColor wrap="truncate-end"> · {item.report}</Text></Box> : null}
             </Box>
+            {item.session && item.session !== session ? <Box flexShrink={0}>
+              <Button key={`goto-${item.key}`} plain onPress={() => { void gotoChat($, item) }}>↗</Button></Box> : null}
             <Box flexShrink={0}>
-              <Button key={`close-${item.key}`} role="dismiss" plain dimColor onPress={() => close(item)}>✕</Button></Box>
+              <Button key={`close-${item.key}`} role="dismiss" plain dimColor
+                onPress={() => { void closeRow($, item) }}>✕</Button></Box>
           </Box>
         ))}
       </Box>

@@ -2,6 +2,7 @@ export type Tag = 'PR' | 'ISSUE'
 
 export type DeskItem = {
   key: string
+  id: string
   repo: string
   session: string
   tag: Tag
@@ -27,7 +28,6 @@ declare module 'claude-code' {
     'git-workflow': {
       items: DeskItem[]
       desk: Desk | null
-      closed: Record<string, string>
     }
   }
 }

@@ -1,6 +1,8 @@
 import type { DeskItem, Tag } from '../types'
 
 type Raw = {
+  id?: string
+  desk?: string
   session?: string
   kind?: string
   status?: string
@@ -57,18 +59,25 @@ function atOf(raw: Raw): string {
   return (at ?? '').replace(HHMM, '$1')
 }
 
-/** The chat-routed requests of one desk state file, live or just closed. */
+/** `2026-10-07 17:24`, the desk's local start, in epoch seconds; 0 when unreadable. */
+export const sinceEpoch = (since: string | undefined) => (Date.parse((since ?? '').replace(' ', 'T')) / 1000) || 0
+
+/** The chat-routed requests of one desk state file, live or just closed, of a desk still up:
+ *  a request of a desk since closed, or of one before the running desk, is gone with it. */
 export function itemsOf(repo: string, state: unknown, nowSec: number): DeskItem[] {
-  const ledger = (state as { requests?: Record<string, Raw> } | null)?.requests ?? {}
+  const s = state as { requests?: Record<string, Raw>; desks?: Record<string, DeskMark> } | null
+  const ledger = s?.requests ?? {}
   const out: DeskItem[] = []
   for (const [key, raw] of Object.entries(ledger)) {
     if (!raw || raw.via !== 'chat-session') continue
+    const mark = s?.desks?.[raw.desk ?? 'pr']
+    if (!mark || mark.stopped || (raw.epoch ?? startOf(raw)) < sinceEpoch(mark.since)) continue
     const status = raw.status ?? ''
     const budget = BUDGET[status]
     if (budget !== undefined && nowSec - startOf(raw) > budget) continue
     if (budget === undefined && !CLOSED.includes(status)) continue
     out.push({
-      key: `${repo} ${key}`, repo, session: raw.session ?? '', tag: tagOf(raw),
+      key: `${repo} ${key}`, id: raw.id ?? `${repo} ${key} ${raw.epoch ?? 0}`, repo, session: raw.session ?? '', tag: tagOf(raw),
       label: labelOf(raw), status, at: atOf(raw), report: raw.report ?? '',
     })
   }
@@ -90,11 +99,13 @@ export function projectOf(repo: string, all: string[] = []): string {
   return all.some(other => other !== repo && other.split('/').pop() === short) ? repo : short
 }
 
-/** What a closed row was showing: a new status or report brings it back. */
-export const shownAs = (item: DeskItem) => `${item.status}|${item.report}`
+/** A request closed with ✕ stays closed, whatever it does next. */
+export const unclosed = (items: DeskItem[], closed: Record<string, number> = {}) =>
+  items.filter(i => !(i.id in closed))
 
-export const unclosed = (items: DeskItem[], closed: Record<string, string> = {}) =>
-  items.filter(i => closed[i.key] !== shownAs(i))
+/** The closed requests worth remembering: past this age none of them can show again. */
+export const recentClosed = (closed: Record<string, number>, nowMs: number, keepMs: number) =>
+  Object.fromEntries(Object.entries(closed).filter(([, at]) => nowMs - at < keepMs))
 
 export function mentions(state: unknown, session: string): boolean {
   const s = state as { chats?: Record<string, unknown>; requests?: Record<string, Raw> } | null
@@ -152,6 +163,7 @@ export const waiting = (items: DeskItem[]) => items.filter(i => i.status === 'ne
 // deskstate.CHAT_STALE: a heartbeat older than this is no chat
 const CHAT_STALE = 45
 
+type DeskMark = { since?: string; stopped?: string }
 type Mark = { port?: number; stopped?: string }
 type Chat = { epoch?: number }
 export type StateFile = { mtime: number; state: unknown }

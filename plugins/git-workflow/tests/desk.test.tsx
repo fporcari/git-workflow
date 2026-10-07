@@ -3,10 +3,11 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import type { Desk, DeskItem, Preparation } from '../types'
 import {
-  bareGoAhead, deskTarget, itemsOf, pollHeaders, projectOf, shownAs, statusLine, transitions, unclosed,
+  bareGoAhead, deskTarget, itemsOf, pollHeaders, projectOf, recentClosed, statusLine, transitions, unclosed,
 } from '../hooks/desk'
 
 const NOW = 1_800_000_000
+const UP = { pr: { since: '2020-01-01 00:00' } }
 const TYPED = { wait: false, origin: { kind: 'composer' } } as const
 
 // the poll reads files a test has none of: the test answers the band's state
@@ -15,6 +16,7 @@ const seed = (on: On, items: DeskItem[]) => {
   on('state.get', ($, e, next) =>
     e.plugin === 'git-workflow' && e.key === 'items' ? { value: { value: items, version: 1 } } : next(e))
   on('prompt.submit', ($, e) => ({ text: e.text, context: e.context, origin: e.origin }))
+  on('session.id', () => ({ value: 'the-chat' }))
   on('ui.render', ($, e) => {
     const { Text } = $.ui.resolve(e)
     return <Text>engine</Text>
@@ -22,13 +24,14 @@ const seed = (on: On, items: DeskItem[]) => {
 }
 
 const item = (over: Partial<DeskItem>): DeskItem => ({
-  key: 'o/r run:pr-loop', repo: 'o/r', session: 's1', tag: 'PR',
+  key: 'o/r run:pr-loop', id: 'r1', repo: 'o/r', session: 's1', tag: 'PR',
   label: 'pr-loop #1145', status: 'running', at: '22:10', report: '', ...over,
 })
 
 describe('reading a desk state file', () => {
   test('keeps the chat-routed requests, tags them, and drops the stale', () => {
     const state = {
+      desks: UP,
       requests: {
         'run:pr-loop': { via: 'chat-session', session: 's1', kind: 'run', status: 'running',
           payload: { flow: 'pr-loop', ns: [1145, 1128] }, running_at: '22:10', running_epoch: NOW - 60 },
@@ -44,6 +47,20 @@ describe('reading a desk state file', () => {
       ['PR', 'pr-loop #1145 #1128', 'running'],
       ['ISSUE', 'issue-loop #7', 'needs-input'],
     ])
+  })
+
+  test('a closed desk takes its requests with it, and so does the desk after it', () => {
+    const loop = { via: 'chat-session', session: 's1', kind: 'run', status: 'needs-input',
+                   payload: { flow: 'issue-loop', ns: [7] }, epoch: NOW - 600 }
+    const before = new Date((NOW - 60) * 1000)
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const since = `${before.getFullYear()}-${pad(before.getMonth() + 1)}-${pad(before.getDate())} ` +
+      `${pad(before.getHours())}:${pad(before.getMinutes())}`
+    expect(itemsOf('o/r', { desks: UP, requests: { a: loop } }, NOW)).toHaveLength(1)
+    expect(itemsOf('o/r', { desks: { pr: { since: '2020-01-01 00:00', stopped: 'x' } }, requests: { a: loop } }, NOW))
+      .toEqual([])
+    expect(itemsOf('o/r', { desks: { pr: { since } }, requests: { a: loop } }, NOW)).toEqual([])
+    expect(itemsOf('o/r', { requests: { a: loop } }, NOW)).toEqual([])
   })
 })
 
@@ -156,16 +173,17 @@ describe('the band', () => {
     await ui.unmount()
   })
 
-  test('a closed row stays closed until what it shows changes', () => {
-    const running = item({ key: 'a' })
-    const closed = { a: shownAs(running) }
+  test('a closed row stays closed, whatever its loop does next; the next run of the loop shows', () => {
+    const running = item({ id: 'r1' })
+    const closed = { r1: 1 }
     expect(unclosed([running], closed)).toEqual([])
-    expect(unclosed([{ ...running, status: 'needs-input' }], closed)).toHaveLength(1)
-    expect(unclosed([{ ...running, report: 'PR #1150 aperta' }], closed)).toHaveLength(1)
+    expect(unclosed([{ ...running, status: 'needs-input', report: 'PR #1150 aperta' }], closed)).toEqual([])
+    expect(unclosed([{ ...running, id: 'r2' }], closed)).toHaveLength(1)
+    expect(recentClosed({ old: 0, fresh: 900 }, 1000, 500)).toEqual({ fresh: 900 })
   })
 
   test('a long loop keeps one line: its numbers past three are counted, its time is minutes', () => {
-    const state = { requests: { 'run:issue-loop': { via: 'chat-session', session: 's1', kind: 'run',
+    const state = { desks: UP, requests: { 'run:issue-loop': { via: 'chat-session', session: 's1', kind: 'run',
       status: 'needs-input', at: '17:33:05', epoch: NOW - 60,
       payload: { flow: 'issue-loop', ns: [1622, 1621, 1617, 1577, 1567, 1612] } } } }
     const [one] = itemsOf('genropy/genropy', state, NOW)
@@ -185,6 +203,36 @@ describe('the band', () => {
     seed(on, [item({ key: 'a' })])
     const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
     expect(await ui.find({ key: 'close-a' })).toBeDefined()
+    await ui.unmount()
+  })
+
+  test('✕ closes the row for good: kept in the store, so a restart does not bring it back', async ($, on) => {
+    seed(on, [item({ key: 'a', id: 'r1' })])
+    const stored: Record<string, unknown> = {}
+    on('store.get', ($, e) => ({ value: stored[e.key] }))
+    on('store.set', ($, e) => { stored[e.key] = e.value; return { value: undefined } })
+    on('state.set', () => ({ value: { isSet: true as const, version: 2 } }))
+    on('clock.now', () => ({ value: NOW * 1000 }))
+    const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+    await ui.press({ key: 'close-a' })
+    expect(Object.keys(stored.closed as object)).toEqual(['r1'])
+    await ui.unmount()
+  })
+
+  test('↗ opens the loop\'s chat in the desktop app; this chat\'s own rows have none', async ($, on) => {
+    seed(on, [item({ key: 'a', session: 'cli-1' }), item({ key: 'b', session: 'the-chat' })])
+    const runs: string[][] = []
+    on('env.get', () => ({ value: '/Users/me' }))
+    on('process.run', ($, e) => {
+      runs.push([...e.argv])
+      const stdout = e.argv[0] === 'grep' ? '/Users/me/s/local_x.json\n' : ''
+      return { value: { exitCode: 0, stdout, stderr: '' } }
+    })
+    on('fs.read', () => ({ value: JSON.stringify({ sessionId: 'local_x', cliSessionId: 'cli-1' }) }))
+    const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+    expect(await ui.find({ key: 'goto-b' })).toBeUndefined()
+    await ui.press({ key: 'goto-a' })
+    expect(runs.at(-1)).toEqual(['open', 'claude://claude.ai/epitaxy/local_x'])
     await ui.unmount()
   })
 
