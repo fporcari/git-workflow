@@ -1,7 +1,7 @@
 {
   "name": "git-workflow",
   "description": "PR and issue workflow toolkit with a git desk: a detached local server triages in background and a local page, in the Browser pane beside the chat or in the browser, lists the PRs whose next move is yours, ready for pr-loop, the issues into to close and for Claude. A mod in this plugin shows the loops at work and a toast when one waits for you or closes. Every click runs in the attached chat with its command echoed; public actions only there.",
-  "version": "0.66.0",
+  "version": "0.66.1",
   "author": {
     "name": "Francesco Porcari",
     "email": "fporcari@softwell.it"

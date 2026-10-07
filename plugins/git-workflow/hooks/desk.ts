@@ -27,6 +27,9 @@ const ISSUE_KINDS = ['issue-analyze', 'close']
 const ISSUE_FLOWS = ['issue-loop', 'issue-triage']
 
 export const OPEN = Object.keys(BUDGET)
+// a loop's numbers past these are on the desk, not in a one-line row
+const MAX_NS = 3
+const HHMM = /^(\d{2}:\d{2}):\d{2}$/
 
 export function tagOf(raw: Raw): Tag {
   const flow = raw.payload?.flow ?? ''
@@ -42,15 +45,16 @@ function startOf(raw: Raw): number {
 function labelOf(raw: Raw): string {
   const flow = raw.payload?.flow
   const ns = raw.payload?.ns ?? []
-  if (flow) return ns.length ? `${flow} ${ns.map(n => `#${n}`).join(' ')}` : flow
+  const shown = ns.slice(0, MAX_NS).map(n => `#${n}`).join(' ')
+  if (flow) return ns.length ? `${flow} ${shown}${ns.length > MAX_NS ? ` +${ns.length - MAX_NS}` : ''}` : flow
   return raw.n != null ? `${raw.kind} #${raw.n}` : raw.label ?? raw.kind ?? '?'
 }
 
 function atOf(raw: Raw): string {
-  if (raw.status === 'running') return raw.running_at ?? raw.at ?? ''
-  if (raw.status === 'taken') return raw.taken_at ?? raw.at ?? ''
-  if (CLOSED.includes(raw.status ?? '')) return raw.closed_at ?? raw.at ?? ''
-  return raw.at ?? ''
+  const at = raw.status === 'running' ? raw.running_at ?? raw.at
+    : raw.status === 'taken' ? raw.taken_at ?? raw.at
+    : CLOSED.includes(raw.status ?? '') ? raw.closed_at ?? raw.at : raw.at
+  return (at ?? '').replace(HHMM, '$1')
 }
 
 /** The chat-routed requests of one desk state file, live or just closed. */

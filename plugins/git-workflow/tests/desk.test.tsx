@@ -164,6 +164,23 @@ describe('the band', () => {
     expect(unclosed([{ ...running, report: 'PR #1150 aperta' }], closed)).toHaveLength(1)
   })
 
+  test('a long loop keeps one line: its numbers past three are counted, its time is minutes', () => {
+    const state = { requests: { 'run:issue-loop': { via: 'chat-session', session: 's1', kind: 'run',
+      status: 'needs-input', at: '17:33:05', epoch: NOW - 60,
+      payload: { flow: 'issue-loop', ns: [1622, 1621, 1617, 1577, 1567, 1612] } } } }
+    const [one] = itemsOf('genropy/genropy', state, NOW)
+    expect(one!.label).toBe('issue-loop #1622 #1621 #1617 +3')
+    expect(one!.at).toBe('17:33')
+  })
+
+  test('a long row keeps its close key in view', async ($, on) => {
+    seed(on, [item({ key: 'a', label: 'issue-loop #1622 #1621 #1617 +3', status: 'needs-input',
+                     report: '4 PR aperte, 2 issue da decidere, una da chiudere a mano' })])
+    const ui = await $.ui.mount({ ...BAND, props: { ...BAND.props, bodyColumns: 60 }, surface: 'desktop' })
+    expect(await ui.find({ key: 'close-a' })).toBeDefined()
+    await ui.unmount()
+  })
+
   test('every row has its close key', async ($, on) => {
     seed(on, [item({ key: 'a' })])
     const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })

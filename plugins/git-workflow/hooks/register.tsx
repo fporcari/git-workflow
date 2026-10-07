@@ -183,15 +183,19 @@ export const register: Register = on => {
     return (
       <Box flexDirection="column">
         {rows.slice(0, Math.max(1, e.props.maxRows - 1)).map(item => (
-          <Box key={item.key} flexDirection="row">
-            <Box flexDirection="row" flexGrow={1} flexShrink={1}>
-              <Text color={COLOR[item.tag]} bold>● {item.tag === 'PR' ? 'PR   ' : 'ISSUE'} </Text>
-              <Text wrap="truncate-end">{`${projectOf(item.repo, repos)} · ${item.label} · `}</Text>
-              <Text color={STATUS_COLOR[item.status]} bold={item.status === 'needs-input'}>
-                {wordOf(item.status)}{item.at ? ` dalle ${item.at}` : ''}</Text>
-              {item.report ? <Text dimColor wrap="truncate-end"> · {item.report}</Text> : null}
+          <Box key={item.key} flexDirection="row" gap={1}>
+            <Box flexDirection="row" flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
+              <Box flexShrink={0}><Text color={COLOR[item.tag]} bold>● {item.tag === 'PR' ? 'PR   ' : 'ISSUE'} </Text></Box>
+              <Box flexShrink={1} minWidth={0}>
+                <Text wrap="truncate-end">{`${projectOf(item.repo, repos)} · ${item.label} · `}</Text></Box>
+              <Box flexShrink={0}>
+                <Text wrap="truncate-end" color={STATUS_COLOR[item.status]} bold={item.status === 'needs-input'}>
+                  {wordOf(item.status)}{item.at ? ` dalle ${item.at}` : ''}</Text></Box>
+              {item.report ? <Box flexShrink={1} flexGrow={1} minWidth={0}>
+                <Text dimColor wrap="truncate-end"> · {item.report}</Text></Box> : null}
             </Box>
-            <Button key={`close-${item.key}`} role="dismiss" plain dimColor onPress={() => close(item)}>✕</Button>
+            <Box flexShrink={0}>
+              <Button key={`close-${item.key}`} role="dismiss" plain dimColor onPress={() => close(item)}>✕</Button></Box>
           </Box>
         ))}
       </Box>
