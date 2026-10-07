@@ -106,7 +106,8 @@ Keep a few lines per group — what it changes, what it risks — and decide on
 those. Name in `not_verified` every group of `giant.left` and the counted
 non-code files as not read. A `giant` with an `error` could not list the
 files: read the diff only as far as the budget allows and say where you
-stopped. Its `stance` is `doubt` (§4), with your `lean`.
+stopped. When it asks for the user's judgment its `stance` is `doubt` (§4),
+with your `lean`; a giant draft, or one waiting on somebody, keeps `null`.
 
 ## 3 · Establish the full decision
 
@@ -189,9 +190,9 @@ On somebody else's PR the user is asked to review:
   `draft`); `hunk` points at the one hunk that shows it — the file path and
   that hunk's `@@` header line exactly as the diff prints it — or is `null`.
   A PR you could not read whole (too large, history incomplete, a claim you
-  could not check) is a `doubt`, never an `approve`; a giant PR (§2) is a
-  `doubt` even when you read all of it, and the desk holds it there whatever
-  stance you give.
+  could not check) is a `doubt`, never an `approve`; a giant PR (§2) asking
+  for a review is a `doubt` even when you read all of it, and the desk holds
+  it there whatever stance you give.
 
 On the user's own PR, only when a reviewer asked for something:
 
