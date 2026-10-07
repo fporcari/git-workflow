@@ -291,8 +291,9 @@ itself and paints in seconds; then, in a thread of its own, it runs the
 preparation — the grid, one `pr-analyze` job per PR whose analysis is missing
 or stale, smallest first, the conflict readings owed on your `DIRTY` PRs,
 and beside them the issue ranking and the shortlist's analyses, four jobs at
-a time with one kept for the issues. A PR over 1500 changed lines waits among
-the doubts to be read by hand instead. Launched from Claude Code, the pane
+a time with one kept for the issues. A PR over 1500 lines of code (tests,
+generated bundles, docs and lock files are not counted) waits among the
+doubts to be read by hand instead. Launched from Claude Code, the pane
 waits for the preparation: every five PRs read, and at its end, a `DESK
 PRONTO` notice above the prompt says what waits and *Apri il desk* opens it,
 so you start on the first five while the rest is read. While the desk is looked at, a

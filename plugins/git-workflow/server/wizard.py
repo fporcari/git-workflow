@@ -163,8 +163,9 @@ def review_section(queue, state, me, active_jobs=()):
             reason = failed.get(str(row["n"]))
             if verdicts.too_big(row):
                 steps["doubt"].append(card(row, stance=None, doubt=(
-                    "PR molto grande (%d righe): Claude non la legge da solo, "
-                    "Analizza se vuoi il suo parere" % row["size"]), why="da leggere a mano",
+                    "PR molto grande (%d righe di codice su %d): Claude non la legge "
+                    "da solo, Analizza se vuoi il suo parere"
+                    % (verdicts.review_size(row), row["size"])), why="da leggere a mano",
                     **marks))
             elif reason:
                 steps["doubt"].append(card(row, stance=None, doubt=(

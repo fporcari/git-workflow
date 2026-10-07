@@ -1,6 +1,7 @@
 """The wizard: which step every row belongs to, read off the provider facts,
 the engine's verdict and the analysis' stance — never off a model's copy."""
 
+import json
 import os
 import sys
 import tempfile
@@ -56,6 +57,10 @@ def analyze(desk, n, **verdict):
     jobs.persist(REPO, result, dict(keys, **verdict.pop("keys", {})))
 
 
+def owed(desk):
+    return json.loads(Path(desk.run_triage("pr-triage")).read_text())["model_tasks"]
+
+
 def steps(section):
     return {step["id"]: [card["n"] for card in step["rows"]]
             for step in section["steps"]}
@@ -108,14 +113,32 @@ class DaRivedere(unittest.TestCase):
         row["size"] = verdicts.GIANT_LINES + 1
         try:
             cache.clear(REPO)
-            rows, state = self.desk._queue_facts(complete_gates=True)[0], deskstate.load(REPO)
-            self.assertNotIn(str(n), prdesk.model_tasks(rows, state.get("prs"), ME))
+            self.assertNotIn(str(n), owed(self.desk))
+            self.assertTrue(owed(self.desk), "the other PRs still owe their analysis")
             review = self.desk.wizard()["review"]
             doubt = next(card for card in review["steps"][2]["rows"] if card["n"] == n)
-            self.assertIn("PR molto grande (%d righe)" % row["size"], doubt["doubt"])
+            self.assertIn("PR molto grande (%d righe di codice su %d)"
+                          % (row["size"], row["size"]), doubt["doubt"])
             self.assertNotIn(n, [card["n"] for card in review["pending"]])
         finally:
             del row["size"]
+            cache.clear(REPO)
+
+    def test_a_pr_big_only_in_tests_and_bundles_is_analyzed_like_any_other(self):
+        n = self.ns[0]
+        row = next(r for r in self.desk.provider._d(REPO)["rows"] if r["n"] == n)
+        row["files"] = [{"path": "gnrjs/gnr_d11/js/genro_bagjs_bundle.js", "additions": 11000, "deletions": 0},
+                        {"path": "gnrpy/tests/web/test_next.py", "additions": 900, "deletions": 0},
+                        {"path": "gnrpy/gnr/web/next.py", "additions": 300, "deletions": 20}]
+        row["size"] = 12220
+        try:
+            cache.clear(REPO)
+            rows = self.desk._queue_facts(complete_gates=True)[0]
+            self.assertEqual(next(r for r in rows if r["n"] == n)["code_size"], 320)
+            self.assertIn(str(n), owed(self.desk))
+            self.assertIn(n, [card["n"] for card in self.desk.wizard()["review"]["pending"]])
+        finally:
+            del row["size"], row["files"]
             cache.clear(REPO)
 
     def test_needs_verification_is_never_approvable_on_tests_not_green(self):

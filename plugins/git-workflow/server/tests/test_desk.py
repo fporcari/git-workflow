@@ -267,6 +267,18 @@ class MergeStatePhase(unittest.TestCase):
 
 
 class Verdicts(unittest.TestCase):
+
+    def test_the_review_size_counts_code_not_tests_bundles_docs_or_locks(self):
+        files = [{"path": p, "additions": 10, "deletions": 1} for p in (
+            "gnrjs/gnr_d11/js/genro_bagjs_bundle.js", "gnrjs/tests/bag.test.js",
+            "gnrpy/tests/sql/test_macro.py", "gnrpy/gnr/sql/macro_test.py", "docs/storage.md",
+            "README.rst", "app.min.js", "package-lock.json", "uv.lock",
+            "gnrpy/gnr/sql/macro.py", "gnrpy/gnr/app/clock.py")]
+        self.assertEqual(verdicts.code_lines(files), 22)
+        self.assertEqual(verdicts.review_size({"size": 5000, "code_size": 300}), 300)
+        self.assertEqual(verdicts.review_size({"size": 5000, "code_size": None}), 5000)
+        self.assertFalse(verdicts.too_big({"size": 5000, "code_size": 300}))
+        self.assertTrue(verdicts.too_big({"size": 5000}))
     def test_approved_and_clean_is_a1(self):
         row = {"author": "me", "draft": False, "merge": "CLEAN", "decision": "APPROVED",
                "assignees": ["me"],

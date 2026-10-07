@@ -21,6 +21,8 @@ off) must keep its `A1` — whose merge it is by convention is a house rule,
 not something to infer from a protection setting.
 """
 
+import re
+
 
 def _last_who(row):
     """Who spoke last, ignoring approvals: an approval closes a conversation,
@@ -51,12 +53,29 @@ def _landing(gate):
 
 VERIFY_LABEL = "needs-verification"
 
-# lines added plus removed past which a PR is read by a person, not analyzed in background
+# lines of code added plus removed past which a PR is read by a person, not analyzed in background
 GIANT_LINES = 1500
+# what a PR's size counts but nobody reviews line by line: tests, generated bundles, docs, lock files
+NOT_CODE = re.compile(
+    r"(^|/)tests?/|(^|/)test_[^/]*$|_test\.py$|\.(test|spec)\.[jt]sx?$"
+    r"|_bundle\.js$|\.min\.(js|css)$|(^|/)docs?/|\.(md|rst)$"
+    r"|(^|/)(package-lock\.json|pnpm-lock\.yaml)$|\.lock$")
+
+
+def code_lines(files):
+    return sum((f.get("additions") or 0) + (f.get("deletions") or 0)
+               for f in files if not NOT_CODE.search(f.get("path") or ""))
+
+
+def review_size(row):
+    """The lines a reviewer reads: the code ones when the provider counted
+    them, the whole change otherwise."""
+    code = row.get("code_size")
+    return row.get("size") if code is None else code
 
 
 def too_big(row):
-    return (row.get("size") or 0) > GIANT_LINES
+    return (review_size(row) or 0) > GIANT_LINES
 
 
 def _parked_on(row, me):

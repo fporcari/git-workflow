@@ -38,8 +38,10 @@ are added after creation through the add_* methods, one path on every service.
 """
 
 import re
+from concurrent.futures import ThreadPoolExecutor
 
 import issuecheck
+import verdicts
 
 REPO_REF = r"(?:([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+))?#(\d+)\b"
 CLOSES = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s*" + REPO_REF, re.I)
@@ -206,6 +208,10 @@ class Provider:
         """The unified diff as text."""
         raise NotImplementedError
 
+    def pr_files(self, repo, n):
+        """[{path, additions, deletions}], one per changed file."""
+        raise NotImplementedError
+
     def issue_detail(self, repo, n):
         """One issue with its comments, the shape documented at the top."""
         raise NotImplementedError
@@ -355,3 +361,21 @@ def verification_result(body):
         if line[-1] == "Verification result: " + result:
             return result
     return None
+
+
+def measure_code(provider, repo, rows):
+    """`code_size` on the rows whose whole change is over the giant
+    threshold: one file listing each, only for those. A listing that fails
+    leaves the whole size to count."""
+    big = [row for row in rows if (row.get("size") or 0) > verdicts.GIANT_LINES]
+
+    def one(row):
+        try:
+            row["code_size"] = verdicts.code_lines(provider.pr_files(repo, row["n"]))
+        except Exception:
+            row["code_size"] = None
+
+    if big:
+        with ThreadPoolExecutor(max_workers=min(8, len(big))) as pool:
+            list(pool.map(one, big))
+    return rows

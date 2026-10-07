@@ -32,7 +32,8 @@ from urllib.parse import quote
 
 import gate as gatelib
 
-from .base import (Provider, REVIEW_STATES, brief_row, detail_row, issue_row, logins, review_row,
+from .base import (Provider, REVIEW_STATES, brief_row, detail_row, issue_row, logins, measure_code,
+                   review_row,
                    verification_result)
 
 GQL = Path(__file__).resolve().parents[1] / "gql"
@@ -128,7 +129,7 @@ class GitHubProvider(Provider):
         search = _graphql("pr_core.graphql", q=q)["search"]
         nodes = [node for node in search["nodes"]
                  if node and node.get("state", "OPEN") == "OPEN"]
-        rows = [self._row(repo, node) for node in nodes]
+        rows = measure_code(self, repo, [self._row(repo, node) for node in nodes])
         rows.sort(key=lambda r: r["created"], reverse=True)
         total = search["issueCount"] - (len(search["nodes"]) - len(nodes))
         return {"rows": rows, "total": max(len(rows), total),
@@ -381,6 +382,10 @@ class GitHubProvider(Provider):
 
     def pr_diff(self, repo, n):
         return _gh("pr", "diff", str(n), "--repo", repo)
+
+    def pr_files(self, repo, n):
+        return [{"path": f["filename"], "additions": f.get("additions"), "deletions": f.get("deletions")}
+                for f in self._rest("repos/%s/pulls/%s/files?per_page=100" % (repo, n), paginate=True)]
 
     def issue_detail(self, repo, n):
         return issue_row(self._rest("repos/%s/issues/%s" % (repo, n)),

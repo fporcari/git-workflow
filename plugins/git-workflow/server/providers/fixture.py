@@ -12,7 +12,7 @@ import os
 import time
 from pathlib import Path
 
-from .base import Provider, closes_from_body
+from .base import Provider, closes_from_body, measure_code
 
 FIXTURE_DIR = Path(__file__).resolve().parents[1] / "tests" / "fixtures"
 
@@ -61,6 +61,7 @@ class FixtureProvider(Provider):
             row.setdefault("head", None)
             row.setdefault("incomplete", False)
             rows.append(row)
+        measure_code(self, repo, rows)
         return {"rows": rows, "total": self._d(repo).get("queue_total", len(rows)),
                 "truncated": bool(self._d(repo).get("queue_truncated"))}
 
@@ -147,6 +148,12 @@ class FixtureProvider(Provider):
 
     def pr_reviews(self, repo, n):
         return self.pr_detail(repo, n)["reviews"]
+
+    def pr_files(self, repo, n):
+        row = next((r for r in self._d(repo)["rows"] if r["n"] == n), {})
+        if "files" not in row:
+            raise RuntimeError("fixture has no files for PR %s" % n)
+        return row["files"]
 
     def pr_diff(self, repo, n):
         diffs = self.data.get("diffs") or {}

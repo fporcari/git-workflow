@@ -33,7 +33,8 @@ from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 
 from .base import (Provider, REVIEW_STATES, brief_row, closes_from_body, decision_from, detail_row,
-                   issue_row, login, logins, refs_from_body, review_row, verification_result)
+                   issue_row, login, logins, measure_code, refs_from_body, review_row,
+                   verification_result)
 
 STATE_MAP = {"REQUEST_CHANGES": "CHANGES_REQUESTED", "COMMENT": "COMMENTED"}
 KEYCHAIN_SERVICE = "FORGEJO_TOKEN"
@@ -181,6 +182,7 @@ class ForgejoProvider(Provider):
                                         and not row["reviews"])
             if self._involves(row, me):
                 rows.append(row)
+        measure_code(self, repo, rows)
         rows.sort(key=lambda r: r["created"], reverse=True)
         return {"rows": rows, "total": len(rows), "truncated": len(pulls) >= 50}
 
@@ -329,6 +331,10 @@ class ForgejoProvider(Provider):
 
     def pr_diff(self, repo, n):
         return self._get_text("/repos/%s/pulls/%s.diff" % (repo, n))
+
+    def pr_files(self, repo, n):
+        return [{"path": f["filename"], "additions": f.get("additions"), "deletions": f.get("deletions")}
+                for f in self._get_all("/repos/%s/pulls/%s/files" % (repo, n))]
 
     def issue_detail(self, repo, n):
         return issue_row(self._get("/repos/%s/issues/%s" % (repo, n)),
