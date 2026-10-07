@@ -191,6 +191,7 @@ function handlers($: EngineInterface, view: View, wizard: Wizard | null): Handle
       else if (card?.hunk && view.section === 'review') void fetchZoom($, card)
     },
     zoom: card => { void openZoom($, card) },
+    hush: text => change(v => ({ ...v, hushed: text })),
     primary: () => { void send($, primary(view, wizard)?.action ?? null) },
     next: () => {
       const def = sectionOf(view.section)
@@ -294,12 +295,13 @@ export const register: Register = on => {
         {band ? (
           <Box key="wizard" flexDirection="row" gap={1}>
             <Text color={band.doubt ? 'yellow' : isIssue ? COLOR.ISSUE : COLOR.PR} bold>{band.tag}</Text>
-            <Text wrap="truncate-end">{band.text}</Text>
+            <Box flexGrow={1} flexShrink={1}><Text wrap="truncate-end">{band.text}</Text></Box>
             {band.doubt ? [
               <Button key="band-a" hotkey="a" onPress={() => act.doubt('a')}>Approva</Button>,
               <Button key="band-r" hotkey="r" onPress={() => act.doubt('r')}>Chiedi modifiche</Button>,
               <Button key="band-s" hotkey="s" onPress={() => act.doubt('s')}>Salta</Button>,
             ] : null}
+            <Button key="band-hush" role="dismiss" plain dimColor onPress={() => act.hush(band.text)}>✕</Button>
           </Box>) : null}
         {rows.slice(0, Math.max(1, e.props.maxRows - (band ? 2 : 1))).map(item => (
           <Box key={item.key}>

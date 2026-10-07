@@ -191,8 +191,26 @@ export function preparedToasts(before: Record<string, string>, wizard: Wizard | 
   return out
 }
 
-/** What the band above the prompt says about the wizard, in one line. */
+const SAYS: Record<string, (n: number) => string> = {
+  'review:approve': n => `${n} PR che Claude approverebbe aspettano il tuo ok`,
+  'review:changes': n => `${n} PR da respingere: rileggi la motivazione e invia`,
+  'review:doubt': n => `${n} PR dubbie aspettano il tuo giudizio`,
+  'mine:merge': n => `${n} tue PR approvate sono pronte da mergiare`,
+  'mine:fix': n => `${n} tue PR le può sistemare Claude`,
+  'mine:decide': n => `${n} tue PR aspettano una tua scelta`,
+  'mine:waiting': n => `${n} tue PR aspettano qualcun altro`,
+  'issue:close': n => `${n} issue già risolte da chiudere`,
+  'issue:claude': n => `${n} issue le può fare Claude`,
+  'issue:decide': n => `${n} issue aspettano una tua decisione`,
+}
+
+/** What the band above the prompt says about the wizard, in one line; nothing when nothing waits or it was closed. */
 export function bandLine(view: View, wizard: Wizard | null): { tag: string; text: string; doubt?: Card } | null {
+  const line = bandSays(view, wizard)
+  return line && line.text !== view.hushed ? line : null
+}
+
+function bandSays(view: View, wizard: Wizard | null): { tag: string; text: string; doubt?: Card } | null {
   if (!wizard) return null
   const def = sectionOf(view.section)
   const step = currentStep(view, wizard)
@@ -202,15 +220,14 @@ export function bandLine(view: View, wizard: Wizard | null): { tag: string; text
     if (card) return { tag: `? DUBBIA ${Math.min(view.doubtAt, rows.length - 1) + 1}/${rows.length}`,
                        text: `${card.label ?? `#${card.n}`} ${card.title ?? ''}`, doubt: card }
   }
+  const tag = `● ${def.tag}`
   const p = wizard.prepare?.[view.section === 'issue' ? 'issue' : 'pr']
-  if (p?.status === 'running') return { tag: `● ${def.tag}`, text: p.phrase }
-  if (!def.steps.length || !step) return { tag: `● ${def.tag}`, text: p?.phrase ?? '' }
+  if (p?.status === 'running') return { tag, text: p.phrase }
   const at = def.steps.findIndex(s => s.id === step)
-  const here = def.steps[at]
-  const rest = def.steps.slice(at + 1).filter(s => s.id !== 'done' && count(wizard, view.section, s.id))
-    .map(s => `${count(wizard, view.section, s.id)} ${s.label.toLowerCase()}`)
-  return { tag: `● ${def.tag}`,
-           text: `passo ${at + 1} di ${def.steps.length}` +
-             (here && here.id !== 'done' ? ` · ${count(wizard, view.section, here.id)} ${here.label.toLowerCase()}` : '') +
-             (rest.length ? ` · poi ${rest.join(', ')}` : '') }
+  const todo = def.steps.slice(Math.max(0, at)).filter(s => SAYS[`${view.section}:${s.id}`] && count(wizard, view.section, s.id))
+  const here = todo[0]
+  if (!here) return null
+  const rest = todo.slice(1).map(s => `${count(wizard, view.section, s.id)} ${s.label.toLowerCase()}`)
+  return { tag, text: SAYS[`${view.section}:${here.id}`]!(count(wizard, view.section, here.id)) +
+                      (rest.length ? ` · poi ${rest.join(', ')}` : '') }
 }

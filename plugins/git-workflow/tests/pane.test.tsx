@@ -110,7 +110,10 @@ describe('the wizard, as the pane reads it', () => {
 
   test('the band says the step, or the doubt in view', () => {
     expect(bandLine(EMPTY_VIEW, WIZARD)?.text)
-      .toBe('passo 1 di 4 · 2 approvabili · poi 1 da respingere, 1 dubbie')
+      .toBe('2 PR che Claude approverebbe aspettano il tuo ok · poi 1 da respingere, 1 dubbie')
+    expect(bandLine({ ...EMPTY_VIEW, steps: { review: 'done' } }, WIZARD)).toBeNull()
+    const said = bandLine(EMPTY_VIEW, WIZARD)!.text
+    expect(bandLine({ ...EMPTY_VIEW, hushed: said }, WIZARD)).toBeNull()
     const doubt = bandLine({ ...EMPTY_VIEW, steps: { review: 'doubt' } }, WIZARD)!
     expect(doubt.tag).toBe('? DUBBIA 1/1')
     expect(doubt.doubt?.n).toBe(1152)

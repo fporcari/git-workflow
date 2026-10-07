@@ -21,6 +21,7 @@ export type Handlers = {
   copy: (text: string) => void
   draft: (card: Card, text: string) => void
   launch: () => void
+  hush: (text: string) => void
 }
 
 export type Model = {

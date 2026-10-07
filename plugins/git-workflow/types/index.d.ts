@@ -101,6 +101,7 @@ export type View = {
   doubtAt: number
   zoom: string | null
   drafts: Record<string, string>
+  hushed?: string
 }
 
 export type Desk = { base: string; repo: string; token: string; attached: boolean; me: string }
