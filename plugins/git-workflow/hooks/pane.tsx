@@ -54,63 +54,86 @@ const LEADS: Record<string, string> = {
 const CHIP: Record<string, [string, string]> = {
   approve: ['green', 'approvabile'], changes: ['red', 'da respingere'], doubt: ['yellow', 'dubbia'],
 }
+// a step's colour says what its key does: green goes out as is, red refuses, yellow needs you
+const STEP_COLOR: Record<string, string> = {
+  approve: 'green', changes: 'red', doubt: 'yellow', merge: 'green', decide: 'yellow', close: 'green',
+}
+const ACCENT = 'cyan'
 const age = (d?: number | null) => (d == null ? '' : `${d}g`)
 const name = (c: Card) => c.label ?? `#${c.n}`
+const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, Math.max(1, n - 1))}…` : s)
+
+function rule(E: E, m: Model, k: string) {
+  const { Text } = E
+  return <Text key={k} dimColor wrap="truncate-end">{'─'.repeat(Math.max(8, m.columns))}</Text>
+}
 
 function header(E: E, m: Model) {
   const { Box, Text, Button } = E
   return (
-    <Box flexDirection="row" gap={1} flexWrap="wrap">
-      {SECTIONS.map(s => {
-        const x = section(m.wizard, s.id)
-        const count = typeof x?.count === 'number' ? ` ${x.count}` : ''
-        return (
-          <Button key={`sec-${s.id}`} plain dimColor={s.id !== m.view.section}
-            onPress={() => m.on.section(s.id)}>{`${s.label}${count}`}</Button>
-        )
-      })}
-      <Text color={m.desk?.attached ? 'green' : undefined} dimColor={!m.desk?.attached}>
-        {m.desk?.attached ? '● chat collegata' : '○ chat non collegata'}</Text>
+    <Box flexDirection="column">
+      <Box flexDirection="row" justifyContent="space-between" flexWrap="wrap" gap={1}>
+        <Box flexDirection="row" gap={1} flexWrap="wrap">
+          {SECTIONS.map(s => {
+            const x = section(m.wizard, s.id)
+            const label = `${s.label}${typeof x?.count === 'number' ? ` ${x.count}` : ''}`
+            return s.id === m.view.section
+              ? <Text key={`sec-${s.id}`} inverse bold>{` ${label} `}</Text>
+              : <Button key={`sec-${s.id}`} plain dimColor onPress={() => m.on.section(s.id)}>{label}</Button>
+          })}
+        </Box>
+        <Text color={m.desk?.attached ? 'green' : undefined} dimColor={!m.desk?.attached}>
+          {m.desk?.attached ? '● chat collegata' : '○ chat non collegata'}</Text>
+      </Box>
+      {rule(E, m, 'rule-head')}
     </Box>
   )
 }
 
 function stepper(E: E, m: Model, step: string) {
-  const { Box, Button } = E
+  const { Box, Text, Button } = E
   const def = sectionOf(m.view.section)
   if (!def.steps.length) return null
   const narrow = m.columns < NARROW
   return (
     <Box flexDirection="row" gap={1} flexWrap="wrap">
-      {def.steps.map((s, i) => {
+      {def.steps.flatMap((s, i) => {
         const rows = s.id === 'done' ? [] : stepRows(m.wizard, m.view.section, s.id)
         const done = rows.length > 0 && rows.every(c => c.sent || c.sending)
         const cur = s.id === step
         const label = narrow && !cur ? '' : ` ${done && s.done ? s.done : s.label}`
         const count = s.id === 'done' ? '' : ` ${rows.length}`
-        return (
-          <Button key={`step-${s.id}`} plain dimColor={!cur}
-            onPress={() => m.on.step(s.id)}>{`${done ? '✓' : i + 1}${label}${count}`}</Button>
-        )
+        const text = `${done ? '✓' : i + 1}${label}${count}`
+        const color = rows.length ? STEP_COLOR[s.id] : undefined
+        return [
+          i ? <Text key={`sep-${s.id}`} dimColor>›</Text> : null,
+          cur
+            ? <Text key={`step-${s.id}`} bold underline color={color}>{text}</Text>
+            : <Button key={`step-${s.id}`} plain dimColor onPress={() => m.on.step(s.id)}>{text}</Button>,
+        ]
       })}
     </Box>
   )
 }
 
-function row(E: E, m: Model, step: string, c: Card, opts: { check?: boolean; chip?: string; cell?: string } = {}) {
+function row(E: E, m: Model, step: string, c: Card,
+             opts: { check?: boolean; chip?: string; cell?: string; num?: number } = {}) {
   const { Box, Text, Button, Link } = E
   const picked = selected(m.view, m.wizard)
   const isSel = picked && key(picked) === key(c)
   const mark = c.sent ? 'inviata' : c.sending ? 'in invio…' : c.loop ? 'in background' : opts.chip ?? opts.cell ?? ''
+  const num = opts.num ?? name(c).length
+  const room = m.columns - num - (opts.check ? 4 : 0) - (c.url ? 3 : 0) - 6
   return (
     <Box key={`row-${key(c)}`} flexDirection="row" gap={1}>
       {opts.check
         ? <Button key={`tog-${key(c)}`} plain onPress={() => m.on.toggle(c)}>
             {isChecked(m.view, m.view.section, step, c) ? '[x]' : '[ ]'}</Button>
-        : <Text dimColor>{isSel ? '›' : ' '}</Text>}
+        : null}
+      <Box width={num} flexShrink={0}><Text color={isSel ? ACCENT : undefined} dimColor={!isSel}>{name(c)}</Text></Box>
       <Box flexDirection="column" flexGrow={1} flexShrink={1}>
         <Button key={`pick-${key(c)}`} plain dimColor={!isSel} onPress={() => m.on.pick(c)}>
-          {`${name(c)} ${c.title ?? ''}`}</Button>
+          {clip(c.title ?? '', room)}</Button>
         <Text dimColor wrap="truncate-end">{c.why ?? c.todo ?? ''}{mark ? `  · ${mark}` : ''}</Text>
       </Box>
       {c.url ? <Link href={c.url} label="↗" /> : null}
@@ -131,7 +154,7 @@ function field(E: E, m: Model, c: Card) {
 function editor(E: E, m: Model, c: Card, labelText: string) {
   const { Box, Text } = E
   return (
-    <Box key={`edit-${key(c)}`} flexDirection="column" paddingLeft={4}>
+    <Box key={`edit-${key(c)}`} flexDirection="column" marginTop={1}>
       <Text color="red" bold>{labelText}</Text>
       {field(E, m, c)}
     </Box>
@@ -143,14 +166,23 @@ function list(E: E, m: Model, step: string, check: boolean,
   const { Box } = E
   const rows = stepRows(m.wizard, m.view.section, step)
   const picked = selected(m.view, m.wizard)
+  const num = Math.max(0, ...rows.map(c => name(c).length))
+  const sel = rows.findIndex(c => !!picked && key(picked) === key(c))
+  const inner = { ...m, columns: m.columns - 4 }
   return (
     <Box flexDirection="column">
-      {rows.map(c => {
-        const isSel = !!picked && key(picked) === key(c)
+      {rows.map((c, i) => {
+        if (i === sel) return (
+          <Box key={`item-${key(c)}`} flexDirection="column" borderStyle="round" borderColor={ACCENT} paddingX={1}>
+            {row(E, inner, step, c, { check, num })}
+            {below ? below(c, true) : null}
+          </Box>
+        )
         return (
           <Box key={`item-${key(c)}`} flexDirection="column">
-            {row(E, m, step, c, { check })}
-            {below ? below(c, isSel) : null}
+            {row(E, m, step, c, { check, num })}
+            {below ? below(c, false) : null}
+            {i < rows.length - 1 && i + 1 !== sel ? rule(E, m, `rule-${key(c)}`) : null}
           </Box>
         )
       })}
@@ -197,27 +229,41 @@ function doubtView(E: E, m: Model) {
   )
 }
 
+const COLS = [['merge', 'merge'], ['fix', 'fix'], ['review', 'review'], ['wait', 'attesa'], ['issues', 'issue']] as const
+const CELL = 7
+
 function people(E: E, m: Model) {
   const { Box, Text, Button } = E
   const ppl: Person[] = m.wizard?.whose ?? []
+  const others = ppl.filter(p => !p.me && p.who != null)
+  const wide = Math.max(8, ...others.map(p => (p.who ?? '').length + 2))
+  const cell = (k: string, v: string, dim = false) =>
+    <Box key={k} width={CELL} flexShrink={0}><Text dimColor={dim}>{v}</Text></Box>
   return (
     <Box flexDirection="column">
+      {ppl.filter(p => p.me).map((p, i) => (
+        <Text key={`me-${i}`} bold>{`tu · ${p.review} da rivedere · ${p.mine} mie da muovere · ` +
+          `${p.issues_mine} issue tue, ${p.for_claude} le può fare Claude`}</Text>))}
+      {others.length ? (
+        <Box key="ppl-head" flexDirection="row" marginTop={1}>
+          <Box width={wide} flexShrink={0}><Text dimColor> </Text></Box>
+          {COLS.map(([k, label]) => cell(`h-${k}`, label, true))}
+        </Box>) : null}
       {ppl.map((p, i) => {
-        if (p.me) return (
-          <Text key={`p-${i}`}>{`tu · ${p.review} da rivedere · ${p.mine} mie da muovere · ` +
-            `${p.issues_mine} issue tue, ${p.for_claude} le può fare Claude`}</Text>)
-        if (p.who == null) return <Text key={`p-${i}`} dimColor>{`nessuno · ${p.unassigned} issue senza un responsabile`}</Text>
-        const parts = ([['merge', 'da mergiare'], ['fix', 'da correggere'], ['review', 'review ferme'],
-          ['wait', 'in attesa'], ['issues', 'issue senza PR']] as const)
-          .map(([k, label]) => [((p[k] as number[] | undefined) ?? []).length, label] as const)
-          .filter(([n]) => n).map(([n, label]) => `${n} ${label}`).join(' · ')
+        if (p.me || p.who == null) return null
         return (
-          <Box key={`p-${i}`} flexDirection="row" gap={1}>
-            <Text>{`${p.who} · ${parts}`}</Text>
-            {p.chase ? <Button key={`copy-${i}`} plain dimColor onPress={() => m.on.copy(p.chase!)}>copia sollecito</Button> : null}
+          <Box key={`p-${i}`} flexDirection="row">
+            <Box width={wide} flexShrink={0}><Text>{p.who}</Text></Box>
+            {COLS.map(([k]) => {
+              const n = ((p[k] as number[] | undefined) ?? []).length
+              return cell(`c-${i}-${k}`, n ? String(n) : '·', !n)
+            })}
+            {p.chase ? <Button key={`copy-${i}`} variant="secondary" onPress={() => m.on.copy(p.chase!)}>sollecito</Button> : null}
           </Box>
         )
       })}
+      {ppl.filter(p => !p.me && p.who == null).map((p, i) => (
+        <Text key={`none-${i}`} dimColor>{`nessuno · ${p.unassigned} issue senza un responsabile`}</Text>))}
     </Box>
   )
 }
@@ -228,12 +274,13 @@ function done(E: E, m: Model) {
   const sum = x?.steps.find(s => s.id === 'done')?.summary ?? {}
   const line = (label: string, ns?: number[]) =>
     ns?.length ? <Text key={label}>{`${ns.length} ${label} · ${ns.map(n => `#${n}`).join(' ')}`}</Text> : null
+  const today = (m.view.section === 'review'
+    ? [line('approvate', sum.approve), line('richieste di modifica', sum.changes), line('saltate a domani', sum.skip)]
+    : [line('chiuse', sum.close)]).filter(Boolean)
   return (
     <Box flexDirection="column" gap={1}>
       <Text dimColor bold>OGGI</Text>
-      {m.view.section === 'review'
-        ? [line('approvate', sum.approve), line('richieste di modifica', sum.changes), line('saltate a domani', sum.skip)]
-        : [line('chiuse', sum.close)]}
+      {today.length ? today : <Text dimColor>Ancora niente, per oggi.</Text>}
       <Text dimColor bold>A CHI TOCCA ADESSO</Text>
       {people(E, m)}
     </Box>
@@ -265,10 +312,10 @@ function prepare(E: E, m: Model) {
 function decide(E: E, m: Model, step: string) {
   const { Box, Text, Button } = E
   return list(E, m, step, false, (c, isSel) => isSel ? (
-    <Box key={`dec-${key(c)}`} flexDirection="column" paddingLeft={2}>
-      {c.ask ? <Text color="yellow">{`IL REVISORE CHIEDE · ${c.ask}`}</Text> : <Text color="yellow">{c.todo ?? ''}</Text>}
-      {c.why ? <Text dimColor>{`CLAUDE · ${c.why}`}</Text> : null}
-      <Box flexDirection="row" gap={1} flexWrap="wrap">
+    <Box key={`dec-${key(c)}`} flexDirection="column" marginTop={1}>
+      {c.ask ? <Text color="yellow">{`IL REVISORE CHIEDE · ${c.ask}`}</Text>
+        : c.why && c.todo ? <Text color="yellow">{c.todo}</Text> : null}
+      <Box flexDirection="row" gap={1} flexWrap="wrap" marginTop={1}>
         {c.options?.length
           ? c.options.map((o, i) => (
             <Button key={`opt-${i}`} hotkey={String(i + 1)} variant={i === 0 ? 'primary' : undefined}
@@ -338,7 +385,7 @@ function footer(E: E, m: Model, step: string | null) {
           : main ? <Text dimColor>{main.label}</Text> : null}
         {step === 'done'
           ? <Button key="next" onPress={m.on.next}>{m.view.section === 'review' ? 'Passa alle issue' : 'Passa a chi tocca'}</Button>
-          : step && m.view.section !== 'whose' ? <Button key="next" plain dimColor onPress={m.on.next}>salta il passo</Button> : null}
+          : step && m.view.section !== 'whose' ? <Button key="next" variant="secondary" onPress={m.on.next}>Salta il passo</Button> : null}
       </Box>
       {blocked || (doubt && !m.desk?.attached)
         ? <Text dimColor>serve la chat collegata: le azioni pubbliche partono da lì</Text>
@@ -350,11 +397,14 @@ function footer(E: E, m: Model, step: string | null) {
 function keys(E: E, m: Model) {
   const { Box, Button } = E
   return (
-    <Box flexDirection="row" gap={1} flexWrap="wrap">
-      <Button key="key-j" plain dimColor hotkey="j" onPress={() => m.on.move(1)}>giù</Button>
-      <Button key="key-k" plain dimColor hotkey="k" onPress={() => m.on.move(-1)}>su</Button>
-      <Button key="key-x" plain dimColor hotkey="x" onPress={() => { const c = selected(m.view, m.wizard); if (c) m.on.toggle(c) }}>spunta</Button>
-      <Button key="key-z" plain dimColor hotkey="z" onPress={() => m.on.zoom(selected(m.view, m.wizard) ?? null)}>tutta la situazione</Button>
+    <Box flexDirection="column">
+      {rule(E, m, 'rule-keys')}
+      <Box flexDirection="row" gap={2} flexWrap="wrap">
+        <Button key="key-j" plain dimColor hotkey="j" onPress={() => m.on.move(1)}>giù</Button>
+        <Button key="key-k" plain dimColor hotkey="k" onPress={() => m.on.move(-1)}>su</Button>
+        <Button key="key-x" plain dimColor hotkey="x" onPress={() => { const c = selected(m.view, m.wizard); if (c) m.on.toggle(c) }}>spunta</Button>
+        <Button key="key-z" plain dimColor hotkey="z" onPress={() => m.on.zoom(selected(m.view, m.wizard) ?? null)}>tutta la situazione</Button>
+      </Box>
     </Box>
   )
 }

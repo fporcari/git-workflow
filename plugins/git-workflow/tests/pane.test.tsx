@@ -137,9 +137,11 @@ describe('the pane', () => {
     for (const surface of ['terminal', 'desktop'] as const) {
       const ui = await $.ui.mount({ ...PANE, surface })
       const buttons = (await ui.findAll({ type: 'Button' })).map(b => b.text)
-      for (const label of ['Da rivedere 4', 'Mie 1', 'Issue 5', 'A chi tocca'])
+      expect(await ui.find({ type: 'Text', text: ' Da rivedere 4 ' })).toBeDefined()
+      for (const label of ['Mie 1', 'Issue 5', 'A chi tocca'])
         expect(buttons).toContain(label)
-      expect(buttons).toContain('1 Approvabili 2')
+      expect(await ui.find({ type: 'Text', text: '1 Approvabili 2' })).toBeDefined()
+      expect(buttons).toContain('2 Da respingere 1')
       expect(buttons.filter(b => b === '[x]')).toHaveLength(2)
       expect(await ui.find({ type: 'Text', text: /perché 1164/ })).toBeDefined()
       expect((await ui.find({ key: 'primary' }))?.text).toBe('Approva tutte e 2')
@@ -173,7 +175,7 @@ describe('the pane', () => {
     seed(on, { wizard: WIZARD, desk: DESK })
     const ui = await $.ui.mount({ ...PANE, surface: 'terminal', props: { ...PANE.props, bodyColumns: 40 } })
     const buttons = (await ui.findAll({ type: 'Button' })).map(b => b.text)
-    expect(buttons).toContain('1 Approvabili 2')
+    expect(await ui.find({ type: 'Text', text: '1 Approvabili 2' })).toBeDefined()
     expect(buttons).toContain('2 1')
     expect(await ui.find({ type: 'Text', text: /perché 1163/ })).toBeDefined()
     await ui.unmount()
@@ -237,6 +239,17 @@ describe('the pane', () => {
     await ui.unmount()
   })
 
+  test('a decision says its why once, in a card apart from the rows around it', async ($, on) => {
+    seed(on, { wizard: WIZARD, desk: DESK, view: { ...EMPTY_VIEW, section: 'mine' } })
+    for (const surface of ['terminal', 'desktop'] as const) {
+      const ui = await $.ui.mount({ ...PANE, surface })
+      expect(await ui.findAll({ type: 'Text', text: /perché 1059/ })).toHaveLength(1)
+      expect(await ui.find({ type: 'Text', text: /IL REVISORE CHIEDE · Pubbliche o solo admin\?/ })).toBeDefined()
+      expect(await ui.find({ type: 'Box', props: { borderStyle: 'round' } })).toBeDefined()
+      await ui.unmount()
+    }
+  })
+
   test('the skill opens the pane with a tool, and learns the session id to attach with', async ($, on) => {
     const opened: unknown[] = []
     seed(on, { wizard: WIZARD, desk: DESK }, [], [], opened)
@@ -249,7 +262,9 @@ describe('the pane', () => {
   test('A chi tocca: a chase is one key to copy', async ($, on) => {
     seed(on, { wizard: WIZARD, desk: DESK, view: { ...EMPTY_VIEW, section: 'whose' } })
     const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-    expect(await ui.find({ type: 'Text', text: /fporcari · 1 da mergiare/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'fporcari' })).toBeDefined()
+    expect((await ui.find({ key: 'c-1-merge' }))?.text).toBe('1')
+    expect((await ui.find({ key: 'c-1-fix' }))?.text).toBe('·')
     expect(await ui.find({ type: 'Text', text: /nessuno · 12 issue/ })).toBeDefined()
     expect(await ui.find({ key: 'copy-1' })).toBeDefined()
     await ui.unmount()
