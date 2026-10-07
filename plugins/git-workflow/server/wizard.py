@@ -161,13 +161,7 @@ def review_section(queue, state, me, active_jobs=()):
             continue
         if not advice:
             reason = failed.get(str(row["n"]))
-            if verdicts.too_big(row):
-                steps["doubt"].append(card(row, stance=None, doubt=(
-                    "PR molto grande (%d righe di codice su %d): Claude non la legge "
-                    "da solo, Analizza se vuoi il suo parere"
-                    % (verdicts.review_size(row), row["size"])), why="da leggere a mano",
-                    **marks))
-            elif reason:
+            if reason:
                 steps["doubt"].append(card(row, stance=None, doubt=(
                     "analisi non riuscita: %s" % reason), why="da leggere a mano",
                     **marks))
@@ -178,7 +172,12 @@ def review_section(queue, state, me, active_jobs=()):
         extra = {key: advice.get(key) for key in (
             "stance", "draft", "doubt", "lean", "hunk", "checks")}
         extra.update(marks)
-        if stance == "approve" and held_for_verification(row, advice):
+        if stance in ("approve", "changes") and verdicts.too_big(row):
+            extra.update(stance="doubt", lean=stance, doubt=advice.get("doubt") or (
+                "PR molto grande (%d righe di codice): letta a pezzi, la decisione resta tua"
+                % verdicts.review_size(row)))
+            steps["doubt"].append(card(row, **extra))
+        elif stance == "approve" and held_for_verification(row, advice):
             extra.update(stance="doubt", lean="approve", doubt=(
                 "needs-verification: i test non sono verdi sull'head letto"))
             steps["doubt"].append(card(row, **extra))

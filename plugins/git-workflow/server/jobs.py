@@ -899,7 +899,7 @@ ANALYZE_PROMPT = (
     "object the skill specifies, with no fences and no prose around it.")
 
 
-def analyze_pr(repo, n, me, cwd, agent="auto", inputs=None):
+def analyze_pr(repo, n, me, cwd, agent="auto", inputs=None, timeout=ANALYZE_TIMEOUT):
     """`inputs` returns (keys, context) and READS THE PROVIDER — a probe plus,
     on a desk whose gates are not filled yet, the whole queue. It runs inside
     the job so the click is answered at once."""
@@ -918,7 +918,7 @@ def analyze_pr(repo, n, me, cwd, agent="auto", inputs=None):
         target, result, dict(keys))
     return _spawn("analyze", "pr:%s:analyze" % n, agent, repo,
                   {"n": n}, None,
-                  READ_TOOLS, ANALYZE_TIMEOUT, cwd, SCHEMA, parser, persister,
+                  READ_TOOLS, timeout, cwd, SCHEMA, parser, persister,
                   profile="ANALYZE", prepare=prepare)
 
 

@@ -148,8 +148,10 @@ smallest PRs first, the conflict readings owed on the user's `DIRTY` PRs, and
 beside them the issue ranking and the shortlist's analyses — four jobs alive
 at most, one of them kept for the issues. A PR over 1500 lines of code —
 tests, generated bundles, docs and lock files not counted, read from the file
-list of the PRs whose whole change is over it — is never analyzed in
-background: it waits among the doubts as one to read by hand, and *Analizza* still asks for Claude's reading. While the pane or the
+list of the PRs whose whole change is over it — is a giant: its analysis gets
+twice the time and reads the code folder by folder up to 5000 lines, naming
+what it left, and whatever its stance the desk keeps it among the doubts with
+Claude's leaning, never among the approvable or the rejected. While the pane or the
 page is polling, a provider read older than 30 minutes (`--refresh-after`
 seconds, 0 off) is repeated in background and prepares what moved, so a desk
 left open does not show the morning's state in the afternoon. An analysis whose keys still

@@ -64,6 +64,7 @@ class FakeJobs:
         self.peak = 0
         self.exported = None
         self.inputs = None
+        self.timeouts = {}
 
     def _start(self, label):
         job_id = "job-%d" % len(self.records)
@@ -74,8 +75,9 @@ class FakeJobs:
                                        for r in self.records.values()))
         return job_id
 
-    def analyze_pr(self, repo, n, me, cwd, agent="auto", inputs=None):
+    def analyze_pr(self, repo, n, me, cwd, agent="auto", inputs=None, timeout=None):
         self.inputs = inputs
+        self.timeouts[n] = timeout
         return self._start(("pr", n))
 
     def analyze_issue(self, repo, n, me, cwd, agent="auto"):
@@ -144,6 +146,22 @@ class PrNight(unittest.TestCase):
         finally:
             for n in due[:3]:
                 rows[n].pop("size", None)
+            cache.clear(REPO)
+
+    def test_a_giant_gets_twice_the_time(self):
+        desk = fresh_desk()
+        due = sorted(int(n) for n, kinds in owed(desk).items() if "analysis" in kinds)
+        row = next(r for r in desk.provider._d(REPO)["rows"] if r["n"] == due[0])
+        row["size"] = 5000
+        try:
+            cache.clear(REPO)
+            fake = FakeJobs()
+            with fake.patch():
+                preparation.pr_night(desk, 4)
+            self.assertEqual(fake.timeouts[due[0]], 2 * jobs.ANALYZE_TIMEOUT)
+            self.assertIsNone(fake.timeouts[due[1]])
+        finally:
+            del row["size"]
             cache.clear(REPO)
 
     def test_the_issues_keep_one_lane_beside_the_prs(self):

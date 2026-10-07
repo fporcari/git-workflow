@@ -1,7 +1,7 @@
 {
   "name": "git-workflow",
   "description": "PR and issue workflow toolkit with a wizard desk: a detached local server prepares in background only the analyses that are new or changed and sorts every row into its step \u2014 approvable, to reject, doubtful, yours to merge, fix or decide, issues to close or hand over \u2014 shown in a pane beside the chat (a Claude Code mod in this plugin) or in the browser. Every click runs in the attached chat with its command echoed; public actions only there.",
-  "version": "0.60.2",
+  "version": "0.61.0",
   "author": {
     "name": "Francesco Porcari",
     "email": "fporcari@softwell.it"

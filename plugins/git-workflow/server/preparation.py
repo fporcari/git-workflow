@@ -30,6 +30,7 @@ from pathlib import Path
 import deskstate
 import jobs
 import notify
+import verdicts
 
 POLL = 2
 CONFLICTS = "conflitti"
@@ -97,11 +98,13 @@ def smallest_first(numbers, rows):
 def pr_work(desk, fresh=True):
     export = json.loads(Path(desk.run_triage("pr-triage", fresh=fresh)).read_text())
     tasks = export["model_tasks"]
-    due = smallest_first([int(n) for n, kinds in tasks.items() if "analysis" in kinds],
-                         export.get("queue") or [])
+    rows = export.get("queue") or []
+    due = smallest_first([int(n) for n, kinds in tasks.items() if "analysis" in kinds], rows)
+    giants = {row["n"] for row in rows if verdicts.too_big(row)}
     work = [(n, lambda n=n: jobs.analyze_pr(
                 desk.repo, n, desk.me, desk.cwd, desk.agent,
-                lambda: desk.analysis_inputs(n)))
+                lambda: desk.analysis_inputs(n),
+                **({"timeout": 2 * jobs.ANALYZE_TIMEOUT} if n in giants else {})))
             for n in due]
     if any("conflict" in kinds for kinds in tasks.values()):
         work.append((CONFLICTS, lambda: jobs.triage(

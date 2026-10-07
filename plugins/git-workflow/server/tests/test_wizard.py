@@ -107,21 +107,34 @@ class DaRivedere(unittest.TestCase):
         self.assertIn("claude exited 3", doubt["doubt"])
         self.assertNotIn(n, [card["n"] for card in review["pending"]])
 
-    def test_a_giant_pr_is_never_sent_to_the_model_and_waits_among_the_doubts(self):
-        n = self.ns[0]
-        row = next(r for r in self.desk.provider._d(REPO)["rows"] if r["n"] == n)
-        row["size"] = verdicts.GIANT_LINES + 1
+    def test_a_giant_pr_is_read_by_folder_and_never_leaves_the_doubts(self):
+        n, m = self.ns[0], self.ns[1]
+        rows = {r["n"]: r for r in self.desk.provider._d(REPO)["rows"]}
+        files = [{"path": "gnrpy/gnr/web/next.py", "additions": 1200, "deletions": 0},
+                 {"path": "gnrpy/gnr/sql/macro.py", "additions": 900, "deletions": 0},
+                 {"path": "gnrpy/tests/web/test_next.py", "additions": 800, "deletions": 0}]
+        for k in (n, m):
+            rows[k].update(size=2900, files=files)
         try:
             cache.clear(REPO)
-            self.assertNotIn(str(n), owed(self.desk))
-            self.assertTrue(owed(self.desk), "the other PRs still owe their analysis")
+            self.assertIn(str(n), owed(self.desk))
+            giant = self.desk.analysis_inputs(n)[1]["giant"]
+            self.assertEqual(giant["code_lines"], 2100)
+            self.assertEqual([g["folder"] for g in giant["read"]], ["gnrpy/gnr/sql", "gnrpy/gnr/web"])
+            self.assertEqual(giant["not_code"], {"files": 1, "lines": 800})
+            self.assertNotIn("giant", self.desk.analysis_inputs(self.ns[2])[1])
+            analyze(self.desk, n)
+            analyze(self.desk, m, stance="changes", draft="Please split it.")
             review = self.desk.wizard()["review"]
-            doubt = next(card for card in review["steps"][2]["rows"] if card["n"] == n)
-            self.assertIn("PR molto grande (%d righe di codice su %d)"
-                          % (row["size"], row["size"]), doubt["doubt"])
-            self.assertNotIn(n, [card["n"] for card in review["pending"]])
+            self.assertEqual(steps(review)["approve"], [])
+            self.assertEqual(steps(review)["changes"], [])
+            doubts = {card["n"]: card for card in review["steps"][2]["rows"]}
+            self.assertEqual((doubts[n]["lean"], doubts[m]["lean"]), ("approve", "changes"))
+            self.assertIn("PR molto grande (2100 righe di codice)", doubts[n]["doubt"])
+            self.assertEqual(doubts[m]["draft"], "Please split it.")
         finally:
-            del row["size"]
+            for k in (n, m):
+                del rows[k]["size"], rows[k]["files"]
             cache.clear(REPO)
 
     def test_a_pr_big_only_in_tests_and_bundles_is_analyzed_like_any_other(self):

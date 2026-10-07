@@ -279,6 +279,23 @@ class Verdicts(unittest.TestCase):
         self.assertEqual(verdicts.review_size({"size": 5000, "code_size": None}), 5000)
         self.assertFalse(verdicts.too_big({"size": 5000, "code_size": 300}))
         self.assertTrue(verdicts.too_big({"size": 5000}))
+
+    def test_a_giant_is_read_folder_by_folder_up_to_its_budget(self):
+        files = [{"path": "b/one.py", "additions": 300, "deletions": 0},
+                 {"path": "a/two.py", "additions": 200, "deletions": 0},
+                 {"path": "a/three.py", "additions": 100, "deletions": 0},
+                 {"path": "c/four.py", "additions": 50, "deletions": 0},
+                 {"path": "a/tests/test_two.py", "additions": 900, "deletions": 0}]
+        plan = verdicts.giant_plan(files, budget=650)
+        self.assertEqual(plan["code_lines"], 650)
+        self.assertEqual([(g["folder"], g["lines"]) for g in plan["read"]],
+                         [("a", 300), ("b", 300), ("c", 50)])
+        self.assertEqual(plan["left"], [])
+        tight = verdicts.giant_plan(files, budget=400)
+        self.assertEqual([g["folder"] for g in tight["read"]], ["a", "c"])
+        self.assertEqual([g["folder"] for g in tight["left"]], ["b"])
+        self.assertEqual(verdicts.giant_plan(files, budget=10)["read"][0]["folder"], "a",
+                         "the first group is read even past the budget")
     def test_approved_and_clean_is_a1(self):
         row = {"author": "me", "draft": False, "merge": "CLEAN", "decision": "APPROVED",
                "assignees": ["me"],

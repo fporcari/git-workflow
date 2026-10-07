@@ -78,6 +78,37 @@ def too_big(row):
     return (review_size(row) or 0) > GIANT_LINES
 
 
+# lines of code one analysis of a giant PR reads at most; past them it says what it left unread
+GIANT_BUDGET = 5000
+
+
+def giant_plan(files, budget=GIANT_BUDGET):
+    """How an analysis reads a giant PR: its code files grouped by folder, in
+    path order; a group that no longer fits the budget is left and a later,
+    smaller one still read. What is not code is only counted."""
+    groups = {}
+    for f in files:
+        path = f.get("path") or ""
+        if NOT_CODE.search(path):
+            continue
+        folder = path.rsplit("/", 1)[0] if "/" in path else "."
+        group = groups.setdefault(folder, {"folder": folder, "files": [], "lines": 0})
+        group["files"].append(path)
+        group["lines"] += (f.get("additions") or 0) + (f.get("deletions") or 0)
+    read, left, used = [], [], 0
+    for group in sorted(groups.values(), key=lambda g: g["folder"]):
+        if read and used + group["lines"] > budget:
+            left.append(group)
+        else:
+            read.append(group)
+            used += group["lines"]
+    other = [f for f in files if NOT_CODE.search(f.get("path") or "")]
+    return {"code_lines": sum(g["lines"] for g in groups.values()), "budget": budget,
+            "read": read, "left": left,
+            "not_code": {"files": len(other), "lines": sum(
+                (f.get("additions") or 0) + (f.get("deletions") or 0) for f in other)}}
+
+
 def _parked_on(row, me):
     """Whom a draft of his waits on, when the last word is his.
 

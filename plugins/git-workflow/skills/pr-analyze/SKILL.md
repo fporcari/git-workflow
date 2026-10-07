@@ -94,6 +94,20 @@ in the desk evidence or snapshot with `gh pr view` or REST review endpoints. Do
 not rerun a query merely to reshape its output. Batch independent code reads
 and searches instead of discovering them one serial command at a time.
 
+**A giant PR** — the desk context carries `giant` — is never read whole. Its
+code files come grouped by folder in `giant.read`, the groups that fit the
+budget of lines, and `giant.left`, the ones past it; tests, generated
+bundles, docs and lock files are only counted in `giant.not_code`. Read the
+groups of `giant.read` one at a time, in order, each with
+`git diff <base_head>..<head> -- <its files>` when both objects are local, or
+else the `patch` of its files from
+`gh api repos/<owner>/<repo>/pulls/<n>/files --paginate`; never `gh pr diff`.
+Keep a few lines per group — what it changes, what it risks — and decide on
+those. Name in `not_verified` every group of `giant.left` and the counted
+non-code files as not read. A `giant` with an `error` could not list the
+files: read the diff only as far as the budget allows and say where you
+stopped. Its `stance` is `doubt` (§4), with your `lean`.
+
 ## 3 · Establish the full decision
 
 Read
@@ -175,7 +189,9 @@ On somebody else's PR the user is asked to review:
   `draft`); `hunk` points at the one hunk that shows it — the file path and
   that hunk's `@@` header line exactly as the diff prints it — or is `null`.
   A PR you could not read whole (too large, history incomplete, a claim you
-  could not check) is a `doubt`, never an `approve`.
+  could not check) is a `doubt`, never an `approve`; a giant PR (§2) is a
+  `doubt` even when you read all of it, and the desk holds it there whatever
+  stance you give.
 
 On the user's own PR, only when a reviewer asked for something:
 

@@ -190,7 +190,7 @@ def model_tasks(rows, notes, me):
         if row.get("author") == me and row.get("merge") == "DIRTY":
             if note.get("conflict_key") != keys["conflict"]:
                 tasks.append("conflict")
-        elif row.get("autorun") == "asks" and not verdicts.too_big(row):
+        elif row.get("autorun") == "asks":
             if note.get("analysis_key") != keys["analysis"]:
                 tasks.append("analysis")
         if tasks:
@@ -739,6 +739,12 @@ class Desk:
             # wizard's gate, decided here and never by the model
             keys["checks"] = {"head": probe["head"],
                               "state": (probe.get("checks") or {}).get("state")}
+        giant = None
+        if verdicts.too_big(row):
+            try:
+                giant = verdicts.giant_plan(self.provider.pr_files(self.repo, n))
+            except Exception as exc:
+                giant = {"error": str(exc)[:160], "budget": verdicts.GIANT_BUDGET}
         context = {
             "row": {key: row.get(key) for key in (
                 "n", "title", "summary", "author", "created", "base",
@@ -749,6 +755,8 @@ class Desk:
             "previous_problem": note.get("problem"),
             "previous_problem_head": note.get("problem_head"),
         }
+        if giant:
+            context["giant"] = giant
         return keys, context
 
 
