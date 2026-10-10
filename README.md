@@ -391,6 +391,14 @@ preparation filled with a fake `claude` (`tests/fixtures/fake_claude.py`).
 The mod's tests run with `claude plugin test plugins/git-workflow`, on the
 terminal and desktop surfaces.
 
+## Fable only for a second opinion — 0.67.1
+
+The model policy no longer sends the launching chat and the `OPERATION` jobs to
+Fable. Fable has a weekly limit of its own, and a loop that spawned its
+operation jobs there spent it without anyone choosing Fable. The chat now opens
+on `opus` at effort `high`, `OPERATION` keeps its `opus` default, and Fable is
+kept for a second opinion the user asks for, as one explicitly named subagent.
+
 ## A loop's row takes you to its chat, and ✕ closes it — 0.67.0
 
 A loop's row now has ↗, which opens the chat the loop runs in, found among

@@ -86,10 +86,13 @@ the instance the user has running:
 
 The model follows the reader of the output. Output a human reads — replies to
 reviews, PR bodies, proposals, and the merges and realigns Lane A performs
-without asking again — wants the strongest model: open the launching chat on
-Claude `fable` or Codex `gpt-6-astra`, at effort `high`, and give `OPERATION` the same where the account has
-fable (`GIT_WORKFLOW_CLAUDE_OPERATION_MODEL=fable`; the shipped default stays
-`opus` because a model the account lacks kills the job at launch). Output a schema reads wants `opus`: `ANALYZE` at `high`
+without asking again — runs at effort `high`: open the launching chat on
+Claude `opus` or Codex `gpt-6-astra`, and leave `OPERATION` on its default.
+Fable is the exception, not the routine: it draws on a weekly limit of its own
+besides the all-models one, and a loop that spawns several `OPERATION` jobs on
+it can spend that limit in a night. Use it only when the user asks for a second
+opinion — a hard review, a disputed analysis — as one subagent named `fable`
+explicitly, never as the chat's or a job's default. Output a schema reads wants `opus`: `ANALYZE` at `high`
 (claims verified against the code), `TRIAGE` at `medium` (a classification over
 a grid the server already computed). A background subagent spawned for an
 analysis is `opus` too, named explicitly in the delegation call rather than

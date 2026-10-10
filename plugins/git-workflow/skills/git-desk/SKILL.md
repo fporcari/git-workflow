@@ -69,9 +69,9 @@ happens. Every click arrives here as the command it stands for
 and is executed here, reasoning and output included, while the page shows
 where every row stands.
 
-Open that chat on `fable` at effort `high`: what it produces is read by humans
-and acts without a second ask (`runtime.md` → *Model policy*). The one-shot jobs
-keep their own profiles.
+Open that chat on `opus` at effort `high`: what it produces is read by humans
+and acts without a second ask (`runtime.md` → *Model policy*). Fable is only for
+a second opinion the user asks for. The one-shot jobs keep their own profiles.
 
 - **Claude Code**: right after opening the URL, arm ONE persistent monitor
   and end the turn:
