@@ -220,9 +220,13 @@ class Packaging(unittest.TestCase):
         self.assertIn("grep -qx 'release-train: yes' CLAUDE.md", skill)
         self.assertIn("gw pr merge <release> --delete-branch", skill)
         self.assertNotIn("--squash", skill.replace("Never `--squash`", ""))
+        self.assertIn("is never retried with `force_merge`", skill)
+        self.assertIn("`release-generated: <glob>... <- <command>`", skill)
+        self.assertLess(skill.index("## 3. The tests"), skill.index("push -u origin"))
         loop = (PLUGIN / "skills" / "pr-loop" / "SKILL.md").read_text()
         self.assertIn("`release-train: yes`", loop)
         self.assertIn("correggo io e approvo", loop)
+        self.assertIn("gw pr verified <n> --sha <head>", loop)
 
     def test_the_wide_bug_mode_states_its_gate(self):
         """One go-ahead over many PRs is safe only because a bug rarely

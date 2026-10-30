@@ -175,11 +175,13 @@ through the `release` skill. Three things change there, nothing else:
   waits for the next release. His own finished PR is a Lane B row proposing
   the `release` label.
 - **Approving is labelling.** On a collaborator's PR the approval and the
-  label go together, under one go-ahead; on his own PR, only the label:
+  label go together, under one go-ahead; on his own PR, only the label. His
+  label is the verification too, so a `needs-verification` goes with it:
 
   ```bash
   gw pr review <n> --approve --commit <head>
   gw pr edit <n> --add-label release
+  gw pr verified <n> --sha <head>
   ```
 
 - **Fix and approve, instead of requesting changes.** On a collaborator's PR,

@@ -40,7 +40,8 @@ gw pr list --state open
 
 In: the rows labelled `release`, `base` equal to the default branch, `draft`
 false, in `n` order. None: stop, there is nothing to release. A labelled PR on
-another base, or still a draft, is listed as left out with its reason.
+another base, or still a draft, is listed as left out with its reason. No other
+label counts, `needs-verification` included: `release` is the user's word.
 
 ## 2. The branch
 
@@ -60,15 +61,43 @@ git -C <scratch>/release merge --no-ff --no-edit -m "Merge PR #<n>: <title>" pr/
 ```
 
 The repository's commit hook runs on every merge commit; never `--no-verify`.
-A conflict, or a hook that fails: `git -C <scratch>/release merge --abort`,
-the PR is left out with the conflicting files or the hook's output, and the
-next one goes on. A PR left out stays open and labelled for the next release.
-Never resolve a conflict here: it belongs to the PR, against the default
-branch once this release has landed (`pr-loop` A3).
+A hook that fails: `git -C <scratch>/release merge --abort`, and the PR is
+left out with the hook's output. A PR left out stays open and labelled for the
+next release.
+
+A conflict is read before anything is decided
+(`git -C <scratch>/release diff --name-only --diff-filter=U`):
+
+- **Generated files.** The repository's CLAUDE.md declares them, one line each,
+  `release-generated: <glob>... <- <command>`. Take the incoming side with
+  `git restore --theirs -- <files>` and `git add` them: the rebuild below
+  replaces them anyway.
+- **Prose**, Markdown and the like: show the user each conflicting hunk, both
+  sides and the resolution you would make, usually both sides kept in the
+  file's own order. Resolve it only on his go-ahead; otherwise abort and leave
+  the PR out.
+- **Anything else**: `merge --abort`, the PR is left out with its conflicting
+  files. That conflict belongs to the PR, against the default branch once this
+  release has landed (`pr-loop` A3).
+
+Resolve line by line, never by string index (`pr-loop` A3 says why), then
+commit the merge with its message unchanged.
+
+After the last PR, run each declared `release-generated` command once in the
+release worktree and commit what it changed as `Rebuild generated files`.
 
 Nothing merged: remove the worktree and the branch, and stop.
 
-## 3. The release PR
+## 3. The tests
+
+Before anything leaves the machine, run the repository's tests on the release
+worktree, the way its CLAUDE.md says, including what it says about running
+them from a worktree. A red test is shown to the user with its output, next
+to whether it already fails on the default branch; the push waits for his
+word. A CLAUDE.md that names no tests: say so in the report, never invent a
+command.
+
+## 4. The release PR
 
 ```sh
 git -C <scratch>/release push -u origin "$name"
@@ -83,11 +112,11 @@ The body, in English and with no tool attribution:
   one that reaches the default branch, so it is the one that closes them;
 - the PRs left out, each with its reason.
 
-## 4. The merge
+## 5. The merge
 
 Show the user the release: the PR link, what went in, what was left out and
-why, the issues it closes. Ask right before merging; the go-ahead covers this
-release only.
+why, the issues it closes, the tests. Ask right before merging; the go-ahead
+covers this release only.
 
 ```sh
 gw pr merge <release> --delete-branch
@@ -95,6 +124,12 @@ gw pr merge <release> --delete-branch
 
 Never `--squash`: the included PRs read as merged only while their own head
 commits reach the default branch unchanged.
+
+A merge the service refuses, branch protection asking for an approval or a
+merge whitelist without him, is never retried with `force_merge` or any other
+admin bypass. Give the user the link and the refusal, and name the setting:
+on a release-train repository the label is the approval, so the default
+branch wants no required approval and a merge whitelist with him alone.
 
 Then read each included PR back with `gw pr view <n>`. GitHub marks it merged;
 Forgejo does when the repository has "autodetect manual merge" on. One still
@@ -108,8 +143,8 @@ gw api repos/{repo}/pulls/<n> -X PATCH -f state=closed
 Delete the head branches of the user's own included PRs; the collaborators'
 belong to them. Then `git worktree remove <scratch>/release --force`.
 
-## 5. Report
+## 6. Report
 
 In Italian, short: the release name and PR link, the PRs that went in, the ones
-left out with their reason, the issues closed, and any included PR still open
-after the merge.
+left out with their reason, the conflicts resolved and how, the tests, the
+issues closed, and any included PR still open after the merge.

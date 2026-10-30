@@ -391,6 +391,18 @@ preparation filled with a fake `claude` (`tests/fixtures/fake_claude.py`).
 The mod's tests run with `claude plugin test plugins/git-workflow`, on the
 terminal and desktop surfaces.
 
+## The release train, as the first real release ran it — 0.69.0
+
+The first release on softwell/demetra found four gaps. A conflict no longer
+leaves a PR out by itself: files the repository's CLAUDE.md declares with
+`release-generated: <glob>... <- <command>` take either side and are rebuilt
+once after the last merge, prose conflicts are resolved on the user's
+go-ahead, and only the rest leaves the PR out. The repository's tests run on
+the release worktree before the push. A merge the branch protection refuses is
+handed to the user with the setting to change, never forced. And on a
+release-train repository the `release` label clears `needs-verification`: the
+user's label is the verification.
+
 ## The release train — 0.68.0
 
 A repository whose CLAUDE.md carries the line `release-train: yes` has one
