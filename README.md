@@ -391,6 +391,20 @@ preparation filled with a fake `claude` (`tests/fixtures/fake_claude.py`).
 The mod's tests run with `claude plugin test plugins/git-workflow`, on the
 terminal and desktop surfaces.
 
+## The release train — 0.68.0
+
+A repository whose CLAUDE.md carries the line `release-train: yes` has one
+judge and a default branch that moves once per release. Pull requests are only
+for working in parallel; the `release` label is the approval, on the user's own
+PRs too. `/release` merges every open PR labelled `release` into a fresh
+`release_<ddmmyyHHMM>` branch cut from the default branch, leaves out the ones
+that conflict, opens one PR that closes every issue they close and, on the
+user's go-ahead, lands it with a merge commit, never a squash, so the included
+PRs read as merged. There `pr-loop` never merges by itself, approves with the
+label, and on a collaborator's PR may propose *correggo io e approvo* instead
+of a change request: the fix pushed to the PR branch, a comment saying what
+changed and why, the approval and the label.
+
 ## Fable only for a second opinion — 0.67.1
 
 The model policy no longer sends the launching chat and the `OPERATION` jobs to

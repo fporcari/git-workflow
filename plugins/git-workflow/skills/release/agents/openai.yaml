@@ -1,0 +1,5 @@
+---
+interface:
+  display_name: "Release"
+  short_description: "Merge every PR labelled release into one release branch."
+  default_prompt: "Use $release to cut a release of the PRs labelled release."

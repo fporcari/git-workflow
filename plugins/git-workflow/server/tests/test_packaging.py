@@ -212,6 +212,18 @@ class Packaging(unittest.TestCase):
             self.assertIn("**Proposta** ·", text, name)
             self.assertIn("code fence", text, name)
 
+    def test_the_release_is_explicit_gated_and_never_squashed(self):
+        """A squash would leave every included PR open, and only the
+        repository's own CLAUDE.md puts it on the release train."""
+        skill = (PLUGIN / "skills" / "release" / "SKILL.md").read_text()
+        self.assertIn("disable-model-invocation: true", skill)
+        self.assertIn("grep -qx 'release-train: yes' CLAUDE.md", skill)
+        self.assertIn("gw pr merge <release> --delete-branch", skill)
+        self.assertNotIn("--squash", skill.replace("Never `--squash`", ""))
+        loop = (PLUGIN / "skills" / "pr-loop" / "SKILL.md").read_text()
+        self.assertIn("`release-train: yes`", loop)
+        self.assertIn("correggo io e approvo", loop)
+
     def test_the_wide_bug_mode_states_its_gate(self):
         """One go-ahead over many PRs is safe only because a bug rarely
         carries a decision — so the mode must exclude the ones that do, out

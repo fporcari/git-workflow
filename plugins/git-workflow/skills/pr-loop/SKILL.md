@@ -165,6 +165,47 @@ gh pr view <n> --json isDraft,baseRefName,mergeStateStatus,reviewDecision,review
 gh api repos/<owner/repo>/pulls/<n>/reviews --jq '.[]|"\(.user.login) \(.state) commit=\(.commit_id[0:9])"'
 ```
 
+## Release-train repositories
+
+A repository whose CLAUDE.md carries the line `release-train: yes`
+(`grep -qx`) has one judge, the user, and its default branch moves only
+through the `release` skill. Three things change there, nothing else:
+
+- **Lane A never merges.** A PR that passes A1 is ready, not mergeable: it
+  waits for the next release. His own finished PR is a Lane B row proposing
+  the `release` label.
+- **Approving is labelling.** On a collaborator's PR the approval and the
+  label go together, under one go-ahead; on his own PR, only the label:
+
+  ```bash
+  gw pr review <n> --approve --commit <head>
+  gw pr edit <n> --add-label release
+  ```
+
+- **Fix and approve, instead of requesting changes.** On a collaborator's PR,
+  when the proposal would be `--request-changes` and the change is one you can
+  name line by line, the proposal is that he makes it himself:
+
+  ```bash
+  git fetch origin +refs/pull/<n>/head:refs/remotes/pr/<n>
+  git worktree add <scratch>/wt --detach pr/<n>
+  # the change, committed: the repo's commit hook runs here
+  git -C <scratch>/wt push origin HEAD:<head-branch>
+  gw pr comment <n> --body-file <f>
+  gw pr review <n> --approve --commit <new head>
+  gw pr edit <n> --add-label release
+  git worktree remove <scratch>/wt --force
+  ```
+
+  The commit is his, so the author sees exactly what changed; the comment is
+  the change request in the past tense, what was changed, where and why, which
+  is how the author learns it for the next PR. A push the service refuses (a
+  fork that does not allow edits by maintainers) falls back to
+  `--request-changes` with the same text. A design call, or anything wider
+  than the named lines, stays a request: the PR is the author's work. The
+  **Proposta** line says which it is: *correggo io e approvo* or *chiedo
+  modifiche*.
+
 # Lane 0 — desk orders
 
 Before Lane A, read `orders` in
