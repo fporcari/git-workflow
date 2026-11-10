@@ -727,8 +727,11 @@ if (closeNs.length) {
   }
 }
 page.setView("all");
+ok("every issue row names its author",
+   page.visibleIssues().every(r => tbody.innerHTML.includes(`title="autore">di <b>${r.author || "ghost"}</b>`)));
 page.toggleOpen(page.visibleIssues()[0]);
 ok("an open issue shows the cross-check the desk computed", /PR aperte/.test(openHtml()));
+ok("an open issue lists its author first", /<div class="facts"><span>autore <b>/.test(openHtml()));
 ok("the issue shortlist is computed on every read", !!snapshot.issues.shortlist);
 ok("every issue row says whether it is in it", snapshot.issues.rows.every(r => "in_shortlist" in r));
 ok("the page no longer hunts the shortlist array per row", !html.includes("shortlist.rows.find"));

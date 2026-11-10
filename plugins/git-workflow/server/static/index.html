@@ -134,6 +134,9 @@ tbody tr.row.working td:first-child{box-shadow:inset 3px 0 var(--blue);animation
 @keyframes needle{50%{box-shadow:inset 3px 0 transparent}}
 tbody tr.row.open td{border-bottom-color:transparent}
 .nowChip{display:inline-flex;align-items:center;gap:5px;font:10.5px var(--mono);color:var(--blue);border:1px solid var(--blue);border-radius:9px;padding:0 6px;white-space:nowrap}
+.authorChip{font:11px var(--mono);color:var(--ink);border:1px solid var(--line2);border-radius:9px;padding:0 6px;white-space:nowrap}
+.authorChip.mine{color:var(--accent);border-color:var(--accent)}
+.authorChip.ghost{color:var(--faint);border-style:dashed}
 .nowChip i{width:5px;height:5px;border-radius:50%;background:var(--blue);animation:pulse 1s infinite;flex:none}
 .pickCol{width:34px;text-align:center;padding-left:10px;padding-right:2px}
 .pick{appearance:none;-webkit-appearance:none;width:14px;height:14px;border:1.5px solid var(--line2);border-radius:3px;background:var(--raised);cursor:pointer;vertical-align:middle;position:relative;flex:none;margin:0}
@@ -1014,7 +1017,7 @@ function renderTable(){
     const mark=s?STANCE[s.step].mark:isIssue?(r.assignees.length?"○":"!"):MARK[r.state];
     const pill=stancePill(r)||(isIssue?(r.assignees.join(", ")||(r.excluded==="with_pr"?"PR aperta":"nessuno")):r.todo);
     const l1=isIssue
-      ?`${repoChip(r)}<b class="num">#${r.n}</b><span class="tag ${esc(r.type)}">${esc(r.type)}</span>${(r.labels||[]).slice(0,2).map(l=>`<span class="tag">${esc(l)}</span>`).join("")}${onNow(r)?'<span class="nowChip"><i></i>ora</span>':""}<span class="when">${r.comments?`${r.comments} comm. · `:""}${ageDays(r.created)}g</span>`
+      ?`${repoChip(r)}<b class="num">#${r.n}</b>${authorChip(r.author)}<span class="tag ${esc(r.type)}">${esc(r.type)}</span>${(r.labels||[]).slice(0,2).map(l=>`<span class="tag">${esc(l)}</span>`).join("")}${onNow(r)?'<span class="nowChip"><i></i>ora</span>':""}<span class="when">${r.comments?`${r.comments} comm. · `:""}${ageDays(r.created)}g</span>`
       :`${repoChip(r)}<b class="num">#${r.n}</b>${closesLine(r)}<span class="check ${r.merge||"pending"}" title="merge ${esc(r.merge||"in arrivo")}">●</span>${onNow(r)?'<span class="nowChip"><i></i>ora</span>':""}<span class="when">${esc(r.author)} · ${ageDays(r.created)}g</span>`;
     return `<tr data-n="${r.n}" data-k="${esc(k)}" class="${rowCls}" aria-expanded="${open}">
       ${pickCell(r)}
@@ -1140,6 +1143,10 @@ function issueMark(r){
   if((r.after||[]).length)m+=`<small class="triageChip" title="issue-triage la mette dopo queste">dopo ${r.after.map(n=>"#"+n).join(" ")}</small>`;
   return m;
 }
+function authorChip(a){
+  a=a||"ghost";
+  return `<span class="authorChip${a===meta.me?" mine":a==="ghost"?" ghost":""}" title="autore">di <b>${esc(a)}</b></span>`;
+}
 function issueOpen(r){
   const s=stanceOf(r),sk=r.skill||{},k=esc(rk(r));
   const left=[];
@@ -1150,7 +1157,7 @@ function issueOpen(r){
   if(s&&s.step==="close"&&!s.sent&&!s.sending)
     left.push(`<h2>Commento di chiusura</h2><textarea data-draft="${k}" aria-label="Commento di chiusura per ${esc(refOf(r))}">${esc(draftOf(r,s.body))}</textarea>`);
   const c=r.cross;
-  const facts=[["tipo",r.type],["assignee",(r.assignees||[]).join(", ")||"nessuno"],["commenti",r.comments],
+  const facts=[["autore",r.author||"ghost"],["tipo",r.type],["assignee",(r.assignees||[]).join(", ")||"nessuno"],["commenti",r.comments],
     ["età",`${ageDays(r.created)} giorni`],["label",(r.labels||[]).join(", ")||"nessuna"]];
   if(c){facts.push(["branch",c.branches.length?c.branches.join(" "):"nessuno"]);
     facts.push(["PR aperte",c.open_prs.length?c.open_prs.map(p=>"#"+p).join(" "):"nessuna"]);
@@ -1245,7 +1252,7 @@ function threadCard(t){
   const out=[];
   if(issue)out.push(`<button class="thrNode" data-goto="issue" data-k="${esc(issue.repo+"#"+issue.n)}">
       <i>◯</i><span class="ref">${esc(refName(issue.repo+"#"+issue.n))}${issue.type?` <span class="tag ${esc(issue.type)}">${esc(issue.type)}</span>`:""}</span>
-      <span class="who" style="${who==="nessuno"?"color:var(--amber)":""}">${esc(who)}</span>
+      <span class="who">di ${esc(issue.author||"ghost")} · <span style="${who==="nessuno"?"color:var(--amber)":""}">${esc(who)}</span></span>
       <span class="title">${esc(issue.title)}</span></button>`);
   for(const p of t.prs){
     if(p.in_queue===false){
