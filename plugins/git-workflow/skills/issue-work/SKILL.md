@@ -35,8 +35,8 @@ If SINGLE-PHASE (any size): take it end to end.
 - **Claim first**: `gw issue edit <n> --add-assignee @me` when unassigned;
   never touch an issue somebody else holds — report and stop instead.
 - Work in the session's existing isolated worktree when the host already made
-  one. Otherwise create a worktree (`git worktree add <scratch>/wt-<n>
-  origin/<base>`). Branch `fix|feat|docs/<n>-<slug>`; base = where recent
+  one. Otherwise create a worktree (`git worktree add
+  <repo>/.claude/worktrees/<n>-<slug> origin/<base>`). Branch `fix|feat|docs/<n>-<slug>`; base = where recent
   merged fix PRs target, not the harness default.
 - The traps and the PR discipline are in
   `<PLUGIN_ROOT>/refs/worktree-traps.md` — verbatim rules: no

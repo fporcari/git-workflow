@@ -190,13 +190,13 @@ through the `release` skill. Three things change there, nothing else:
 
   ```bash
   git fetch origin +refs/pull/<n>/head:refs/remotes/pr/<n>
-  git worktree add <scratch>/wt --detach pr/<n>
+  git worktree add <repo>/.claude/worktrees/pr-<n> --detach pr/<n>
   # the change, committed: the repo's commit hook runs here
-  git -C <scratch>/wt push origin HEAD:<head-branch>
+  git -C <repo>/.claude/worktrees/pr-<n> push origin HEAD:<head-branch>
   gw pr comment <n> --body-file <f>
   gw pr review <n> --approve --commit <new head>
   gw pr edit <n> --add-label release
-  git worktree remove <scratch>/wt --force
+  git worktree remove <repo>/.claude/worktrees/pr-<n> --force
   ```
 
   The commit is his, so the author sees exactly what changed; the comment is
@@ -380,12 +380,12 @@ numbers are what you report. Only amend the merge commit's **message** with
 `--no-verify`, and only while it is still unpushed. Then a plain push.
 
 ```bash
-git worktree add <scratch>/wt --detach pr/<n>
-cd <scratch>/wt && git merge origin/<base> --no-edit
+git worktree add <repo>/.claude/worktrees/pr-<n> --detach pr/<n>
+cd <repo>/.claude/worktrees/pr-<n> && git merge origin/<base> --no-edit
 # resolve, git add, git commit --no-edit          <- hook runs flake8 + suite here
 git commit --amend --no-verify -m "Merge branch '<base>' into <head-branch>"
 git push origin HEAD:<head-branch>
-git worktree remove <scratch>/wt --force
+git worktree remove <repo>/.claude/worktrees/pr-<n> --force
 ```
 
 Verify the state actually changed — `DIRTY` should become `BLOCKED` or `CLEAN` —

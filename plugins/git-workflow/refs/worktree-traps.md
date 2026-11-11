@@ -5,7 +5,14 @@ The protocol for any agent that touches a working tree — `pr-loop`,
 running in parallel, which is exactly when it is used.
 
 One worktree per item (`isolation: "worktree"` where the host offers it,
-`git worktree add <scratch>/wt-<n> origin/<base>` otherwise), and:
+`git worktree add <repo>/.claude/worktrees/<name> origin/<base>` otherwise), and:
+
+- a worktree lives only under `<repo>/.claude/worktrees/` of the repo being
+  changed, even when the session runs in another one: never beside the repo
+  (`../<repo>-<x>`), never in the session scratch, which vanishes and leaves
+  git a dead entry. It is where the host puts its own and where the cleanup
+  looks; when `git check-ignore -q .claude/worktrees` fails, add the folder
+  to `.git/info/exclude`;
 
 - `gnr.*` imports resolve to the **main checkout** unless
   `PYTHONPATH=<worktree>/gnrpy`; assert `module.__file__` is inside the
