@@ -70,6 +70,9 @@ When the last analysis is back:
 **A mano** — lavoro tuo, nessuna proposta
 - #1188 — <titolo breve> · <perché è lavoro tuo, in una riga>
 
+**In sottochat** — se ne parla là
+- #1807 — <titolo breve> · WORKFLOW · [Issue #1807 · <titolo>](#<session-id>)
+
 **Niente da fare**
 - #1102 — <perché: aspetta @x dal 3 ottobre, già risolta, duplicato di #…>
 
@@ -85,9 +88,12 @@ keep waiting.
 - **Pronte** — the proposal is one concrete action and the loop may execute
   it on a go.
 - **A mano** — the item needs intense work or a decision only he can take: an
-  open design choice, a WORKFLOW-sized issue, a PR whose review is a real
-  design read. Say why in one line and offer the dedicated session (runtime.md,
+  open design choice, a WORKFLOW-sized issue (in issue-loop it goes under
+  *In sottochat* instead), a PR whose review is a real design read. Say why in one line and offer the dedicated session (runtime.md,
   *Dedicated work*) — offer it, never start it.
+- **In sottochat** — issue-loop only: a WORKFLOW or HARD issue, already
+  started in a chat of its own (runtime.md, *Analysis sub-chat*). The line is
+  its link, never a question: the digest does not wait for it.
 - **Niente da fare** — waiting on a named person, already solved, duplicate.
 - **Fatto da solo** — what the loop's own autonomous lane already did.
 

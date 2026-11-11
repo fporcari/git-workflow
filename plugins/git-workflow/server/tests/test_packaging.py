@@ -277,6 +277,23 @@ class Packaging(unittest.TestCase):
         self.assertIn("## Telling the user", runtime)
         self.assertIn("PushNotification", runtime)
 
+    def test_a_heavy_issue_is_read_in_a_sub_chat(self):
+        """A WORKFLOW or HARD issue is started in a chat of its own, which
+        waits for the go; a desk click falls back to a card."""
+        runtime = " ".join((PLUGIN / "refs" / "runtime.md").read_text().split())
+        self.assertIn("## Analysis sub-chat", runtime)
+        for phrase in ("mcp__ccd_session__start_session", '`initiation: "own_initiative"`',
+                       "sub-chat mode"):
+            self.assertIn(phrase, runtime, phrase)
+        loop = " ".join((PLUGIN / "skills" / "issue-loop" / "SKILL.md").read_text().split())
+        self.assertIn("*Analysis sub-chat*", loop)
+        self.assertIn("**In sottochat**", loop)
+        batch = " ".join((PLUGIN / "refs" / "batch.md").read_text().split())
+        self.assertIn("**In sottochat**", batch)
+        work = " ".join((PLUGIN / "skills" / "issue-work" / "SKILL.md").read_text().split())
+        self.assertIn("**Sub-chat mode**", work)
+        self.assertIn("the claim included", work)
+
     def test_the_verification_checklist_keeps_its_cases(self):
         why = (PLUGIN / "refs" / "pr-verification-WHY.md").read_text()
         self.assertIn("claim, not evidence", why)

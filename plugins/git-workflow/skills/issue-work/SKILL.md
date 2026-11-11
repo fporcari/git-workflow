@@ -28,6 +28,15 @@ skip the reading itself only when the shared reuse contract in `issue-analyze`
 section 6 accepts the cached handover. Say which analysis you are standing on
 and carry its open decisions forward; a recent summary alone is not a plan.
 
+**Sub-chat mode** — the mandate says so when issue-loop opened this session
+(`refs/runtime.md`, *Analysis sub-chat*). The loop started it on its own, so
+nobody has said go yet: after this section print the `issue-analyze` block
+and its open decision, and wait. A verdict handed over in the brief is the
+analysis when the reuse contract above accepts its desk record — do not buy
+it twice.
+Nothing below runs, the claim included, until `vai` / `ok` / `procedi` /
+`si`; anything else is the conversation this chat exists for.
+
 ## 2 · Light: worktree, fix, PR
 
 If SINGLE-PHASE (any size): take it end to end.

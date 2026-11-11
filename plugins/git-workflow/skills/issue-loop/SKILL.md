@@ -114,6 +114,23 @@ most four at once, and the chat ends its turn (`refs/batch.md`).
 An analysis that comes back empty or failed does not sink the batch: propose
 the others and say that one could not be read, with why.
 
+**A heavy issue is read in a sub-chat, not in a subagent** (`refs/runtime.md`,
+*Analysis sub-chat*). Heavy means WORKFLOW or HARD — work the user will want
+to discuss, steer and carry on in a context of its own, which a subagent's
+report cannot give him. Two moments, both automatic:
+
+- **before the analysis** — the issue's desk record, even stale or
+  incomplete, already says `phase` WORKFLOW or `size` HARD: start the
+  sub-chat instead of spawning the subagent. Triage leaves both null, so this
+  fires only on an earlier reading;
+- **after the analysis** — a subagent's verdict comes back WORKFLOW or HARD:
+  start the sub-chat with that verdict in its brief, so it is not bought
+  twice.
+
+EASY and MEDIUM single-phase issues stay in the digest, open decision or
+not: choosing between named options is one line of an answer, not a chat.
+Notify `analisi #<n>: in sottochat`.
+
 **Reuse a fresh verdict rather than buying it twice.** Before spawning, read the
 issue's entry under the reuse contract in `issue-analyze` section 6. Only a
 complete, fresh handover can skip that spawn; say which
@@ -146,10 +163,13 @@ about THAT issue.
 
 **With `batch=N`**: the digest of `<PLUGIN_ROOT>/refs/batch.md`, one line per
 issue, then one question. The block above is what `dimmi di più su #n` prints.
-**A mano** is this loop's main sorting: a WORKFLOW-sized issue, an open
-decision, a design still to make — heavy work he does by hand, offered as a
-dedicated `issue-work` session, never started. The fix agents of Step 4 run in
-background too, and the second digest is the PRs they opened.
+**In sottochat** lists the heavy issues of Step 1, each with the link to its
+sub-chat (or its card, when the app only let it be proposed): the
+conversation about them happens there, not here. **A mano** keeps what is
+left of heavy work he does by hand — a design still to make on an issue that
+is not WORKFLOW or HARD, an assignment that belongs to the Owner — offered as
+a dedicated `issue-work` session, never started. The fix agents of Step 4 run
+in background too, and the second digest is the PRs they opened.
 
 **A conversation about one does not hold up the others.** The clean `vai`
 lines start immediately; the one he wants to discuss returns at the head of

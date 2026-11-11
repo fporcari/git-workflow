@@ -159,7 +159,7 @@ digest, clamped to 20, with at most four agents running at once.
 | skill | what it does |
 |---|---|
 | **`pr-loop`** | Drives the queue until nothing is left that only you can do. Lane A acts without asking — merges your fully-approved PRs, answers small *named* review requests, realigns `DIRTY` branches by merging the base in — and iterates until a full pass changes nothing, because its own merges change the queue. Lane B is everything else, presented as author / problem / history / proposal followed by an explicit confirmation question. Canonical home of the rule for what may run in parallel. |
-| **`issue-loop`** | The same loop over the open issues: take the most urgent, analyze that one in a fresh context, propose it in four lines, and on a go-ahead assign it, fix it in a worktree and open the PR. `bugfix` is the wide mode: every eligible bug analyzed, all the plans read at once, one single go-ahead, then all the approved PRs in parallel — a bug rarely carries an architectural decision, and the PR review is still the control step. |
+| **`issue-loop`** | The same loop over the open issues: take the most urgent, analyze that one in a fresh context, propose it in four lines, and on a go-ahead assign it, fix it in a worktree and open the PR. `bugfix` is the wide mode: every eligible bug analyzed, all the plans read at once, one single go-ahead, then all the approved PRs in parallel — a bug rarely carries an architectural decision, and the PR review is still the control step. A WORKFLOW or HARD issue is read in a sub-chat of its own, which waits for your go. |
 
 With `batch=N` an approved batch is never handed straight to N agents: the
 loop builds a conflict graph first — same file, stacked PRs, the same issue, a
@@ -390,6 +390,21 @@ preparation filled with a fake `claude` (`tests/fixtures/fake_claude.py`).
 `plugins/git-workflow/server/tests/README.md` says what each file is for.
 The mod's tests run with `claude plugin test plugins/git-workflow`, on the
 terminal and desktop surfaces.
+
+## A heavy issue gets a chat of its own — 0.70.0
+
+An issue-loop batch on genropy read a multi-tenant audit in a background
+subagent: it came back WORKFLOW, HARD, with a design decision open, and all
+the user had was a report and a line suggesting `issue-work`. Now an issue
+whose reading is WORKFLOW or HARD — known from an earlier record, or from the
+subagent's verdict — is started in a sub-chat of its own, visible and
+steerable, with the verdict in its brief. The sub-chat runs `issue-work` in
+sub-chat mode: it shows the analysis and waits for a go before claiming,
+branching or commenting. The digest lists it under **In sottochat** with its
+link and does not wait for it; EASY and MEDIUM issues stay in the digest, open
+decision or not. A desk click is an automated turn, where the desktop app
+refuses to start a session: there the sub-chat comes as a card started with
+one click.
 
 ## The release train, as the first real release ran it — 0.69.0
 

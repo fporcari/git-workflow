@@ -181,6 +181,35 @@ request for that session.
 If no dedicated-session tool exists, provide the complete prompt for the user
 to start manually; do not silently run it in the supervising chat.
 
+## Analysis sub-chat
+
+An issue whose reading is heavy work (issue-loop, *Step 1*) gets a chat of
+its own, visible and steerable, instead of a background subagent whose
+report the user can only read. The loop's launch is the user's request for
+these sub-chats: start them, do not offer them.
+
+- Claude Code (desktop app): `mcp__ccd_session__start_session`, a deferred
+  tool — load it with ToolSearch first. `initiation: "user_asked"`,
+  `context: "fresh"`, `use_worktree: true` (the sub-chat may go on to fix the
+  issue), title `Issue #<n> · <short title>`. The app refuses a start on a
+  turn an automated event began, which is every desk click: then propose the
+  same brief with `initiation: "own_initiative"`, so the user starts it with
+  one click from its card, and say so on the digest line.
+- Codex: `mcp__codex_app__create_thread`, as in *Dedicated work*.
+- No session tool (the CLI, a detached one-shot process): fall back to the
+  background subagent and say so in one line. Never run the sub-chat's work
+  in the supervising chat.
+
+The brief is self-contained: the repository, the issue number and title, the
+analyst's verdict JSON verbatim when there is one, and the mandate
+
+> Read `<PLUGIN_ROOT>/skills/issue-work/SKILL.md` and work issue #<n> of
+> <owner/repo> in sub-chat mode: stop after the analysis and wait for my go.
+
+A sub-chat does not count against the four background agents of a batch,
+and the loop never waits for it: its analysis reaches the desk state like any
+other, and its own notes come back to the supervising chat by themselves.
+
 ## Session metadata
 
 Set a session/task title only when the host exposes a title tool.
