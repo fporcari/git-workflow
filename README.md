@@ -1,7 +1,7 @@
 # git-workflow
 
 A plugin for Claude Code and Codex for working a repository's pull requests
-and issues as a queue: ten shared skills and a local dashboard server with no
+and issues as a queue: twelve shared skills and a local dashboard server with no
 dependencies outside the Python standard library.
 
 The shape of the whole thing is one idea: **fetch paints facts; an explicit
@@ -175,6 +175,14 @@ succeeded.
 | **`pr-analyze`** | One PR, read properly: a compact fresh probe first, reusing the desk's normalized row and any still-valid problem statement. When only the head changed after a review, it compares the reviewed SHA with the new head and stops before the full diff if PR-owned behaviour is unchanged. Otherwise it gathers the complete snapshot and diff once. Exact local Git objects accelerate reads without trusting the working tree. Returns author / problem / history / one proposal and the verdict the desk sorts by — approve, changes with the review body, doubt with its hunk; on your own PR fix or decide with three options — asks for confirmation, and prepares any draft worth posting, never signed by the tool that wrote it. Read-only — never posts, never pushes. Run headless by the desk's preparation and by the nightwork. |
 | **`issue-analyze`** | One issue, in a virgin context: verify the root cause in the actual code (DEFECT), walk the reuse ladder (REQUEST), find the proving line (QUESTION/DOCS). Returns a typed verdict with the minimal change and a verification plan. Read-only — never branches, never comments. |
 | **`issue-work`** | The mandate of a session spawned for a single issue: analyze it fresh, then either fix it in a worktree and open the PR when it is one coherent change, or lay out the phases it really needs. |
+
+### Ship a tester's cluster
+
+**Explicit-invocation only**: it pushes and deploys.
+
+| skill | what it does |
+|---|---|
+| **`release-cluster`** | A tester's batch after a demo — `127,129 pr=136` — shipped to the trial instance within a day, in one or two release groups. The items are analysed in parallel into a table ordered on code files only; the shipping path (deploy trigger, branch protection, database upgrades, seeds, help docs, tester page) is asked up front and may be kept in the repository's CLAUDE.md under `## Shipping`; one session per item is cut from a local release branch and never pushes; the coordinator checks, merges and lints each lane, ships, follows the deploy, refreshes a dedicated database, dry-runs the docs sync, and finds a code marker on the live site before the tester page says *Da provare*. A page keeper, a session of its own, watches the tester's page, answers the tester, turns observations into notes or issues, and writes item status only on the coordinator's word. |
 
 ### Prepare overnight — read-only
 
@@ -390,6 +398,22 @@ preparation filled with a fake `claude` (`tests/fixtures/fake_claude.py`).
 `plugins/git-workflow/server/tests/README.md` says what each file is for.
 The mod's tests run with `claude plugin test plugins/git-workflow`, on the
 terminal and desktop surfaces.
+
+## A tester's cluster ships in a day — 0.71.0
+
+On 2026-11-12 a coordinator chat shipped a tester's post-demo issues on
+softwell/demetra in about three hours, and the phased workflow did not fit:
+the items were small and independent, and the time went to integration,
+deploy, data and verification. `/release-cluster` is that run as a skill.
+The shipping path is asked before any lane starts; lanes are sessions cut
+from a local release branch that never push; the tester's own PRs are
+cherry-picked with their author and fixed on top instead of reviewed; shared
+documents never serialize the order; the database is refreshed on a dedicated
+one; the docs sync is dry-run first; and nothing reads as live until a marker
+of the new commit is found on the site. `refs/runtime.md` gains *Lane
+sessions*, for the host limits on starting the next lane, and *Tester page*,
+with the page keeper: the tester's comments reach a session of its own, not
+the release chat.
 
 ## A heavy issue gets a chat of its own — 0.70.0
 

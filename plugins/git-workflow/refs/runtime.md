@@ -210,6 +210,55 @@ A sub-chat does not count against the four background agents of a batch,
 and the loop never waits for it: its analysis reaches the desk state like any
 other, and its own notes come back to the supervising chat by themselves.
 
+## Lane sessions
+
+`release-cluster` runs one session per item, cut from a local release
+branch. The invocation is the user's request for the lanes the plan approved.
+
+- Claude Code (desktop app): `mcp__ccd_session__start_session`, loaded with
+  ToolSearch first, `initiation: "user_asked"`, `context: "fresh"`,
+  `use_worktree: true`, `source_branch` set to the release branch. Two host
+  limits shape the chain:
+  - a start is refused on a turn an automated event began, which is every
+    turn a lane's report wakes the coordinator on: there the next lane is
+    proposed with `initiation: "own_initiative"` and the user starts it from
+    its card, or says the word in chat;
+  - a card drops `source_branch`, so every brief carries its own base: the
+    lane checks that its predecessor is in the release branch, then
+    `git switch -c lane/<n>-<slug> <release-branch>` from wherever the host
+    put it.
+
+  Lanes with no predecessor all start on the user's turn, so the chain only
+  ever waits on a card where an order really exists.
+- Codex: `mcp__codex_app__create_thread`, as in *Dedicated work*, with the
+  same self-basing brief.
+- No session tool: one background subagent per lane, in its own worktree
+  under `<repo>/.claude/worktrees/`, with the same brief; say so in one line.
+
+## Tester page
+
+The page the tester reads is the one that already exists for the trial
+(the collaudo page); never publish a second one.
+
+- Claude Code: the existing Artifact. Each item's status and note go through
+  its data store (`ArtifactData`, a deferred tool), so the page changes
+  without a republish. A page with no data store yet is republished once with
+  one, on the user's go-ahead; load the `artifact-capabilities` skill before
+  that.
+- Codex, or no page: a checklist in the release PR's body, one line per item
+  with its status, and the link given to the user to forward.
+
+**The page keeper** is a session of its own, Claude Code only: start it as in
+*Lane sessions* (`initiation: "user_asked"`, `context: "fresh"`), but with
+`use_worktree: false`, since it writes no code, titled `Collaudo · <repo-short>`.
+In its first turn it watches the Artifact's comments (`ArtifactComments`, a
+deferred tool) and reads the data store; then the coordinator stops watching
+the same Artifact, so a comment reaches one chat only. The coordinator sends
+it status lines with `SendMessage` to its session id; it answers the
+coordinator only by notes, or by one message when something blocks the
+release. Without a session tool, or with no Artifact, there is no keeper:
+the coordinator writes the page and reads its comments itself.
+
 ## Session metadata
 
 Set a session/task title only when the host exposes a title tool.
