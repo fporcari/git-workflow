@@ -228,6 +228,32 @@ class Packaging(unittest.TestCase):
         self.assertIn("correggo io e approvo", loop)
         self.assertIn("gw pr verified <n> --sha <head>", loop)
 
+    def test_the_release_cluster_asks_the_path_first_and_verifies_live(self):
+        """The Demetra run of 2026-11-12: the shipping path learnt at merge
+        time, a green CI announced as a release, a docs sync that deleted."""
+        skill = (PLUGIN / "skills" / "release-cluster" / "SKILL.md").read_text()
+        self.assertIn("disable-model-invocation: true", skill)
+        self.assertLess(skill.index("## 2 · The shipping path"),
+                        skill.index("## 3 · The release branch and the lanes"))
+        self.assertLess(skill.index("## 6 · Verify on the live site"),
+                        skill.index("## 7 · The tester page"))
+        self.assertIn("**Da provare** only after step 6", skill)
+        self.assertIn("A green CI is not a\n   deploy", skill)
+        self.assertIn("Dry-run the sync first", skill)
+        self.assertIn("**never push, never open a PR, never merge**", skill)
+        self.assertIn("<PLUGIN_ROOT>/refs/worktree-traps.md", skill)
+        self.assertIn("<repo>/.claude/worktrees/", skill)
+        self.assertNotIn("--squash", skill)
+        self.assertTrue((PLUGIN / "evals" / "release-cluster-not-auto").is_dir())
+        runtime = (PLUGIN / "refs" / "runtime.md").read_text()
+        self.assertIn("## Lane sessions", runtime)
+        self.assertIn("a card drops `source_branch`", runtime)
+        self.assertIn("## Tester page", runtime)
+        self.assertIn("## The page keeper", skill)
+        self.assertIn("**Write the page only on the coordinator's word**", skill)
+        self.assertIn("this chat stops watching the page", skill)
+        self.assertIn("the coordinator stops watching", runtime)
+
     def test_the_wide_bug_mode_states_its_gate(self):
         """One go-ahead over many PRs is safe only because a bug rarely
         carries a decision — so the mode must exclude the ones that do, out

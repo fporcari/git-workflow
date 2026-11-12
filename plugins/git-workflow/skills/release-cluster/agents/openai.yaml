@@ -1,0 +1,4 @@
+interface:
+  display_name: "Release Cluster"
+  short_description: "Ship a tester's batch of issues and PRs to a trial instance in a day."
+  default_prompt: "Use $release-cluster on the issues and PRs I name."
