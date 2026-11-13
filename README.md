@@ -401,6 +401,15 @@ preparation filled with a fake `claude` (`tests/fixtures/fake_claude.py`).
 The mod's tests run with `claude plugin test plugins/git-workflow`, on the
 terminal and desktop surfaces.
 
+## ↗ leads to the loop's own chat — 0.72.1
+
+A loop run by a child session still pointed the desk row's ↗ at the desk
+chat, which took the click, and in the desk chat itself the row had no ↗ at
+all. The child now parks the click again on its first move with
+`chatdesk.py park --runner <its session id>`; the request stays the desk
+chat's to close, and the row's ↗ opens the child, from the desk chat too. The
+child shows its own loop's row, without a ↗ to itself.
+
 ## Every loop in a chat of its own — 0.72.0
 
 A loop launched from the desk ran in the desk chat, so a second loop queued

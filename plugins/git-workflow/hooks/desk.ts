@@ -4,6 +4,7 @@ type Raw = {
   id?: string
   desk?: string
   session?: string
+  runner?: string
   kind?: string
   status?: string
   label?: string
@@ -77,7 +78,8 @@ export function itemsOf(repo: string, state: unknown, nowSec: number): DeskItem[
     if (budget !== undefined && nowSec - startOf(raw) > budget) continue
     if (budget === undefined && !CLOSED.includes(status)) continue
     out.push({
-      key: `${repo} ${key}`, id: raw.id ?? `${repo} ${key} ${raw.epoch ?? 0}`, repo, session: raw.session ?? '', tag: tagOf(raw),
+      key: `${repo} ${key}`, id: raw.id ?? `${repo} ${key} ${raw.epoch ?? 0}`, repo, session: raw.session ?? '',
+      ...(raw.runner ? { runner: raw.runner } : {}), tag: tagOf(raw),
       label: labelOf(raw), status, at: atOf(raw), report: raw.report ?? '',
     })
   }
@@ -85,6 +87,12 @@ export function itemsOf(repo: string, state: unknown, nowSec: number): DeskItem[
 }
 
 export const isOpen = (item: DeskItem) => OPEN.includes(item.status)
+
+/** The chat a row's ↗ leads to: the loop's own when a child session runs it. */
+export const chatOf = (item: DeskItem) => item.runner || item.session
+
+/** A row this chat shows: one it took, or one it runs. */
+export const ownedBy = (item: DeskItem, session: string) => item.session === session || item.runner === session
 
 /** The mod's poll is never somebody using the desk: it neither keeps it alive nor refreshes it. */
 export function pollHeaders(etag: string | null | undefined): Record<string, string> {
@@ -111,7 +119,7 @@ export function mentions(state: unknown, session: string): boolean {
   const s = state as { chats?: Record<string, unknown>; requests?: Record<string, Raw> } | null
   if (!s || !session) return false
   if (s.chats && session in s.chats) return true
-  return Object.values(s.requests ?? {}).some(r => r?.session === session)
+  return Object.values(s.requests ?? {}).some(r => r?.session === session || r?.runner === session)
 }
 
 const WORD: Record<string, string> = {

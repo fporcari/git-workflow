@@ -2953,6 +2953,28 @@ class AttachedChat(unittest.TestCase):
         self.assertEqual(deskstate.load(REPO)["requests"]["run:pr-loop"]["status"],
                          "needs-input")
 
+    def test_a_loop_session_parks_the_click_under_its_own_runner(self):
+        """The click stays the desk chat's to close; the row names the child
+        chat that runs the loop, so its link leads there."""
+        deskstate.chat_heartbeat(REPO, "test-chat")
+        deskstate.request(REPO, "run:issue-loop", "run", None, via="chat", session="test-chat",
+                          payload={"flow": "issue-loop", "ns": [7, 9], "batch": 2})
+        deskstate.claim_request(REPO, "test-chat")
+        out = self._cli("park", "--repo", REPO, "--request", "run:issue-loop",
+                        "in sottochat")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertNotIn("runner", deskstate.load(REPO)["requests"]["run:issue-loop"])
+        out = self._cli("park", "--repo", REPO, "--request", "run:issue-loop",
+                        "--runner", "child-chat", "2 analisi in background")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        parked = deskstate.load(REPO)["requests"]["run:issue-loop"]
+        self.assertEqual((parked["session"], parked["runner"], parked["status"]),
+                         ("test-chat", "child-chat", "running"))
+        out = self._cli("fail", "--repo", REPO, "--request", "run:issue-loop", "stop")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(deskstate.load(REPO)["requests"]["run:issue-loop"]["runner"],
+                         "child-chat")
+
     def test_a_parked_run_expires_on_the_operation_budget(self):
         record = {"kind": "run", "status": "running",
                   "running_epoch": time.time() - deskstate.OPERATION_TIMEOUT - 1}

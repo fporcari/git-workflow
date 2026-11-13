@@ -45,6 +45,9 @@ the buttons enqueue, and the pair of commands here is its whole contract:
         The work went to background agents: the request reads `running`, its
         button stays locked, and result or fail close it later — but the chat
         is free, so the next click is claimed instead of queuing behind it.
+        `--runner <session-id>` names the chat that runs the loop when it is
+        not the one that took the click (a loop session): the desk's row
+        then leads there.
 
     python3 chatdesk.py detach --repo owner/repo --session chat-id
         Drop the mark: the very next click goes back to a one-shot agent.
@@ -388,7 +391,7 @@ def _free_chat(state, record):
         chat.update(epoch=time.time(), at=time.strftime("%H:%M:%S"))
 
 
-def park(repo, key, note, session, request_id):
+def park(repo, key, note, session, request_id, runner=None):
     """The click's work went to background agents. Its button stays locked
     and the request stays this chat's to close with result or fail, but the
     chat is free: the next click no longer queues behind a loop it is only
@@ -398,6 +401,8 @@ def park(repo, key, note, session, request_id):
         record.update(status="running", report=note,
                       running_at=time.strftime("%H:%M:%S"),
                       running_epoch=time.time())
+        if runner:
+            record["runner"] = runner
         _free_chat(state, record)
         return dict(record, key=key)
     return deskstate.update(repo, mutate)
@@ -456,6 +461,8 @@ def main():
     parser.add_argument("--desk", choices=("pr", "issue", "both"), default="pr")
     parser.add_argument("--request-id")
     parser.add_argument("--request", help="result: the request key to close")
+    parser.add_argument("--runner", help="park: the session that runs the loop, "
+                                         "when it is not --session")
     parser.add_argument("path", nargs="?",
                         help="result: the JSON file, or - for stdin; "
                              "fail: the reason; park: what runs in background")
@@ -485,7 +492,8 @@ def main():
     elif args.action == "park":
         if not (args.request and args.path and args.request_id):
             parser.error("park needs --request, --request-id and a note")
-        park(args.repo, args.request, args.path, args.session, args.request_id)
+        park(args.repo, args.request, args.path, args.session, args.request_id,
+             args.runner)
     elif args.action == "close":
         close(ear, args.session, args.desk)
     else:

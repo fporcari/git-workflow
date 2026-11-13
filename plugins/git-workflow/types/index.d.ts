@@ -5,6 +5,8 @@ export type DeskItem = {
   id: string
   repo: string
   session: string
+  /** the chat that runs the loop when it is not the one that took the click */
+  runner?: string
   tag: Tag
   label: string
   status: string

@@ -3,7 +3,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { Desk, DeskItem } from '../types'
 import {
-  bareGoAhead, deskTarget, isOpen, itemsOf, mentions, pollHeaders, projectOf, recentClosed,
+  bareGoAhead, chatOf, deskTarget, isOpen, itemsOf, mentions, ownedBy, pollHeaders, projectOf, recentClosed,
   statusLine, transitions, unclosed, waiting, wordOf,
 } from './desk'
 import type { StateFile } from './desk'
@@ -104,7 +104,7 @@ async function poll($: EngineInterface) {
     for (const [name, file] of Object.entries(files)) {
       const repo = name.replace(/\.json$/, '').replace('__', '/')
       for (const item of itemsOf(repo, file.state, nowSec))
-        if (!attached || item.session === session) all.push(item)
+        if (!attached || ownedBy(item, session)) all.push(item)
     }
     const items = unclosed(all, closed)
     if (memo.before) for (const line of transitions(memo.before, items)) $.ui.toast(line, { timeoutMs: 8000 })
@@ -158,7 +158,7 @@ async function appSession($: EngineInterface, cliSession: string) {
 
 async function gotoChat($: EngineInterface, item: DeskItem) {
   try {
-    const local = await appSession($, item.session)
+    const local = await appSession($, chatOf(item))
     if (local) {
       const got = await $.process.run(['open', `claude://claude.ai/epitaxy/${local}`])
       if (got.exitCode === 0) return
@@ -166,7 +166,7 @@ async function gotoChat($: EngineInterface, item: DeskItem) {
   } catch {
     // no desktop app on this host: the resume command instead
   }
-  $.ui.toast(`La chat di ${item.label}: claude --resume ${item.session}`, { timeoutMs: 15000 })
+  $.ui.toast(`La chat di ${item.label}: claude --resume ${chatOf(item)}`, { timeoutMs: 15000 })
 }
 
 export const register: Register = on => {
@@ -241,7 +241,7 @@ export const register: Register = on => {
               {item.report ? <Box flexShrink={1} flexGrow={1} minWidth={0}>
                 <Text dimColor wrap="truncate-end"> · {item.report}</Text></Box> : null}
             </Box>
-            {item.session && item.session !== session ? <Box flexShrink={0}>
+            {chatOf(item) && chatOf(item) !== session ? <Box flexShrink={0}>
               <Button key={`goto-${item.key}`} plain onPress={() => { void gotoChat($, item) }}>↗</Button></Box> : null}
             <Box flexShrink={0}>
               <Button key={`close-${item.key}`} role="dismiss" plain dimColor

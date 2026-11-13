@@ -236,6 +236,30 @@ describe('the band', () => {
     await ui.unmount()
   })
 
+  test('↗ of a loop run by a child chat leads to the child, also from the chat that took the click', async ($, on) => {
+    seed(on, [item({ key: 'a', session: 'the-chat', runner: 'cli-2' })])
+    const runs: string[][] = []
+    on('env.get', () => ({ value: '/Users/me' }))
+    on('process.run', ($, e) => {
+      runs.push([...e.argv])
+      const stdout = e.argv[0] === 'grep' ? '/Users/me/s/local_y.json\n' : ''
+      return { value: { exitCode: 0, stdout, stderr: '' } }
+    })
+    on('fs.read', () => ({ value: JSON.stringify({ sessionId: 'local_y', cliSessionId: 'cli-2' }) }))
+    const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+    await ui.press({ key: 'goto-a' })
+    expect(runs.at(-1)).toEqual(['open', 'claude://claude.ai/epitaxy/local_y'])
+    await ui.unmount()
+  })
+
+  test('the child chat that runs a loop owns its row and has no ↗ to itself', async ($, on) => {
+    seed(on, [item({ key: 'a', session: 'desk-chat', runner: 'the-chat' })])
+    const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+    expect(await ui.find({ key: 'close-a' })).toBeDefined()
+    expect(await ui.find({ key: 'goto-a' })).toBeUndefined()
+    await ui.unmount()
+  })
+
   test('nothing open: the band yields', async ($, on) => {
     seed(on, [])
     const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })

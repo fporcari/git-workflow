@@ -237,7 +237,9 @@ and the next click is taken at once. The child owns that request from then
 on: the brief hands it the key, the request id and the desk chat's session
 id, and the child closes it with `chatdesk.py result` or `fail` passing
 `--session <desk-session-id>` — the ledger matches the click's session, not
-the chat that runs the command. A request refused as expired (a loop longer
+the chat that runs the command. Its first move parks the request again
+with `--runner "$CLAUDE_CODE_SESSION_ID"` (Codex: `$CODEX_THREAD_ID`), so the
+row's ↗ leads to the child instead of the desk chat. A request refused as expired (a loop longer
 than the operation budget) is closed by hand instead:
 `notify.py --done run:<flow> "<report>"`.
 
