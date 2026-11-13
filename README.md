@@ -154,12 +154,14 @@ listeners to use the new routing protocol.
 Both are **explicit-invocation only**, and both take the same mandate:
 `1145,1128` names the working set (exactly those, in that order, then stop),
 `batch=N` (N > 1) runs the analyses in background and hands them back as one
-digest, clamped to 20, with at most four agents running at once.
+digest, clamped to 20, with at most four agents running at once. Launched
+from the desk chat, each loop runs in a child session of its own, so several
+loops run side by side.
 
 | skill | what it does |
 |---|---|
 | **`pr-loop`** | Drives the queue until nothing is left that only you can do. Lane A acts without asking — merges your fully-approved PRs, answers small *named* review requests, realigns `DIRTY` branches by merging the base in — and iterates until a full pass changes nothing, because its own merges change the queue. Lane B is everything else, presented as author / problem / history / proposal followed by an explicit confirmation question. Canonical home of the rule for what may run in parallel. |
-| **`issue-loop`** | The same loop over the open issues: take the most urgent, analyze that one in a fresh context, propose it in four lines, and on a go-ahead assign it, fix it in a worktree and open the PR. `bugfix` is the wide mode: every eligible bug analyzed, all the plans read at once, one single go-ahead, then all the approved PRs in parallel — a bug rarely carries an architectural decision, and the PR review is still the control step. A WORKFLOW or HARD issue is read in a sub-chat of its own, which waits for your go. |
+| **`issue-loop`** | The same loop over the open issues: take the most urgent, analyze that one in a fresh context, propose it in four lines, and on a go-ahead assign it, fix it in a worktree and open the PR. `bugfix` is the wide mode: every eligible bug analyzed, all the plans read at once, one single go-ahead, then all the approved PRs in parallel — a bug rarely carries an architectural decision, and the PR review is still the control step. A WORKFLOW or HARD issue, or one whose fix needs hands on the UI or on tests, is read in a sub-chat of its own, which waits for your go. |
 
 With `batch=N` an approved batch is never handed straight to N agents: the
 loop builds a conflict graph first — same file, stacked PRs, the same issue, a
@@ -398,6 +400,21 @@ preparation filled with a fake `claude` (`tests/fixtures/fake_claude.py`).
 `plugins/git-workflow/server/tests/README.md` says what each file is for.
 The mod's tests run with `claude plugin test plugins/git-workflow`, on the
 terminal and desktop surfaces.
+
+## Every loop in a chat of its own — 0.72.0
+
+A loop launched from the desk ran in the desk chat, so a second loop queued
+behind the first. Now every `pr-loop` and `issue-loop` started there — a ▶
+click or the command typed in that chat — runs in a child session: a pr-loop
+on three PRs, an issue-loop on two issues and another pr-loop on two PRs go
+side by side, each with its own questions and digest. The desk chat parks the
+click and takes the next one at once; the child closes it under the desk
+chat's session id. A click is an automated turn, where the desktop app
+refuses to start a session, so from a click the child comes as a card started
+with one click; a typed command starts it at once. Inside an issue-loop, an
+issue whose fix touches the UI or needs tests written or a browser pass gets
+a sub-chat of its own, like a WORKFLOW or HARD one. `refs/runtime.md` gains
+*Loop sessions*.
 
 ## A release needs no switch — 0.71.1
 

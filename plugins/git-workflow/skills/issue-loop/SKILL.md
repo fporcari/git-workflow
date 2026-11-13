@@ -63,9 +63,18 @@ Several rows picked on the desk arrive as a batch of that size: the desk does
 not ask. More numbers than `batch` is fine — it works them a digest at a time.
 
 **From an attached desk click**, the request record supplies `ns` and `batch`
-with the same meaning as the typed list; execute here, in the conversation,
+with the same meaning as the typed list; the desk chat starts this loop in a
+child session (`refs/runtime.md`, *Loop sessions*) and the child executes it,
 and publish the operation JSON with `chatdesk.py result` (git-desk skill) —
 with `batch` > 1, park it first and publish at the digest (`refs/batch.md`).
+
+**In loop-session mode** — the brief says so when the desk chat started this
+session for the loop (`refs/runtime.md`, *Loop sessions*). This chat is the
+attached chat for this loop: questions, digest and go-aheads happen here.
+When the brief carries a request, the desk chat already parked it: close it
+with `chatdesk.py result`/`fail` passing the desk chat's session id from the
+brief as `--session`, and park it again with the same id when a batch goes
+back to background.
 
 **From a detached desk button**, the launch prompt supplies `ns` and `batch`.
 `ns` is the rows he picked by hand and means exactly what the typed list
@@ -117,18 +126,22 @@ the others and say that one could not be read, with why.
 **A heavy issue is read in a sub-chat, not in a subagent** (`refs/runtime.md`,
 *Analysis sub-chat*). Heavy means WORKFLOW or HARD — work the user will want
 to discuss, steer and carry on in a context of its own, which a subagent's
-report cannot give him. Two moments, both automatic:
+report cannot give him. **Hands-on** means the fix touches the UI (pages,
+components, static JS/CSS — `webpages/`, `resources/`, `static/` on GenroPy)
+or its `verify` asks for a browser pass or for tests to write or change:
+work the user follows and steers on its own, issue by issue. Both get the
+sub-chat, one per issue. Two moments, both automatic:
 
 - **before the analysis** — the issue's desk record, even stale or
   incomplete, already says `phase` WORKFLOW or `size` HARD: start the
   sub-chat instead of spawning the subagent. Triage leaves both null, so this
   fires only on an earlier reading;
-- **after the analysis** — a subagent's verdict comes back WORKFLOW or HARD:
-  start the sub-chat with that verdict in its brief, so it is not bought
-  twice.
+- **after the analysis** — a subagent's verdict comes back WORKFLOW or HARD,
+  or hands-on: start the sub-chat with that verdict in its brief, so it is
+  not bought twice.
 
-EASY and MEDIUM single-phase issues stay in the digest, open decision or
-not: choosing between named options is one line of an answer, not a chat.
+EASY and MEDIUM single-phase issues that are not hands-on stay in the
+digest, open decision or not: choosing between named options is one line of an answer, not a chat.
 Notify `analisi #<n>: in sottochat`.
 
 **Reuse a fresh verdict rather than buying it twice.** Before spawning, read the
@@ -163,7 +176,7 @@ about THAT issue.
 
 **With `batch=N`**: the digest of `<PLUGIN_ROOT>/refs/batch.md`, one line per
 issue, then one question. The block above is what `dimmi di più su #n` prints.
-**In sottochat** lists the heavy issues of Step 1, each with the link to its
+**In sottochat** lists the heavy and hands-on issues of Step 1, each with the link to its
 sub-chat (or its card, when the app only let it be proposed): the
 conversation about them happens there, not here. **A mano** keeps what is
 left of heavy work he does by hand — a design still to make on an issue that

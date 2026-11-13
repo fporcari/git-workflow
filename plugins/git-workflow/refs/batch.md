@@ -25,7 +25,8 @@ halfway to ask a question has failed at the one thing it is for.
    as one finishes. The size of the batch is the queue's business, not the
    user's. Each loop says which skill the agent runs and on which model.
 4. From a desk click, park the request so the next click is not held behind
-   this one:
+   this one — in a loop session (runtime.md, *Loop sessions*) the desk chat
+   already parked it, and the child passes the desk chat's session id:
 
    ```sh
    python3 <PLUGIN_ROOT>/server/chatdesk.py park --repo <owner/repo> \
@@ -91,8 +92,8 @@ keep waiting.
   open design choice, a WORKFLOW-sized issue (in issue-loop it goes under
   *In sottochat* instead), a PR whose review is a real design read. Say why in one line and offer the dedicated session (runtime.md,
   *Dedicated work*) — offer it, never start it.
-- **In sottochat** — issue-loop only: a WORKFLOW or HARD issue, already
-  started in a chat of its own (runtime.md, *Analysis sub-chat*). The line is
+- **In sottochat** — issue-loop only: a WORKFLOW or HARD issue, or one whose
+  fix needs hands on the UI or on tests, already started in a chat of its own (runtime.md, *Analysis sub-chat*). The line is
   its link, never a question: the digest does not wait for it.
 - **Niente da fare** — waiting on a named person, already solved, duplicate.
 - **Fatto da solo** — what the loop's own autonomous lane already did.

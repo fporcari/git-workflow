@@ -183,9 +183,10 @@ to start manually; do not silently run it in the supervising chat.
 
 ## Analysis sub-chat
 
-An issue whose reading is heavy work (issue-loop, *Step 1*) gets a chat of
-its own, visible and steerable, instead of a background subagent whose
-report the user can only read. The loop's launch is the user's request for
+An issue whose reading is heavy work, or whose fix needs hands on the UI or
+on tests (issue-loop, *Step 1*), gets a chat of its own, visible and
+steerable, instead of a background subagent whose report the user can only
+read. The loop's launch is the user's request for
 these sub-chats: start them, do not offer them.
 
 - Claude Code (desktop app): `mcp__ccd_session__start_session`, a deferred
@@ -209,6 +210,50 @@ analyst's verdict JSON verbatim when there is one, and the mandate
 A sub-chat does not count against the four background agents of a batch,
 and the loop never waits for it: its analysis reaches the desk state like any
 other, and its own notes come back to the supervising chat by themselves.
+
+## Loop sessions
+
+Every `pr-loop` and `issue-loop` launched from the desk chat — a ▶ `run`
+click, or the command typed there — runs in a child session of its own, never
+in the desk chat. The desk chat stays the remote: free for the next click, so
+a pr-loop on three PRs, an issue-loop on two issues and another pr-loop on two
+PRs run side by side, each in its own chat. The click, or the typed command,
+is the user's request for that child: start it, do not offer it.
+
+- Claude Code (desktop app): `mcp__ccd_session__start_session`, loaded with
+  ToolSearch first, `initiation: "user_asked"`, `context: "fresh"`,
+  `use_worktree: true`, title `PR loop · <ns>` or `Issue loop · <ns>`
+  (`#1145 #1128`, or `coda` when no numbers were named). A desk click is a
+  turn an automated event began, where the app refuses a start: propose the
+  same brief with `initiation: "own_initiative"` and say in one line that its
+  card starts it. A typed command starts it at once.
+- Codex: `mcp__codex_app__create_thread`, as in *Dedicated work*.
+- No session tool (the CLI, a detached one-shot process): the loop runs where
+  it was invoked, as before; say so in one line.
+
+From a click, the desk chat parks the request before it ends the turn
+(`chatdesk.py park … "in sottochat"`), so the row stays locked on `running`
+and the next click is taken at once. The child owns that request from then
+on: the brief hands it the key, the request id and the desk chat's session
+id, and the child closes it with `chatdesk.py result` or `fail` passing
+`--session <desk-session-id>` — the ledger matches the click's session, not
+the chat that runs the command. A request refused as expired (a loop longer
+than the operation budget) is closed by hand instead:
+`notify.py --done run:<flow> "<report>"`.
+
+The brief is self-contained: the repository and its checkout path, the
+loop, `ns` and `batch` as the click or the command gave them, the scope note
+if any, and for a click its request key, request id and desk session id.
+The mandate:
+
+> Read `<PLUGIN_ROOT>/skills/<pr-loop|issue-loop>/SKILL.md` and run it on
+> <owner/repo> in loop-session mode with `<ns> batch=<N>`.
+
+In loop-session mode the child is the attached chat for its own loop:
+questions, digests and go-aheads happen there, with the user; the desk chat
+never relays them. Its batch still uses background agents (`refs/batch.md`),
+and an issue-loop child still starts per-issue sub-chats (*Analysis
+sub-chat*) — a start the app refuses there comes as a card, as above.
 
 ## Lane sessions
 

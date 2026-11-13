@@ -64,7 +64,8 @@ desk from a spent one.
 
 The launching chat stays **attached by
 default**: the desk is the remote, this conversation is where the work
-happens. Every click arrives here as the command it stands for
+happens — except the loops, each of which runs in a child session of its
+own so several run side by side (*Attached chat*, `run`). Every click arrives here as the command it stands for
 (`/pr-loop 1099 1055 batch=4`, `▶ approva #1164 #1163`, `/pr-analyze 1099`)
 and is executed here, reasoning and output included, while the page shows
 where every row stands.
@@ -305,11 +306,14 @@ it in this conversation, by `kind`:
     `gw --repo <owner/repo> issue close <n> --body-file <f>`. Publish the
     same review-result JSON — `done` and `refused`, every row in one of the
     two. Attached chat only, like a review.
-  - `run` → `pr-loop`/`issue-loop` with the `ns` and `batch` in `payload`.
-    With `batch` > 1 the loop hands its work to background agents and parks
-    the request (`chatdesk.py park`, `refs/batch.md`): the row reads
-    `running`, its button stays locked, and this chat takes the next click
-    while the agents work. The parked request is still this chat's to close.
+  - `run` → `pr-loop`/`issue-loop` with the `ns` and `batch` in `payload`,
+    in a child session of its own, never here (`runtime.md` → *Loop
+    sessions*): park the request (`chatdesk.py park … "in sottochat"`),
+    start or propose the child with the key, the request id and this chat's
+    session id in its brief, and end the turn. The row reads `running`, its
+    button stays locked, and this chat takes the next click at once; the
+    child closes the request. A `/pr-loop` or `/issue-loop` the user types
+    in this chat goes to a child the same way, started at once.
 
   An analyze request may carry `payload.context`, the same compact desk probe
   a one-shot job receives. Treat it as `<desk_context>` from `pr-analyze`:

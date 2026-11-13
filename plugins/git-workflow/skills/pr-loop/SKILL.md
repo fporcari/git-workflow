@@ -56,9 +56,18 @@ and no other: an approved PR of his elsewhere in the queue is not touched,
 and the closing report says so rather than pretending the queue was drained.
 
 **From an attached desk click**, the request record supplies `ns` and `batch`
-with the same meaning as the typed list; execute here, in the conversation,
+with the same meaning as the typed list; the desk chat starts this loop in a
+child session (`refs/runtime.md`, *Loop sessions*) and the child executes it,
 and publish the operation JSON with `chatdesk.py result` (git-desk skill) —
 with `batch` > 1, park it first and publish at the digest (`refs/batch.md`).
+
+**In loop-session mode** — the brief says so when the desk chat started this
+session for the loop (`refs/runtime.md`, *Loop sessions*). This chat is the
+attached chat for this loop: questions, digest and go-aheads happen here.
+When the brief carries a request, the desk chat already parked it: close it
+with `chatdesk.py result`/`fail` passing the desk chat's session id from the
+brief as `--session`, and park it again with the same id when a batch goes
+back to background.
 
 **From a detached desk button**, the launch prompt supplies `ns` and `batch`.
 `ns` is the rows he picked by hand and means what the typed list means. Do not

@@ -321,6 +321,23 @@ class Packaging(unittest.TestCase):
         self.assertIn("**Sub-chat mode**", work)
         self.assertIn("the claim included", work)
 
+    def test_a_loop_runs_in_a_child_session(self):
+        """A desk run starts its loop in a child chat that closes the parked
+        click under the desk chat's session; an issue needing UI or tests
+        gets a per-issue sub-chat."""
+        runtime = " ".join((PLUGIN / "refs" / "runtime.md").read_text().split())
+        self.assertIn("## Loop sessions", runtime)
+        for phrase in ("loop-session mode", "`--session <desk-session-id>`",
+                       "notify.py --done run:<flow>", "hands on the UI or on tests"):
+            self.assertIn(phrase, runtime, phrase)
+        desk = " ".join((PLUGIN / "skills" / "git-desk" / "SKILL.md").read_text().split())
+        self.assertIn("*Loop sessions*", desk)
+        for name in ("pr-loop", "issue-loop"):
+            loop = " ".join((PLUGIN / "skills" / name / "SKILL.md").read_text().split())
+            self.assertIn("**In loop-session mode**", loop, name)
+        issues = " ".join((PLUGIN / "skills" / "issue-loop" / "SKILL.md").read_text().split())
+        self.assertIn("**Hands-on**", issues)
+
     def test_the_verification_checklist_keeps_its_cases(self):
         why = (PLUGIN / "refs" / "pr-verification-WHY.md").read_text()
         self.assertIn("claim, not evidence", why)
