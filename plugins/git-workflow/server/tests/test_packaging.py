@@ -213,11 +213,12 @@ class Packaging(unittest.TestCase):
             self.assertIn("code fence", text, name)
 
     def test_the_release_is_explicit_gated_and_never_squashed(self):
-        """A squash would leave every included PR open, and only the
-        repository's own CLAUDE.md puts it on the release train."""
+        """A squash would leave every included PR open, and a protection
+        that asks for an approval is named before the release is built."""
         skill = (PLUGIN / "skills" / "release" / "SKILL.md").read_text()
         self.assertIn("disable-model-invocation: true", skill)
-        self.assertIn("grep -qx 'release-train: yes' CLAUDE.md", skill)
+        self.assertNotIn("grep -qx 'release-train: yes' CLAUDE.md", skill)
+        self.assertLess(skill.index("gw api repos/{repo}/branch_protections"), skill.index("## 2. The branch"))
         self.assertIn("gw pr merge <release> --delete-branch", skill)
         self.assertNotIn("--squash", skill.replace("Never `--squash`", ""))
         self.assertIn("is never retried with `force_merge`", skill)

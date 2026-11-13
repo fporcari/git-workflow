@@ -399,6 +399,16 @@ preparation filled with a fake `claude` (`tests/fixtures/fake_claude.py`).
 The mod's tests run with `claude plugin test plugins/git-workflow`, on the
 terminal and desktop surfaces.
 
+## A release needs no switch — 0.71.1
+
+`/release` no longer looks for `release-train: yes` in the repository's
+CLAUDE.md: invoking it is the user's statement that he handles the merges
+there. It reads the default branch's protection before building, and a rule
+that asks for an approval, or a merge whitelist without him, is named at once
+with the setting to change, instead of surfacing as a refused merge at the
+end. `pr-loop` and `/release-cluster` keep the line for what the `release`
+label means.
+
 ## A tester's cluster ships in a day — 0.71.0
 
 On 2026-11-12 a coordinator chat shipped a tester's post-demo issues on

@@ -1,8 +1,8 @@
 ---
 name: release
 description: >-
-  Cut a release on a release-train repository, one whose CLAUDE.md carries the
-  line `release-train: yes`. Every open PR labelled `release` is merged into a
+  Cut a release in a repository whose merges the user handles himself. Every
+  open PR labelled `release` is merged into a
   fresh `release_<ddmmyyHHMM>` branch cut from the default branch, one PR goes
   from it to the default branch and, on the user's go-ahead, lands with a merge
   commit, so the default branch moves once per release.
@@ -13,27 +13,18 @@ disable-model-invocation: true
 
 Read `<PLUGIN_ROOT>/refs/runtime.md` first.
 
-On a release-train repository the default branch moves only through release
-branches. Pull requests exist to work in parallel, the user's and the
-collaborators' alike, and the `release` label is the approval: the user puts it
-on any PR, his own included, since Forgejo never lets an author approve his own.
-This skill collects the labelled ones; `pr-loop` is where they get labelled.
-
-## 0. The switch
-
-From the repository's checkout:
-
-```sh
-grep -qx 'release-train: yes' CLAUDE.md
-```
-
-No match: stop and say the repository is not on the release train. The line is
-the user's decision, taken in the repository's own CLAUDE.md; never infer it.
+Invoking this skill is the user's statement that he handles the merges of the
+repository: the default branch moves only through release branches. Pull
+requests exist to work in parallel, the user's and the collaborators' alike,
+and the `release` label is the approval: the user puts it on any PR, his own
+included, since Forgejo never lets an author approve his own. This skill
+collects the labelled ones; `pr-loop` is where they get labelled.
 
 ## 1. What goes in
 
 ```sh
 gw repo default-branch
+gw api repos/{repo}/branch_protections
 gw label ensure release --color 0e8a16 --description "Approved: goes into the next release branch"
 gw pr list --state open
 ```
@@ -42,6 +33,12 @@ In: the rows labelled `release`, `base` equal to the default branch, `draft`
 false, in `n` order. None: stop, there is nothing to release. A labelled PR on
 another base, or still a draft, is listed as left out with its reason. No other
 label counts, `needs-verification` included: `release` is the user's word.
+
+A protection rule on the default branch that asks for an approval
+(`required_approvals` above 0) or keeps a merge whitelist without him would
+refuse the release PR at the end. Say it now, with the setting to change:
+required approvals 0, merge whitelist with him alone. The release is built
+all the same; only the merge waits for the setting.
 
 ## 2. The branch
 
@@ -125,11 +122,10 @@ gw pr merge <release> --delete-branch
 Never `--squash`: the included PRs read as merged only while their own head
 commits reach the default branch unchanged.
 
-A merge the service refuses, branch protection asking for an approval or a
-merge whitelist without him, is never retried with `force_merge` or any other
-admin bypass. Give the user the link and the refusal, and name the setting:
-on a release-train repository the label is the approval, so the default
-branch wants no required approval and a merge whitelist with him alone.
+A merge the service refuses is never retried with `force_merge` or any other
+admin bypass. Give the user the link and the refusal, and name the setting
+step 1 checked: the label is the approval, so the default branch wants no
+required approval and a merge whitelist with him alone.
 
 Then read each included PR back with `gw pr view <n>`. GitHub marks it merged;
 Forgejo does when the repository has "autodetect manual merge" on. One still
